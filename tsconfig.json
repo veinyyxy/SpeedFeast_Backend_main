@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "allowJs": true,      // 允许编译 JS 文件
+    "checkJs": true,      // 对 JS 文件进行类型检查（可选）
+    "outDir": "./public/out",   // 输出目录
+    "target": "ES2015",
+    "lib": ["ES2015", "DOM"],
+    "types": ["node"],
+    "module": "commonjs"  // 模块系统
+  },
+  "include": ["public/verification/*.ts", "public/verification/warp_sms_sender/*.ts", "public/verification/wrap_email_sender/*.ts"],
+}
