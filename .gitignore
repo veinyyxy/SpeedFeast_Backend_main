@@ -4794,3 +4794,5 @@ public/out/interface_verification_sender.js
 public/out/verify_sender_factory.js
 public/out/warp_sms_sender/implement_SMS_sender.js
 public/out/wrap_email_sender/implement_email_sender.js
+.env
+.gitignore
