@@ -1,5 +1,7 @@
 const express = require('express');
 const { query } = require('../db/pgsql');
+const {verifySignature} = require('../secutiry/verify_signature')
+
 const router = express.Router();
 
 async function fetchListData() {
@@ -24,6 +26,9 @@ async function fetchListData() {
 }
 
 router.get('/products/get_list', (req, res) => {
+  if(!verifySignature(req))
+    return res.status(401).send('Invalid signature');
+
   fetchListData().then(result => {
       // 按 category_name 分组
       const grouped = {};

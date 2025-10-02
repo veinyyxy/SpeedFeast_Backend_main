@@ -1,10 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db/pgsql');
+const {verifySignature} = require('../secutiry/verify_signature')
 const createVerifySender = require('../public/out/verify_sender_factory').createVerifySender;
 //const axios = require('axios'); // 用于第三方短信API，需 npm install axios
 
-// 发送间隔（秒）
+if(process.env.NODE_ENV == 'dev') 
+{
+  var debugMode = true;
+}
+else
+{
+  var debugMode = false;
+}
+  // 发送间隔（秒）
 const SEND_INTERVAL = 60;
 // 验证码有效期（分钟）
 const CODE_EXPIRE_MINUTES = 5;
@@ -15,7 +24,8 @@ const smsSender = createVerifySender('phone');
 
 // 工具函数
 function isValidPhone(phone) {
-  return /^[0-9]{10,15}$/.test(phone);
+   // 支持 +国家码，10~15位数字
+  return /^\+?[1-9]\d{9,14}$/.test(phone);
 }
 function isValidEmail(email) {
   return /^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$/.test(email);
@@ -25,7 +35,10 @@ function generateCode() {
 }
 
 // 发送验证码
-router.get('/send_verification', async (req, res) => {
+router.get('/verification/send_verification', async (req, res) => {
+  if(!verifySignature(req))
+    return res.status(401).send('Invalid signature');
+
   const { type, target } = req.query;
   if (!type || !target) {
     return res.status(400).json({ success: false, error: 'Missing parameters' });
@@ -61,13 +74,24 @@ router.get('/send_verification', async (req, res) => {
   // 发送验证码
   try {
     if (type === 'email') {
-      var res = await emailSender.sendInformation(target, code, 
-        `<p>Your verification code is: <strong>${code}</strong>, valid for ${CODE_EXPIRE_MINUTES} minutes.</p>`);
-      console.log("emailSender.sendInformation result is : " + res);
+      if(debugMode != true) {
+        var resSender = await emailSender.sendInformation(target, code, 
+          `<p>Your verification code is: <strong>${code}</strong>, valid for ${CODE_EXPIRE_MINUTES} minutes.</p>`);
+        console.log("emailSender.sendInformation result is : " + resSender);
+      } else {
+        //res.status(200).json({ success: true, message: 'Debug mode: Verification code not sent' });
+        console.log(`Debug mode: Email to ${target} with code ${code}`);
+      }
     } else if (type === 'phone') {
-      var res = await smsSender.sendInformation(target, code, 
-        `Your verification code is: ${code}, valid for ${CODE_EXPIRE_MINUTES} minutes.`);
-      console.log("smsSender.sendInformation result is : " + res);
+      if(debugMode != true) {
+        var resresSender = await smsSender.sendInformation(target, code, 
+          `Your verification code is: ${code}, valid for ${CODE_EXPIRE_MINUTES} minutes.`);
+        console.log("smsSender.sendInformation result is : " + resresSender);
+      } else {
+        
+        //res.status(200).json({ success: true, message: 'Debug mode: Verification code not sent' });
+        console.log(`Debug mode: SMS to ${target} with code ${code}`);
+      }
     }
   } catch (err) {
     return res.status(500).json({ success: false, error: `${err.message}` });
@@ -93,7 +117,10 @@ router.get('/send_verification', async (req, res) => {
 });
 
 // 校验验证码
-router.get('/verify', async (req, res) => {
+router.get('/verification/verify', async (req, res) => {
+  if(!verifySignature(req))
+    return res.status(401).send('Invalid signature');
+  
   const { type, target, code } = req.query;
   if (!type || !target || !code) {
     return res.status(400).json({ success: false, error: '缺少参数' });
