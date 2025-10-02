@@ -80,7 +80,16 @@ router.get('/send_verification', async (req, res) => {
   `;
   await query(insertSql, [type, target, code, expiresAt]);
 
-  res.json({ success: true, message: 'Verification code sent' });
+  if (typeof res === 'object' && res !== null) {
+    res.json({ success: true, message: 'Verification code sent' });
+  } else if (typeof res === 'string') {
+    try {
+      JSON.parse(res);
+      res.json({ success: true, message: 'Verification code sent' });
+    } catch (e) {
+      console.log('res is not JSON:', res);
+    }
+  }
 });
 
 // 校验验证码
