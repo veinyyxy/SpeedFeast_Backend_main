@@ -5,8 +5,19 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 const cors = require('cors');
-var app = express();
+/*const session = require('express-session');
+const RedisStore = require('connect-redis').default;
+const { createClient } = require('redis');*/
 
+var app = express();
+/*const redisClient = createClient();
+app.use(session({
+  //store: new RedisStore({ client: redisClient }),
+  secret: 'your-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false }
+}));*/
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -35,6 +46,7 @@ app.use('/images', cors({
 // routes
 app.use('/api', require('./routes/products.js'));
 app.use('/api', require('./routes/verification.js'));
+app.use('/api', require('./routes/users.js'));
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   next(createError(404));

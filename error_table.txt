@@ -1,0 +1,2 @@
+461 Cell phone already exists
+462 Username already exists

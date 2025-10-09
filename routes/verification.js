@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db/pgsql');
-const {verifySignature} = require('../secutiry/verify_signature')
+const {verifySignature, generateJWT} = require('../secutiry/verify_signature')
 const createVerifySender = require('../public/out/verify_sender_factory').createVerifySender;
 //const axios = require('axios'); // 用于第三方短信API，需 npm install axios
 
@@ -137,7 +137,15 @@ router.get('/verification/verify', async (req, res) => {
   ) {
     return res.status(400).json({ success: false, error: 'Invalid or expired verification code' });
   }
-  res.json({ success: true, message: 'Verification successful' });
+
+  // 生成临时JWT，绑定手机号码
+  const token = generateJWT(
+    { 
+      target: target,
+      code: code
+    }, '10m');
+
+  res.json({ success: true, message: 'Verification successful', token: token });
 });
 
 module.exports = router;
