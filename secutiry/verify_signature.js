@@ -115,4 +115,4 @@ function isTokenExpired(token) {
   }
 }
 
-module.exports = { verifySignature, generateJWT, verifySignature2, verifyJWT };
+module.exports = { verifySignature, generateJWT, verifySignature2, verifyJWT, isTokenExpired };

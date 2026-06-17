@@ -47,6 +47,9 @@ app.use('/images', cors({
 app.use('/api', require('./routes/products.js'));
 app.use('/api', require('./routes/verification.js'));
 app.use('/api', require('./routes/users.js'));
+app.use('/api', require('./routes/orders.js'));
+app.use('/api', require('./routes/config.js'));
+app.use('/api', require('./routes/payment_methods.js'));
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   next(createError(404));
