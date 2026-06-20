@@ -37,8 +37,45 @@ function normalizeItems(items) {
     .map((item) => ({
       product_id: item.product_id,
       quantity: Number.parseInt(item.quantity, 10),
+      selected_options: normalizeSelectedOptions(
+        item.selected_options || item.selectedOptions
+      ),
+      special_instructions: normalizeSpecialInstructions(
+        item.special_instructions || item.specialInstructions
+      ),
     }))
     .filter((item) => item.product_id && Number.isInteger(item.quantity) && item.quantity > 0);
+}
+
+function normalizeSelectedOptions(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  return Object.entries(value).reduce((acc, [rawGroupId, rawOptionIds]) => {
+    const groupId = rawGroupId ? rawGroupId.toString().trim() : '';
+    if (!groupId) return acc;
+
+    const optionIds = Array.isArray(rawOptionIds)
+      ? rawOptionIds
+      : [rawOptionIds];
+    const cleanOptionIds = [];
+
+    for (const rawOptionId of optionIds) {
+      const optionId = rawOptionId ? rawOptionId.toString().trim() : '';
+      if (optionId && !cleanOptionIds.includes(optionId)) {
+        cleanOptionIds.push(optionId);
+      }
+    }
+
+    if (cleanOptionIds.length > 0) {
+      acc[groupId] = cleanOptionIds;
+    }
+    return acc;
+  }, {});
+}
+
+function normalizeSpecialInstructions(value) {
+  if (value === null || value === undefined) return '';
+  return value.toString().trim().slice(0, 500);
 }
 
 function normalizeFulfillmentType(value) {
@@ -62,6 +99,183 @@ function normalizeLimit(value) {
   const limit = Number.parseInt(value, 10);
   if (!Number.isInteger(limit) || limit <= 0) return 20;
   return Math.min(limit, 100);
+}
+
+function canCancelOrderStatus(status) {
+  return ['created', 'paid'].includes((status || '').toString().toLowerCase());
+}
+
+async function fetchOrderOptionRows(client) {
+  try {
+    const result = await client.query(`
+      SELECT
+        l.parent_product_id,
+        g.option_group_id,
+        g.group_name,
+        g.selection_type,
+        g.min_select,
+        g.max_select,
+        l.sort_order AS group_sort_order,
+        i.option_product_id,
+        i.sort_order AS option_sort_order,
+        op.name AS option_name,
+        op.base_price AS option_price,
+        op.status AS option_status
+      FROM public.product_option_group_links l
+      JOIN public.product_option_groups g
+        ON g.option_group_id = l.option_group_id
+       AND g.active = TRUE
+      JOIN public.product_option_group_items i
+        ON i.option_group_id = g.option_group_id
+       AND i.active = TRUE
+      JOIN public.products op
+        ON op.product_id = i.option_product_id
+      WHERE l.active = TRUE
+        AND op.status = 'active'
+      ORDER BY l.parent_product_id,
+               l.sort_order,
+               g.sort_order,
+               i.sort_order,
+               op.name;
+    `);
+
+    return result.rows;
+  } catch (err) {
+    if (err.code === '42P01') {
+      return [];
+    }
+    throw err;
+  }
+}
+
+function groupOptionRowsByParent(rows) {
+  return rows.reduce((acc, row) => {
+    const parentId = row.parent_product_id;
+    if (!acc.has(parentId)) {
+      acc.set(parentId, []);
+    }
+    acc.get(parentId).push(row);
+    return acc;
+  }, new Map());
+}
+
+function optionGroupsForParent(parentProductId, optionRowsByParent) {
+  const rows = optionRowsByParent.get(parentProductId) || [];
+  const groupsById = new Map();
+
+  for (const row of rows) {
+    if (!groupsById.has(row.option_group_id)) {
+      groupsById.set(row.option_group_id, {
+        option_group_id: row.option_group_id,
+        group_name: row.group_name,
+        selection_type: row.selection_type === 'multiple' ? 'multiple' : 'single',
+        min_select: Number.parseInt(row.min_select, 10) || 0,
+        max_select: Number.parseInt(row.max_select, 10) || 1,
+        optionsById: new Map(),
+      });
+    }
+
+    groupsById.get(row.option_group_id).optionsById.set(row.option_product_id, row);
+  }
+
+  return Array.from(groupsById.values());
+}
+
+function validateSelectedOptionsForParent(parentProductId, selectedOptions, optionRowsByParent) {
+  const normalizedOptions = normalizeSelectedOptions(selectedOptions);
+  const consumedGroupIds = new Set();
+  const result = validateOptionGroupsForParent(
+    parentProductId,
+    normalizedOptions,
+    optionRowsByParent,
+    consumedGroupIds,
+    new Set()
+  );
+
+  const invalidGroupIds = Object.keys(normalizedOptions).filter(
+    (groupId) => !consumedGroupIds.has(groupId)
+  );
+  if (invalidGroupIds.length > 0) {
+    result.errors.push(`Invalid option group for product: ${invalidGroupIds.join(', ')}`);
+  }
+
+  return result;
+}
+
+function validateOptionGroupsForParent(
+  parentProductId,
+  selectedOptions,
+  optionRowsByParent,
+  consumedGroupIds,
+  visitedProductIds
+) {
+  if (!parentProductId || visitedProductIds.has(parentProductId)) {
+    return { errors: [], unit_price_delta: 0, selected_options: [] };
+  }
+
+  const nextVisitedProductIds = new Set(visitedProductIds);
+  nextVisitedProductIds.add(parentProductId);
+
+  const errors = [];
+  const selectedOptionRows = [];
+  let unitPriceDelta = 0;
+  const groups = optionGroupsForParent(parentProductId, optionRowsByParent);
+
+  for (const group of groups) {
+    const selectedIds = selectedOptions[group.option_group_id] || [];
+    if (selectedIds.length > 0) {
+      consumedGroupIds.add(group.option_group_id);
+    }
+
+    if (selectedIds.length < group.min_select) {
+      errors.push(
+        `${group.group_name} requires at least ${group.min_select} selection(s).`
+      );
+    }
+    if (selectedIds.length > group.max_select) {
+      errors.push(
+        `${group.group_name} allows at most ${group.max_select} selection(s).`
+      );
+    }
+    if (group.selection_type === 'single' && selectedIds.length > 1) {
+      errors.push(`${group.group_name} only allows one selection.`);
+    }
+
+    for (const selectedId of selectedIds) {
+      const optionRow = group.optionsById.get(selectedId);
+      if (!optionRow) {
+        errors.push(`Invalid option selected for ${group.group_name}.`);
+        continue;
+      }
+
+      const optionPrice = Number(optionRow.option_price) || 0;
+      unitPriceDelta += optionPrice;
+      selectedOptionRows.push({
+        option_group_id: group.option_group_id,
+        group_name: group.group_name,
+        option_product_id: optionRow.option_product_id,
+        option_name: optionRow.option_name,
+        unit_price: optionPrice,
+      });
+
+      const childResult = validateOptionGroupsForParent(
+        optionRow.option_product_id,
+        selectedOptions,
+        optionRowsByParent,
+        consumedGroupIds,
+        nextVisitedProductIds
+      );
+      errors.push(...childResult.errors);
+      unitPriceDelta += childResult.unit_price_delta;
+      selectedOptionRows.push(...childResult.selected_options);
+    }
+  }
+
+  return {
+    errors,
+    unit_price_delta: unitPriceDelta,
+    selected_options: selectedOptionRows,
+  };
 }
 
 function calculateTotals(subtotal, fulfillmentType, tipAmount) {
@@ -157,11 +371,138 @@ function normalizeOrderItem(row) {
     unit_price: unitPrice,
     price: subtotal,
     subtotal,
+    selected_options: [],
+    special_instructions: row.special_instructions || '',
+    specialInstructions: row.special_instructions || '',
     created_at: row.created_at,
   };
 }
 
-function normalizeRecentOrder(row, items) {
+function normalizeOrderItemOption(row) {
+  const unitPrice = Number(row.unit_price || 0);
+  const subtotal = Number(row.subtotal || 0);
+
+  return {
+    order_item_option_id: row.order_item_option_id,
+    order_item_id: row.order_item_id,
+    option_group_id: row.option_group_id,
+    group_name: row.group_name,
+    option_product_id: row.option_product_id,
+    option_name: row.option_name,
+    name: row.option_name,
+    quantity: Number.parseInt(row.quantity, 10) || 0,
+    unit_price: unitPrice,
+    price: subtotal,
+    subtotal,
+  };
+}
+
+async function fetchRecentOrderItemOptions(orderItemIds) {
+  if (!Array.isArray(orderItemIds) || orderItemIds.length === 0) {
+    return new Map();
+  }
+
+  const optionsByOrderItemId = new Map(
+    orderItemIds.map((orderItemId) => [orderItemId, []])
+  );
+
+  try {
+    const optionsResult = await pool.query(
+      `
+        SELECT
+          oio.order_item_option_id,
+          oio.order_item_id,
+          oio.option_group_id,
+          g.group_name,
+          oio.option_product_id,
+          p.name AS option_name,
+          oio.quantity,
+          oio.unit_price,
+          oio.subtotal
+        FROM public.orderitem_options oio
+        LEFT JOIN public.product_option_groups g
+          ON g.option_group_id = oio.option_group_id
+        LEFT JOIN public.products p
+          ON p.product_id = oio.option_product_id
+        WHERE oio.order_item_id = ANY($1::uuid[])
+        ORDER BY oio.created_at ASC
+      `,
+      [orderItemIds]
+    );
+
+    for (const row of optionsResult.rows) {
+      const options = optionsByOrderItemId.get(row.order_item_id);
+      if (options) {
+        options.push(normalizeOrderItemOption(row));
+      }
+    }
+  } catch (err) {
+    if (err.code !== '42P01') {
+      throw err;
+    }
+  }
+
+  return optionsByOrderItemId;
+}
+
+function normalizePayment(row) {
+  if (!row) return null;
+  return {
+    payment_id: row.payment_id,
+    provider: row.provider,
+    provider_payment_id: row.provider_payment_id,
+    provider_session_id: row.provider_session_id,
+    amount: Number(row.amount || 0),
+    currency: row.currency ? row.currency.toString().trim() : 'CAD',
+    payment_status: row.payment_status || 'pending',
+    checkout_url: row.checkout_url || null,
+    failure_message: row.failure_message || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+async function fetchRecentOrderPayments(orderIds) {
+  if (!Array.isArray(orderIds) || orderIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT DISTINCT ON (order_id)
+          payment_id,
+          order_id,
+          provider,
+          provider_payment_id,
+          provider_session_id,
+          amount,
+          currency,
+          payment_status,
+          checkout_url,
+          failure_message,
+          created_at,
+          updated_at
+        FROM public.payments
+        WHERE order_id = ANY($1::uuid[])
+        ORDER BY order_id, created_at DESC
+      `,
+      [orderIds]
+    );
+
+    return result.rows.reduce((acc, row) => {
+      acc.set(row.order_id, normalizePayment(row));
+      return acc;
+    }, new Map());
+  } catch (err) {
+    if (err.code === '42P01') {
+      return new Map();
+    }
+    throw err;
+  }
+}
+
+function normalizeRecentOrder(row, items, payment) {
   const fulfillmentDetail = row.fulfillment_detail || {};
   const pricing = fulfillmentDetail.pricing || {};
   const status = row.order_status || 'created';
@@ -180,6 +521,8 @@ function normalizeRecentOrder(row, items) {
     shipping_address: normalizeAddress(row),
     item_count: items.reduce((sum, item) => sum + item.quantity, 0),
     items,
+    payment,
+    payment_status: payment?.payment_status || null,
     pricing: {
       subtotal: Number(pricing.subtotal || 0),
       delivery_fee: Number(pricing.delivery_fee || 0),
@@ -240,6 +583,7 @@ router.get('/orders/get_list', async (req, res) => {
 
     const orderIds = ordersResult.rows.map((order) => order.order_id);
     const itemsByOrderId = new Map(orderIds.map((orderId) => [orderId, []]));
+    const paymentsByOrderId = await fetchRecentOrderPayments(orderIds);
 
     if (orderIds.length > 0) {
       const itemsResult = await pool.query(
@@ -251,6 +595,7 @@ router.get('/orders/get_list', async (req, res) => {
             oi.quantity,
             oi.unit_price,
             oi.subtotal,
+            oi.special_instructions,
             oi.created_at,
             p.name AS product_name
           FROM public.orderitem oi
@@ -262,15 +607,24 @@ router.get('/orders/get_list', async (req, res) => {
         [orderIds]
       );
 
-      for (const itemRow of itemsResult.rows) {
-        const item = normalizeOrderItem(itemRow);
-        const items = itemsByOrderId.get(item.order_id);
-        if (items) items.push(item);
+      const normalizedItems = itemsResult.rows.map(normalizeOrderItem);
+      const optionsByOrderItemId = await fetchRecentOrderItemOptions(
+        normalizedItems.map((item) => item.order_item_id)
+      );
+
+      for (const item of normalizedItems) {
+        item.selected_options = optionsByOrderItemId.get(item.order_item_id) || [];
+        const orderItems = itemsByOrderId.get(item.order_id);
+        if (orderItems) orderItems.push(item);
       }
     }
 
     const orders = ordersResult.rows.map((order) =>
-      normalizeRecentOrder(order, itemsByOrderId.get(order.order_id) || [])
+      normalizeRecentOrder(
+        order,
+        itemsByOrderId.get(order.order_id) || [],
+        paymentsByOrderId.get(order.order_id) || null
+      )
     );
 
     return res.status(200).json({
@@ -283,6 +637,105 @@ router.get('/orders/get_list', async (req, res) => {
       success: false,
       error: 'Internal server error',
     });
+  }
+});
+
+// 取消订单
+router.post('/orders/cancel', async (req, res) => {
+  const authPayload = authenticateRequest(req, res, verifySignature2);
+  if (!authPayload) return;
+
+  const userId = authPayload.user_id;
+  const orderId = req.body.order_id || req.body.orderId;
+
+  if (!orderId) {
+    return res.status(400).json({
+      success: false,
+      error: 'order_id is required',
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `
+        SELECT order_id, user_id, order_status
+        FROM public."Order"
+        WHERE order_id = $1
+          AND user_id = $2
+        FOR UPDATE
+      `,
+      [orderId, userId]
+    );
+
+    const currentOrder = orderResult.rows[0];
+    if (!currentOrder) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found',
+      });
+    }
+
+    if (currentOrder.order_status === 'cancelled') {
+      await client.query('COMMIT');
+      return res.status(200).json({
+        success: true,
+        message: 'Order is already cancelled',
+        order: currentOrder,
+      });
+    }
+
+    if (!canCancelOrderStatus(currentOrder.order_status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: `Order cannot be cancelled after it has been ${currentOrder.order_status}.`,
+      });
+    }
+
+    const updateResult = await client.query(
+      `
+        UPDATE public."Order"
+        SET order_status = 'cancelled',
+            updated_at = now(),
+            fulfillment_detail = COALESCE(fulfillment_detail, '{}'::jsonb)
+              || jsonb_build_object(
+                'cancellation',
+                jsonb_build_object(
+                  'cancelled_at', now(),
+                  'cancelled_by', 'customer',
+                  'previous_status', order_status
+                )
+              )
+        WHERE order_id = $1
+          AND user_id = $2
+        RETURNING order_id, user_id, order_status, total_amount, currency,
+                  shipping_address_id, fulfillment_type, fulfillment_detail,
+                  created_at, updated_at
+      `,
+      [orderId, userId]
+    );
+
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Order cancelled successfully',
+      order: updateResult.rows[0],
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error cancelling order:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  } finally {
+    client.release();
   }
 });
 
@@ -351,6 +804,8 @@ router.post('/orders/create', async (req, res) => {
     const productMap = new Map(
       productsResult.rows.map((product) => [product.product_id, product])
     );
+    const optionRows = await fetchOrderOptionRows(client);
+    const optionRowsByParent = groupOptionRowsByParent(optionRows);
 
     const orderItems = [];
     let subtotalAmount = 0;
@@ -373,7 +828,21 @@ router.post('/orders/create', async (req, res) => {
         });
       }
 
-      const unitPrice = Number(product.base_price);
+      const optionResult = validateSelectedOptionsForParent(
+        item.product_id,
+        item.selected_options,
+        optionRowsByParent
+      );
+      if (optionResult.errors.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid selected options',
+          details: optionResult.errors,
+        });
+      }
+
+      const unitPrice = Number(product.base_price) + optionResult.unit_price_delta;
       const subtotal = unitPrice * item.quantity;
       subtotalAmount += subtotal;
       orderItems.push({
@@ -382,6 +851,8 @@ router.post('/orders/create', async (req, res) => {
         quantity: item.quantity,
         unit_price: unitPrice,
         subtotal,
+        selected_options: optionResult.selected_options,
+        special_instructions: item.special_instructions,
       });
     }
 
@@ -431,11 +902,12 @@ router.post('/orders/create', async (req, res) => {
             product_id,
             quantity,
             unit_price,
-            subtotal
+            subtotal,
+            special_instructions
           )
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING order_item_id, order_id, product_id, quantity,
-                    unit_price, subtotal, created_at
+                    unit_price, subtotal, special_instructions, created_at
         `,
         [
           order.order_id,
@@ -443,13 +915,50 @@ router.post('/orders/create', async (req, res) => {
           item.quantity,
           item.unit_price.toFixed(2),
           item.subtotal.toFixed(2),
+          item.special_instructions || null,
         ]
       );
 
       insertedItems.push({
         ...itemResult.rows[0],
         product_name: item.product_name,
+        selected_options: [],
+        specialInstructions: itemResult.rows[0].special_instructions || '',
       });
+
+      const insertedItem = insertedItems[insertedItems.length - 1];
+      for (const selectedOption of item.selected_options) {
+        const optionResult = await client.query(
+          `
+            INSERT INTO public.orderitem_options (
+              order_item_id,
+              option_group_id,
+              option_product_id,
+              quantity,
+              unit_price,
+              subtotal
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING order_item_option_id, order_item_id, option_group_id,
+                      option_product_id, quantity, unit_price, subtotal,
+                      created_at
+          `,
+          [
+            insertedItem.order_item_id,
+            selectedOption.option_group_id,
+            selectedOption.option_product_id,
+            item.quantity,
+            selectedOption.unit_price.toFixed(2),
+            (selectedOption.unit_price * item.quantity).toFixed(2),
+          ]
+        );
+
+        insertedItem.selected_options.push({
+          ...optionResult.rows[0],
+          group_name: selectedOption.group_name,
+          option_name: selectedOption.option_name,
+        });
+      }
     }
 
     await client.query('COMMIT');

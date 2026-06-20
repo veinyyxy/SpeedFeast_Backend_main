@@ -25,6 +25,7 @@ app.set('view engine', 'pug');
 
 app.use(logger('dev'));
 app.use(cookieParser());
+app.use('/api/payments/webhook/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -48,8 +49,12 @@ app.use('/api', require('./routes/products.js'));
 app.use('/api', require('./routes/verification.js'));
 app.use('/api', require('./routes/users.js'));
 app.use('/api', require('./routes/orders.js'));
+app.use('/api', require('./routes/payments.js'));
 app.use('/api', require('./routes/config.js'));
 app.use('/api', require('./routes/payment_methods.js'));
+app.use('/api/merchant', require('./routes/merchant_auth.js'));
+app.use('/api/merchant', require('./routes/merchant_orders.js'));
+app.use('/api/merchant', require('./routes/merchant_products.js'));
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   next(createError(404));
