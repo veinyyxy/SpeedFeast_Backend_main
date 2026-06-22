@@ -76,6 +76,8 @@ function normalizeOrderItem(row) {
     unit_price: unitPrice,
     price: subtotal,
     subtotal,
+    review_rating: Number.parseInt(row.review_rating, 10) || 0,
+    reviewRating: Number.parseInt(row.review_rating, 10) || 0,
     selected_options: [],
     special_instructions: row.special_instructions || '',
     specialInstructions: row.special_instructions || '',
@@ -118,11 +120,56 @@ function normalizePayment(row) {
   };
 }
 
-function normalizeMerchantOrder(row, items, payment) {
+function normalizeReviewItem(row) {
+  return {
+    review_id: row.review_id,
+    order_id: row.order_id,
+    order_item_id: row.order_item_id,
+    product_id: row.product_id,
+    user_id: row.user_id,
+    rating: Number.parseInt(row.rating, 10) || 0,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function createReviewFromRow(row) {
+  return {
+    review_id: row.review_id,
+    order_id: row.order_id,
+    user_id: row.user_id,
+    comment: row.comment || '',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    items: [],
+  };
+}
+
+function applyItemReviewRatings(items, review) {
+  if (!review || !Array.isArray(review.items) || review.items.length === 0) {
+    return items;
+  }
+
+  const ratingsByOrderItemId = new Map(
+    review.items.map((item) => [item.order_item_id, item.rating])
+  );
+
+  return items.map((item) => {
+    const rating = ratingsByOrderItemId.get(item.order_item_id) || 0;
+    return {
+      ...item,
+      review_rating: rating,
+      reviewRating: rating,
+    };
+  });
+}
+
+function normalizeMerchantOrder(row, items, payment, review) {
   const fulfillmentDetail = row.fulfillment_detail || {};
   const pricing = fulfillmentDetail.pricing || {};
   const status = row.order_status || 'created';
-  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const reviewedItems = applyItemReviewRatings(items, review);
+  const itemCount = reviewedItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return {
     order_id: row.order_id,
@@ -143,9 +190,13 @@ function normalizeMerchantOrder(row, items, payment) {
     fulfillment_detail: fulfillmentDetail,
     shipping_address: normalizeAddress(row),
     item_count: itemCount,
-    items,
+    items: reviewedItems,
     payment,
     payment_status: payment?.payment_status || null,
+    is_reviewed: Boolean(review),
+    review,
+    order_review: review,
+    review_comment: review?.comment || '',
     pricing: {
       subtotal: Number(pricing.subtotal || 0),
       delivery_fee: Number(pricing.delivery_fee || 0),
@@ -161,6 +212,57 @@ function normalizeMerchantOrder(row, items, payment) {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function fetchMerchantOrderReviews(orderIds) {
+  const reviewsByOrderId = new Map();
+  if (!Array.isArray(orderIds) || orderIds.length === 0) return reviewsByOrderId;
+
+  try {
+    const reviewResult = await pool.query(
+      `
+        SELECT review_id, order_id, user_id, comment, created_at, updated_at
+        FROM public.order_reviews
+        WHERE order_id = ANY($1::uuid[])
+      `,
+      [orderIds]
+    );
+
+    for (const row of reviewResult.rows) {
+      reviewsByOrderId.set(row.order_id, createReviewFromRow(row));
+    }
+
+    const itemResult = await pool.query(
+      `
+        SELECT review_id, order_id, order_item_id, product_id, user_id,
+               rating, created_at, updated_at
+        FROM public.order_item_reviews
+        WHERE order_id = ANY($1::uuid[])
+        ORDER BY created_at ASC
+      `,
+      [orderIds]
+    );
+
+    for (const row of itemResult.rows) {
+      if (!reviewsByOrderId.has(row.order_id)) {
+        reviewsByOrderId.set(row.order_id, {
+          review_id: null,
+          order_id: row.order_id,
+          user_id: row.user_id,
+          comment: '',
+          created_at: null,
+          updated_at: null,
+          items: [],
+        });
+      }
+      reviewsByOrderId.get(row.order_id).items.push(normalizeReviewItem(row));
+    }
+  } catch (err) {
+    if (err.code === '42P01') return reviewsByOrderId;
+    throw err;
+  }
+
+  return reviewsByOrderId;
 }
 
 async function fetchOrderItemOptions(orderItemIds) {
@@ -318,12 +420,14 @@ async function buildMerchantOrders(rows) {
   const orderIds = rows.map((order) => order.order_id);
   const itemsByOrderId = await fetchOrderItems(orderIds);
   const paymentsByOrderId = await fetchLatestPayments(orderIds);
+  const reviewsByOrderId = await fetchMerchantOrderReviews(orderIds);
 
   return rows.map((order) =>
     normalizeMerchantOrder(
       order,
       itemsByOrderId.get(order.order_id) || [],
-      paymentsByOrderId.get(order.order_id) || null
+      paymentsByOrderId.get(order.order_id) || null,
+      reviewsByOrderId.get(order.order_id) || null
     )
   );
 }

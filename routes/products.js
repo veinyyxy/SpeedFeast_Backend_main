@@ -14,12 +14,22 @@ async function fetchListData() {
         p.visible_in_menu,
         c.name AS category_name,
         pi.image_url,
-        p.description
+        p.description,
+        COALESCE(pr.rating_average, 0)::float AS rating_average,
+        COALESCE(pr.rating_count, 0)::int AS rating_count
     FROM products p
     JOIN product_categories pc ON p.product_id = pc.product_id
     JOIN categories c ON pc.category_id = c.category_id
     LEFT JOIN product_images pi 
         ON p.product_id = pi.product_id AND pi.is_primary = TRUE
+    LEFT JOIN (
+        SELECT
+            product_id,
+            ROUND(AVG(rating)::numeric, 2) AS rating_average,
+            COUNT(*)::int AS rating_count
+        FROM public.order_item_reviews
+        GROUP BY product_id
+    ) pr ON pr.product_id = p.product_id
     WHERE COALESCE(p.visible_in_menu, TRUE) = TRUE
     ORDER BY p.product_id;`, []);
     const optionRows = await fetchProductOptionRows();

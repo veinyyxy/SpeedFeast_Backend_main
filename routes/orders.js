@@ -85,6 +85,30 @@ function normalizeFulfillmentType(value) {
   return null;
 }
 
+function normalizeText(value) {
+  if (value === undefined || value === null) return '';
+  return value.toString().trim();
+}
+
+function extractTableToken(value) {
+  const raw = normalizeText(value);
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    return (
+      normalizeText(parsed.searchParams.get('table_token')) ||
+      normalizeText(parsed.searchParams.get('tableToken')) ||
+      normalizeText(parsed.searchParams.get('token')) ||
+      normalizeText(parsed.pathname.split('/').filter(Boolean).pop())
+    );
+  } catch (_) {
+    const match = raw.match(/(?:table_token|tableToken|token)=([^&\s]+)/);
+    if (match) return decodeURIComponent(match[1]).trim();
+    return raw;
+  }
+}
+
 function toMoney(value) {
   return Number.parseFloat(Number(value).toFixed(2));
 }
@@ -103,6 +127,52 @@ function normalizeLimit(value) {
 
 function canCancelOrderStatus(status) {
   return ['created', 'paid'].includes((status || '').toString().toLowerCase());
+}
+
+async function resolveDineInTable(client, body) {
+  const tableId = normalizeText(body.dine_in_table_id || body.table_id || body.tableId);
+  const tableToken = extractTableToken(
+    body.table_token ||
+      body.tableToken ||
+      body.qr_code ||
+      body.qrCode ||
+      body.table_code ||
+      body.tableCode
+  );
+  const tableNumber = normalizeText(body.table_number || body.tableNumber);
+
+  if (!tableId && !tableToken && !tableNumber) {
+    return null;
+  }
+
+  const conditions = [];
+  const params = [];
+
+  if (tableId) {
+    params.push(tableId);
+    conditions.push(`table_id = $${params.length}`);
+  }
+  if (tableToken) {
+    params.push(tableToken);
+    conditions.push(`table_token = $${params.length}`);
+  }
+  if (tableNumber) {
+    params.push(tableNumber);
+    conditions.push(`table_number = $${params.length}`);
+  }
+
+  const result = await client.query(
+    `
+      SELECT table_id, store_id, table_number, table_token, is_active
+      FROM public.dining_tables
+      WHERE is_active = true
+        AND (${conditions.join(' OR ')})
+      LIMIT 1
+    `,
+    params
+  );
+
+  return result.rows[0] || null;
 }
 
 async function fetchOrderOptionRows(client) {
@@ -502,7 +572,98 @@ async function fetchRecentOrderPayments(orderIds) {
   }
 }
 
-function normalizeRecentOrder(row, items, payment) {
+function normalizeReview(row) {
+  if (!row) return null;
+  return {
+    review_id: row.review_id,
+    order_id: row.order_id,
+    user_id: row.user_id,
+    comment: row.comment || '',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    items: [],
+  };
+}
+
+async function fetchRecentOrderReviews(orderIds) {
+  if (!Array.isArray(orderIds) || orderIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const reviewsResult = await pool.query(
+      `
+        SELECT review_id, order_id, user_id, comment, created_at, updated_at
+        FROM public.order_reviews
+        WHERE order_id = ANY($1::uuid[])
+      `,
+      [orderIds]
+    );
+
+    const reviewsByOrderId = reviewsResult.rows.reduce((acc, row) => {
+      acc.set(row.order_id, normalizeReview(row));
+      return acc;
+    }, new Map());
+
+    const itemReviewsResult = await pool.query(
+      `
+        SELECT review_id, order_id, order_item_id, product_id, user_id,
+               rating, created_at, updated_at
+        FROM public.order_item_reviews
+        WHERE order_id = ANY($1::uuid[])
+        ORDER BY created_at ASC
+      `,
+      [orderIds]
+    );
+
+    for (const row of itemReviewsResult.rows) {
+      if (!reviewsByOrderId.has(row.order_id)) {
+        reviewsByOrderId.set(row.order_id, {
+          order_id: row.order_id,
+          comment: '',
+          items: [],
+        });
+      }
+      reviewsByOrderId.get(row.order_id).items.push(row);
+    }
+
+    return reviewsByOrderId;
+  } catch (err) {
+    if (err.code === '42P01') {
+      return new Map();
+    }
+    throw err;
+  }
+}
+
+async function fetchRecentOrderItemReviewRatings(orderItemIds) {
+  if (!Array.isArray(orderItemIds) || orderItemIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT order_item_id, rating
+        FROM public.order_item_reviews
+        WHERE order_item_id = ANY($1::uuid[])
+      `,
+      [orderItemIds]
+    );
+
+    return result.rows.reduce((acc, row) => {
+      acc.set(row.order_item_id, Number.parseInt(row.rating, 10) || 0);
+      return acc;
+    }, new Map());
+  } catch (err) {
+    if (err.code === '42P01') {
+      return new Map();
+    }
+    throw err;
+  }
+}
+
+function normalizeRecentOrder(row, items, payment, review) {
   const fulfillmentDetail = row.fulfillment_detail || {};
   const pricing = fulfillmentDetail.pricing || {};
   const status = row.order_status || 'created';
@@ -523,6 +684,9 @@ function normalizeRecentOrder(row, items, payment) {
     items,
     payment,
     payment_status: payment?.payment_status || null,
+    can_review: ['completed', 'delivered'].includes(status),
+    is_reviewed: Boolean(review),
+    review,
     pricing: {
       subtotal: Number(pricing.subtotal || 0),
       delivery_fee: Number(pricing.delivery_fee || 0),
@@ -584,6 +748,7 @@ router.get('/orders/get_list', async (req, res) => {
     const orderIds = ordersResult.rows.map((order) => order.order_id);
     const itemsByOrderId = new Map(orderIds.map((orderId) => [orderId, []]));
     const paymentsByOrderId = await fetchRecentOrderPayments(orderIds);
+    const reviewsByOrderId = await fetchRecentOrderReviews(orderIds);
 
     if (orderIds.length > 0) {
       const itemsResult = await pool.query(
@@ -608,12 +773,13 @@ router.get('/orders/get_list', async (req, res) => {
       );
 
       const normalizedItems = itemsResult.rows.map(normalizeOrderItem);
-      const optionsByOrderItemId = await fetchRecentOrderItemOptions(
-        normalizedItems.map((item) => item.order_item_id)
-      );
+      const orderItemIds = normalizedItems.map((item) => item.order_item_id);
+      const optionsByOrderItemId = await fetchRecentOrderItemOptions(orderItemIds);
+      const reviewRatingsByOrderItemId = await fetchRecentOrderItemReviewRatings(orderItemIds);
 
       for (const item of normalizedItems) {
         item.selected_options = optionsByOrderItemId.get(item.order_item_id) || [];
+        item.review_rating = reviewRatingsByOrderItemId.get(item.order_item_id) || 0;
         const orderItems = itemsByOrderId.get(item.order_id);
         if (orderItems) orderItems.push(item);
       }
@@ -623,7 +789,8 @@ router.get('/orders/get_list', async (req, res) => {
       normalizeRecentOrder(
         order,
         itemsByOrderId.get(order.order_id) || [],
-        paymentsByOrderId.get(order.order_id) || null
+        paymentsByOrderId.get(order.order_id) || null,
+        reviewsByOrderId.get(order.order_id) || null
       )
     );
 
@@ -766,10 +933,19 @@ router.post('/orders/create', async (req, res) => {
     });
   }
 
-  if (fulfillmentType === 'dine_in' && !req.body.table_number) {
+  if (
+    fulfillmentType === 'dine_in' &&
+    !req.body.table_number &&
+    !req.body.tableNumber &&
+    !req.body.dine_in_table_id &&
+    !req.body.table_id &&
+    !req.body.tableId &&
+    !req.body.table_token &&
+    !req.body.tableToken
+  ) {
     return res.status(400).json({
       success: false,
-      error: 'Missing table_number for dine-in order',
+      error: 'Missing table information for dine-in order',
     });
   }
 
@@ -787,6 +963,18 @@ router.post('/orders/create', async (req, res) => {
         return res.status(400).json({
           success: false,
           error: 'Invalid or missing shipping address',
+        });
+      }
+    }
+
+    let dineInTable = null;
+    if (fulfillmentType === 'dine_in') {
+      dineInTable = await resolveDineInTable(client, req.body);
+      if (!dineInTable) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid or inactive dine-in table',
         });
       }
     }
@@ -859,7 +1047,8 @@ router.post('/orders/create', async (req, res) => {
     const totals = calculateTotals(subtotalAmount, fulfillmentType, tipAmount);
     const fulfillmentDetail = {
       fulfillment_type: fulfillmentType,
-      table_number: req.body.table_number || null,
+      table_id: dineInTable?.table_id || null,
+      table_number: dineInTable?.table_number || null,
       pickup_location: req.body.pickup_location || null,
       delivery_note: req.body.delivery_note || null,
       pricing: totals,

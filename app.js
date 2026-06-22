@@ -49,6 +49,8 @@ app.use('/api', require('./routes/products.js'));
 app.use('/api', require('./routes/verification.js'));
 app.use('/api', require('./routes/users.js'));
 app.use('/api', require('./routes/orders.js'));
+app.use('/api', require('./routes/dine_in.js'));
+app.use('/api', require('./routes/reviews.js'));
 app.use('/api', require('./routes/payments.js'));
 app.use('/api', require('./routes/config.js'));
 app.use('/api', require('./routes/payment_methods.js'));

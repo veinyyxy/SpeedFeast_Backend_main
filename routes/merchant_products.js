@@ -432,6 +432,8 @@ function normalizeProduct(row, optionRowsByParent) {
     visible_in_menu: row.visible_in_menu !== false,
     image_url: row.image_url,
     is_option_product: row.is_option_product,
+    rating_average: Number(row.rating_average || 0),
+    rating_count: Number.parseInt(row.rating_count, 10) || 0,
     categories: row.categories || [],
     option_groups: buildOptionGroups(row.product_id, optionRowsByParent),
     created_at: row.created_at,
@@ -460,6 +462,8 @@ async function fetchMerchantProducts(productId = null) {
         p.created_at,
         p.updated_at,
         pi.image_url,
+        COALESCE(pr.rating_average, 0)::float AS rating_average,
+        COALESCE(pr.rating_count, 0)::int AS rating_count,
         EXISTS (
           SELECT 1
           FROM public.product_option_group_items poi
@@ -486,8 +490,16 @@ async function fetchMerchantProducts(productId = null) {
         ORDER BY is_primary DESC NULLS LAST, sort_order ASC NULLS LAST, image_id ASC
         LIMIT 1
       ) pi ON TRUE
+      LEFT JOIN (
+        SELECT
+          product_id,
+          ROUND(AVG(rating)::numeric, 2) AS rating_average,
+          COUNT(*)::int AS rating_count
+        FROM public.order_item_reviews
+        GROUP BY product_id
+      ) pr ON pr.product_id = p.product_id
       ${whereClause}
-      GROUP BY p.product_id, pi.image_url
+      GROUP BY p.product_id, pi.image_url, pr.rating_average, pr.rating_count
       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.name ASC
     `,
     params
