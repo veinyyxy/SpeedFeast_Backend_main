@@ -310,9 +310,162 @@ async function awardPointsForCompletedOrder(client, orderId) {
   };
 }
 
+async function reversePointsForOrder(client, orderId, options = {}) {
+  const source = options.source || 'order_reversal';
+  const reason = options.reason || null;
+
+  const existingReversalResult = await client.query(
+    `
+      SELECT transaction_id, points
+      FROM public.loyalty_transactions
+      WHERE order_id = $1
+        AND transaction_type = 'refund'
+      FOR UPDATE
+    `,
+    [orderId]
+  );
+
+  if (existingReversalResult.rows.length > 0) {
+    return {
+      reversed: false,
+      reason: 'already_reversed',
+      transaction_id: existingReversalResult.rows[0].transaction_id,
+      points: Math.abs(normalizeInt(existingReversalResult.rows[0].points)),
+    };
+  }
+
+  const earnResult = await client.query(
+    `
+      SELECT transaction_id, user_id, order_id, points, transaction_status
+      FROM public.loyalty_transactions
+      WHERE order_id = $1
+        AND transaction_type = 'earn'
+      ORDER BY created_at ASC
+      FOR UPDATE
+    `,
+    [orderId]
+  );
+
+  const earnTransaction = earnResult.rows.find(
+    (row) => row.transaction_status !== 'reversed'
+  );
+  if (!earnTransaction) {
+    return { reversed: false, reason: 'no_earned_points' };
+  }
+
+  const pointsToReverse = Math.abs(normalizeInt(earnTransaction.points));
+  if (pointsToReverse <= 0) {
+    return { reversed: false, reason: 'zero_points' };
+  }
+
+  await ensureLoyaltyAccount(client, earnTransaction.user_id);
+
+  const accountResult = await client.query(
+    `
+      SELECT available_points
+      FROM public.loyalty_accounts
+      WHERE user_id = $1
+      FOR UPDATE
+    `,
+    [earnTransaction.user_id]
+  );
+
+  const availableBefore = normalizeInt(accountResult.rows[0]?.available_points);
+  const deductedPoints = Math.min(availableBefore, pointsToReverse);
+  const unrecoveredPoints = Math.max(pointsToReverse - deductedPoints, 0);
+
+  const reversalResult = await client.query(
+    `
+      INSERT INTO public.loyalty_transactions (
+        user_id,
+        order_id,
+        transaction_type,
+        transaction_status,
+        points,
+        description,
+        metadata
+      )
+      VALUES (
+        $1,
+        $2,
+        'refund',
+        'available',
+        $3,
+        $4,
+        jsonb_build_object(
+          'source', $5::text,
+          'reason', $6::text,
+          'original_transaction_id', $7::uuid,
+          'points_to_reverse', $8::int,
+          'deducted_points', $9::int,
+          'available_before', $10::int,
+          'unrecovered_points', $11::int
+        )
+      )
+      ON CONFLICT (order_id, transaction_type)
+      WHERE order_id IS NOT NULL AND transaction_type = 'refund'
+      DO NOTHING
+      RETURNING transaction_id
+    `,
+    [
+      earnTransaction.user_id,
+      orderId,
+      -pointsToReverse,
+      `Reversed ${pointsToReverse} points from refunded order`,
+      source,
+      reason,
+      earnTransaction.transaction_id,
+      pointsToReverse,
+      deductedPoints,
+      availableBefore,
+      unrecoveredPoints,
+    ]
+  );
+
+  if (reversalResult.rowCount === 0) {
+    return { reversed: false, reason: 'already_reversed' };
+  }
+
+  const reversalTransactionId = reversalResult.rows[0].transaction_id;
+
+  await client.query(
+    `
+      UPDATE public.loyalty_accounts
+      SET available_points = GREATEST(available_points - $2, 0),
+          updated_at = now()
+      WHERE user_id = $1
+    `,
+    [earnTransaction.user_id, pointsToReverse]
+  );
+
+  await client.query(
+    `
+      UPDATE public.loyalty_transactions
+      SET transaction_status = 'reversed',
+          metadata = COALESCE(metadata, '{}'::jsonb)
+            || jsonb_build_object(
+              'reversed_at', now(),
+              'reversal_source', $2::text,
+              'reversed_by_transaction_id', $3::uuid
+            )
+      WHERE transaction_id = $1
+    `,
+    [earnTransaction.transaction_id, source, reversalTransactionId]
+  );
+
+  return {
+    reversed: true,
+    points: pointsToReverse,
+    deducted_points: deductedPoints,
+    unrecovered_points: unrecoveredPoints,
+    transaction_id: reversalTransactionId,
+  };
+}
+
 module.exports = {
   awardPointsForCompletedOrder,
   calculateEarnPoints,
   getRewardsTransactions,
   getRewardsSummary,
+  reversePointsForOrder,
 };

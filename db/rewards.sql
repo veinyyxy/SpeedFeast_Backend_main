@@ -30,6 +30,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_loyalty_transactions_order_earn
   ON public.loyalty_transactions(order_id, transaction_type)
   WHERE order_id IS NOT NULL AND transaction_type = 'earn';
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_loyalty_transactions_order_refund
+  ON public.loyalty_transactions(order_id, transaction_type)
+  WHERE order_id IS NOT NULL AND transaction_type = 'refund';
+
 CREATE INDEX IF NOT EXISTS idx_loyalty_transactions_user_created
   ON public.loyalty_transactions(user_id, created_at DESC);
 

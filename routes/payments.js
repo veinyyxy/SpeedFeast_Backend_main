@@ -6,6 +6,7 @@ const {
   verifyJWT,
 } = require('../secutiry/verify_signature');
 const { getPaymentProvider } = require('../services/payments');
+const { reversePointsForOrder } = require('../services/rewards');
 
 const router = express.Router();
 
@@ -137,16 +138,34 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
 
   const nextOrderStatus = paymentStatusToOrderStatus(update.payment_status);
   if (nextOrderStatus) {
-    await client.query(
-      `
-        UPDATE public."Order"
-        SET order_status = $1,
-            updated_at = now()
-        WHERE order_id = $2
-          AND order_status NOT IN ('cancelled', 'refunded', 'delivered')
-      `,
-      [nextOrderStatus, payment.order_id]
-    );
+    if (nextOrderStatus === 'paid') {
+      await client.query(
+        `
+          UPDATE public."Order"
+          SET order_status = $1,
+              updated_at = now()
+          WHERE order_id = $2
+            AND order_status IN ('created', 'paid')
+        `,
+        [nextOrderStatus, payment.order_id]
+      );
+    } else if (nextOrderStatus === 'refunded') {
+      await client.query(
+        `
+          UPDATE public."Order"
+          SET order_status = $1,
+              updated_at = now()
+          WHERE order_id = $2
+            AND order_status NOT IN ('cancelled', 'refunded')
+        `,
+        [nextOrderStatus, payment.order_id]
+      );
+
+      await reversePointsForOrder(client, payment.order_id, {
+        source: 'stripe_webhook',
+        reason: event?.type || 'stripe_refund',
+      });
+    }
   }
 
   return payment;

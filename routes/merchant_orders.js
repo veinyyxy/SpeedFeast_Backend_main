@@ -1,7 +1,11 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
 const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
-const { awardPointsForCompletedOrder } = require('../services/rewards');
+const {
+  awardPointsForCompletedOrder,
+  reversePointsForOrder,
+} = require('../services/rewards');
+const { getPaymentProvider } = require('../services/payments');
 
 const router = express.Router();
 
@@ -48,6 +52,18 @@ function normalizeDate(value) {
   if (!text) return null;
   const date = new Date(text);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeRefundReason(value) {
+  const reason = normalizeText(value)?.toLowerCase();
+  if (['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason)) {
+    return reason;
+  }
+  return 'requested_by_customer';
+}
+
+function normalizeRefundNote(value) {
+  return normalizeText(value)?.slice(0, 500) || 'Merchant refund';
 }
 
 function normalizeAddress(row) {
@@ -535,6 +551,296 @@ router.get('/orders/detail', async (req, res) => {
   }
 });
 
+router.post('/orders/refund', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  const orderId = normalizeText(req.body.order_id || req.body.orderId);
+  const note = normalizeRefundNote(req.body.note || req.body.reason);
+  const providerReason = normalizeRefundReason(req.body.provider_reason || req.body.providerReason);
+
+  if (!orderId) {
+    return res.status(400).json({
+      success: false,
+      error: 'order_id is required',
+    });
+  }
+
+  const client = await pool.connect();
+  let responseStatus = 200;
+  let responseBody = null;
+  let rewardsResult = null;
+
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `
+        SELECT order_id, user_id, order_status, total_amount, currency
+        FROM public."Order"
+        WHERE order_id = $1::uuid
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+
+    const order = orderResult.rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    const paymentResult = await client.query(
+      `
+        SELECT *
+        FROM public.payments
+        WHERE order_id = $1::uuid
+          AND payment_status IN ('paid', 'refunded')
+        ORDER BY
+          CASE WHEN payment_status = 'paid' THEN 0 ELSE 1 END,
+          created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+
+    const payment = paymentResult.rows[0];
+    if (!payment) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'No paid payment was found for this order',
+      });
+    }
+
+    const existingRefundResult = await client.query(
+      `
+        SELECT
+          COALESCE(SUM(amount), 0)::numeric AS refunded_amount,
+          jsonb_agg(
+            jsonb_build_object(
+              'refund_id', refund_id,
+              'provider_refund_id', provider_refund_id,
+              'amount', amount,
+              'currency', currency,
+              'refund_status', refund_status,
+              'created_at', created_at
+            )
+            ORDER BY created_at DESC
+          ) FILTER (WHERE refund_status = 'succeeded') AS refunds
+        FROM public.payment_refunds
+        WHERE payment_id = $1::uuid
+          AND refund_status = 'succeeded'
+      `,
+      [payment.payment_id]
+    );
+
+    const refundedAmount = Number(existingRefundResult.rows[0]?.refunded_amount || 0);
+    const paymentAmount = Number(payment.amount || 0);
+    if (payment.payment_status === 'refunded' || refundedAmount >= paymentAmount) {
+      await client.query(
+        `
+          UPDATE public."Order"
+          SET order_status = 'refunded',
+              updated_at = now()
+          WHERE order_id = $1::uuid
+            AND order_status <> 'refunded'
+        `,
+        [orderId]
+      );
+
+      rewardsResult = await reversePointsForOrder(client, orderId, {
+        source: 'merchant_refund',
+        reason: note,
+      });
+
+      await client.query('COMMIT');
+      responseBody = {
+        success: true,
+        already_refunded: true,
+        refund_status: 'succeeded',
+        refunds: existingRefundResult.rows[0]?.refunds || [],
+      };
+    } else {
+      const refundAmount = Number((paymentAmount - refundedAmount).toFixed(2));
+      const refundInsertResult = await client.query(
+        `
+          INSERT INTO public.payment_refunds (
+            payment_id,
+            order_id,
+            amount,
+            currency,
+            refund_status,
+            reason
+          )
+          VALUES ($1, $2, $3, $4, 'pending', $5)
+          RETURNING refund_id
+        `,
+        [
+          payment.payment_id,
+          orderId,
+          refundAmount.toFixed(2),
+          payment.currency || order.currency || 'CAD',
+          note,
+        ]
+      );
+
+      const refundId = refundInsertResult.rows[0].refund_id;
+      const provider = getPaymentProvider(payment.provider);
+      let providerRefund;
+
+      try {
+        providerRefund = await provider.refundPayment({
+          payment,
+          amount: refundAmount,
+          reason: providerReason,
+          metadata: {
+            order_id: orderId,
+            payment_id: payment.payment_id,
+            refund_id: refundId,
+            merchant_user_id: authPayload.merchant_user_id,
+          },
+          idempotencyKey: `merchant-refund-${refundId}`,
+        });
+      } catch (err) {
+        await client.query(
+          `
+            UPDATE public.payment_refunds
+            SET refund_status = 'failed',
+                raw_response = $1::jsonb,
+                updated_at = now()
+            WHERE refund_id = $2::uuid
+          `,
+          [
+            JSON.stringify(err.stripeResponse || { message: err.message }),
+            refundId,
+          ]
+        );
+        await client.query('COMMIT');
+        return res.status(err.statusCode && err.statusCode < 500 ? 400 : 502).json({
+          success: false,
+          error: err.message || 'Refund failed',
+        });
+      }
+
+      const refundStatus = providerRefund.refund_status === 'cancelled'
+        ? 'cancelled'
+        : providerRefund.refund_status;
+      await client.query(
+        `
+          UPDATE public.payment_refunds
+          SET provider_refund_id = $1,
+              amount = $2,
+              currency = $3,
+              refund_status = $4,
+              raw_response = $5::jsonb,
+              updated_at = now()
+          WHERE refund_id = $6::uuid
+        `,
+        [
+          providerRefund.provider_refund_id,
+          Number(providerRefund.amount || refundAmount).toFixed(2),
+          (providerRefund.currency || payment.currency || 'CAD').toString().toUpperCase(),
+          refundStatus,
+          JSON.stringify(providerRefund.raw_response || {}),
+          refundId,
+        ]
+      );
+
+      if (refundStatus === 'succeeded') {
+        await client.query(
+          `
+            UPDATE public.payments
+            SET payment_status = 'refunded',
+                raw_response = COALESCE(raw_response, '{}'::jsonb)
+                  || jsonb_build_object('refund', $1::jsonb),
+                updated_at = now()
+            WHERE payment_id = $2::uuid
+          `,
+          [JSON.stringify(providerRefund.raw_response || {}), payment.payment_id]
+        );
+
+        await client.query(
+          `
+            UPDATE public."Order"
+            SET order_status = 'refunded',
+                updated_at = now(),
+                fulfillment_detail = jsonb_set(
+                  COALESCE(fulfillment_detail, '{}'::jsonb),
+                  '{merchant_events}',
+                  COALESCE(
+                    COALESCE(fulfillment_detail, '{}'::jsonb)->'merchant_events',
+                    '[]'::jsonb
+                  ) || jsonb_build_array(
+                    jsonb_build_object(
+                      'status', 'refunded',
+                      'previous_status', $1::text,
+                      'changed_at', now(),
+                      'changed_by', $2::uuid,
+                      'note', $3::text,
+                      'refund_id', $4::uuid
+                    )
+                  ),
+                  true
+                )
+            WHERE order_id = $5::uuid
+          `,
+          [
+            order.order_status,
+            authPayload.merchant_user_id,
+            note,
+            refundId,
+            orderId,
+          ]
+        );
+
+        rewardsResult = await reversePointsForOrder(client, orderId, {
+          source: 'merchant_refund',
+          reason: note,
+        });
+      } else {
+        responseStatus = 202;
+      }
+
+      await client.query('COMMIT');
+      responseBody = {
+        success: true,
+        refund: {
+          refund_id: refundId,
+          provider_refund_id: providerRefund.provider_refund_id,
+          refund_status: refundStatus,
+          amount: Number(providerRefund.amount || refundAmount),
+          currency: (providerRefund.currency || payment.currency || 'CAD')
+            .toString()
+            .toUpperCase(),
+        },
+      };
+    }
+
+    const refreshedOrderResult = await pool.query(
+      `
+        ${baseOrderSelect()}
+        WHERE o.order_id = $1
+      `,
+      [orderId]
+    );
+    const orders = await buildMerchantOrders(refreshedOrderResult.rows);
+
+    return res.status(responseStatus).json({
+      ...responseBody,
+      rewards: rewardsResult,
+      order: orders[0] || null,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error refunding merchant order:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/orders/status/update', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
@@ -551,6 +857,12 @@ router.post('/orders/status/update', async (req, res) => {
   }
   if (!ORDER_STATUSES.has(nextStatus)) {
     return res.status(400).json({ success: false, error: 'Invalid status' });
+  }
+  if (nextStatus === 'refunded') {
+    return res.status(400).json({
+      success: false,
+      error: 'Use the refund endpoint to refund an order',
+    });
   }
 
   const client = await pool.connect();
@@ -624,6 +936,11 @@ router.post('/orders/status/update', async (req, res) => {
 
     const rewardsResult = ['completed', 'delivered'].includes(nextStatus)
       ? await awardPointsForCompletedOrder(client, orderId)
+      : nextStatus === 'cancelled'
+      ? await reversePointsForOrder(client, orderId, {
+          source: 'merchant_cancel',
+          reason: note,
+        })
       : null;
 
     await client.query('COMMIT');

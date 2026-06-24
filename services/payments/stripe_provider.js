@@ -20,19 +20,24 @@ class StripePaymentProvider extends PaymentProvider {
     }
   }
 
-  async stripeRequest(path, params) {
+  async stripeRequest(path, params, options = {}) {
     this.ensureConfigured();
 
     if (typeof fetch !== 'function') {
       throw new Error('Node fetch API is not available in this runtime.');
     }
 
+    const headers = {
+      Authorization: `Bearer ${this.secretKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    if (options.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
     const response = await fetch(`https://api.stripe.com/v1${path}`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.secretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers,
       body: new URLSearchParams(params),
     });
 
@@ -90,6 +95,45 @@ class StripePaymentProvider extends PaymentProvider {
       client_secret: session.client_secret || '',
       raw_response: session,
       payment_status: 'pending',
+    };
+  }
+
+  async refundPayment({ payment, amount, reason, metadata = {}, idempotencyKey }) {
+    const amountInCents = Math.round(Number(amount || payment.amount) * 100);
+    if (!Number.isInteger(amountInCents) || amountInCents <= 0) {
+      throw new Error('Refund amount is invalid for Stripe.');
+    }
+
+    const paymentIntent = payment.provider_payment_id;
+    if (!paymentIntent || !paymentIntent.startsWith('pi_')) {
+      throw new Error('A paid Stripe payment intent is required before refunding.');
+    }
+
+    const params = {
+      payment_intent: paymentIntent,
+      amount: amountInCents.toString(),
+    };
+    if (reason) {
+      params.reason = reason;
+    }
+    for (const [key, value] of Object.entries(metadata)) {
+      if (value !== undefined && value !== null && value !== '') {
+        params[`metadata[${key}]`] = value.toString();
+      }
+    }
+
+    const refund = await this.stripeRequest('/refunds', params, {
+      idempotencyKey,
+    });
+
+    return {
+      provider_refund_id: refund.id || '',
+      refund_status: refund.status === 'canceled'
+        ? 'cancelled'
+        : refund.status || 'pending',
+      amount: Number(refund.amount || amountInCents) / 100,
+      currency: refund.currency || payment.currency || 'CAD',
+      raw_response: refund,
     };
   }
 
@@ -181,6 +225,38 @@ class StripePaymentProvider extends PaymentProvider {
         payment_status: 'failed',
         failure_code: object.last_payment_error?.code || null,
         failure_message: object.last_payment_error?.message || null,
+      };
+    }
+
+    if (eventType === 'charge.refunded') {
+      const isFullyRefunded =
+        object.refunded === true ||
+        (Number(object.amount_refunded || 0) > 0 &&
+          Number(object.amount_refunded || 0) >= Number(object.amount || 0));
+      if (!isFullyRefunded) return null;
+
+      return {
+        payment_id: metadata.payment_id || null,
+        order_id: metadata.order_id || null,
+        provider_payment_id: object.payment_intent || null,
+        provider_session_id: null,
+        payment_status: 'refunded',
+      };
+    }
+
+    if (
+      eventType === 'refund.created' ||
+      eventType === 'refund.updated' ||
+      eventType === 'charge.refund.updated'
+    ) {
+      if (object.status !== 'succeeded') return null;
+
+      return {
+        payment_id: metadata.payment_id || null,
+        order_id: metadata.order_id || null,
+        provider_payment_id: object.payment_intent || null,
+        provider_session_id: null,
+        payment_status: 'refunded',
       };
     }
 

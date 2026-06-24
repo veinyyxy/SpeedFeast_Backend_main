@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
 const { verifySignature, verifySignature2, verifyJWT } = require('../secutiry/verify_signature');
+const { reversePointsForOrder } = require('../services/rewards');
 
 const router = express.Router();
 
@@ -887,12 +888,18 @@ router.post('/orders/cancel', async (req, res) => {
       [orderId, userId]
     );
 
+    const rewardsResult = await reversePointsForOrder(client, orderId, {
+      source: 'customer_cancel',
+      reason: 'customer_cancelled_order',
+    });
+
     await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
       message: 'Order cancelled successfully',
       order: updateResult.rows[0],
+      rewards: rewardsResult,
     });
   } catch (err) {
     await client.query('ROLLBACK');
