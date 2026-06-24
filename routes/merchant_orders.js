@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
 const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const { awardPointsForCompletedOrder } = require('../services/rewards');
 
 const router = express.Router();
 
@@ -621,6 +622,10 @@ router.post('/orders/status/update', async (req, res) => {
       ]
     );
 
+    const rewardsResult = ['completed', 'delivered'].includes(nextStatus)
+      ? await awardPointsForCompletedOrder(client, orderId)
+      : null;
+
     await client.query('COMMIT');
 
     const orderResult = await pool.query(
@@ -635,6 +640,7 @@ router.post('/orders/status/update', async (req, res) => {
     return res.status(200).json({
       success: true,
       order: orders[0],
+      rewards: rewardsResult,
     });
   } catch (err) {
     await client.query('ROLLBACK');

@@ -13,7 +13,7 @@ async function fetchListData() {
         p.status,
         p.visible_in_menu,
         c.name AS category_name,
-        pi.image_url,
+        ma.public_url AS image_url,
         p.description,
         COALESCE(pr.rating_average, 0)::float AS rating_average,
         COALESCE(pr.rating_count, 0)::int AS rating_count
@@ -22,6 +22,8 @@ async function fetchListData() {
     JOIN categories c ON pc.category_id = c.category_id
     LEFT JOIN product_images pi 
         ON p.product_id = pi.product_id AND pi.is_primary = TRUE
+    LEFT JOIN public.media_assets ma
+        ON ma.asset_id = pi.asset_id AND ma.deleted_at IS NULL
     LEFT JOIN (
         SELECT
             product_id,
@@ -61,7 +63,7 @@ async function fetchProductOptionRows() {
         op.description AS option_description,
         op.base_price AS option_price,
         op.status AS option_status,
-        pi.image_url AS option_image_url
+        ma.public_url AS option_image_url
       FROM public.product_option_group_links l
       JOIN public.product_option_groups g
         ON g.option_group_id = l.option_group_id
@@ -74,6 +76,9 @@ async function fetchProductOptionRows() {
       LEFT JOIN public.product_images pi
         ON pi.product_id = op.product_id
        AND pi.is_primary = TRUE
+      LEFT JOIN public.media_assets ma
+        ON ma.asset_id = pi.asset_id
+       AND ma.deleted_at IS NULL
       WHERE l.active = TRUE
         AND op.status = 'active'
       ORDER BY l.parent_product_id,

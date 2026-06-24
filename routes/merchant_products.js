@@ -389,7 +389,7 @@ async function fetchProductOptionRows() {
         op.description AS option_description,
         op.base_price AS option_price,
         op.status AS option_status,
-        pi.image_url AS option_image_url
+        ma.public_url AS option_image_url
       FROM public.product_option_group_links l
       JOIN public.product_option_groups g
         ON g.option_group_id = l.option_group_id
@@ -400,6 +400,9 @@ async function fetchProductOptionRows() {
       LEFT JOIN public.product_images pi
         ON pi.product_id = op.product_id
        AND pi.is_primary = TRUE
+      LEFT JOIN public.media_assets ma
+        ON ma.asset_id = pi.asset_id
+       AND ma.deleted_at IS NULL
       WHERE l.active = TRUE
         AND g.active = TRUE
         AND i.active = TRUE
@@ -461,7 +464,7 @@ async function fetchMerchantProducts(productId = null) {
         p.visible_in_menu,
         p.created_at,
         p.updated_at,
-        pi.image_url,
+        pi.public_url AS image_url,
         COALESCE(pr.rating_average, 0)::float AS rating_average,
         COALESCE(pr.rating_count, 0)::int AS rating_count,
         EXISTS (
@@ -484,10 +487,15 @@ async function fetchMerchantProducts(productId = null) {
       LEFT JOIN public.categories c
         ON c.category_id = pc.category_id
       LEFT JOIN LATERAL (
-        SELECT image_url
-        FROM public.product_images
-        WHERE product_id = p.product_id
-        ORDER BY is_primary DESC NULLS LAST, sort_order ASC NULLS LAST, image_id ASC
+        SELECT ma.public_url
+        FROM public.product_images image
+        JOIN public.media_assets ma
+          ON ma.asset_id = image.asset_id
+         AND ma.deleted_at IS NULL
+        WHERE image.product_id = p.product_id
+        ORDER BY image.is_primary DESC NULLS LAST,
+                 image.sort_order ASC NULLS LAST,
+                 image.image_id ASC
         LIMIT 1
       ) pi ON TRUE
       LEFT JOIN (
@@ -499,7 +507,7 @@ async function fetchMerchantProducts(productId = null) {
         GROUP BY product_id
       ) pr ON pr.product_id = p.product_id
       ${whereClause}
-      GROUP BY p.product_id, pi.image_url, pr.rating_average, pr.rating_count
+      GROUP BY p.product_id, pi.public_url, pr.rating_average, pr.rating_count
       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.name ASC
     `,
     params
@@ -651,6 +659,77 @@ async function insertProductCategories(client, productId, categoryIds) {
   );
 }
 
+function resolveStorageProvider(imageUrl) {
+  return /^https?:\/\//i.test(imageUrl) ? 'external' : 'local';
+}
+
+function resolveObjectKey(imageUrl) {
+  if (/^https?:\/\/[^/]+\//i.test(imageUrl)) {
+    return imageUrl.replace(/^https?:\/\/[^/]+\//i, '');
+  }
+  if (imageUrl.startsWith('/')) {
+    return imageUrl.replace(/^\/+/, '');
+  }
+  return imageUrl;
+}
+
+async function upsertMediaAssetFromUrl(client, imageUrl) {
+  const existingResult = await client.query(
+    `
+      SELECT asset_id
+      FROM public.media_assets
+      WHERE public_url = $1
+        AND deleted_at IS NULL
+      ORDER BY created_at ASC, asset_id ASC
+      LIMIT 1
+    `,
+    [imageUrl]
+  );
+
+  if (existingResult.rows.length > 0) {
+    return existingResult.rows[0].asset_id;
+  }
+
+  const insertResult = await client.query(
+    `
+      INSERT INTO public.media_assets (
+        storage_provider,
+        object_key,
+        public_url,
+        variants,
+        metadata
+      )
+      VALUES ($1, $2, $3, jsonb_build_object('original', $3::text), $4::jsonb)
+      RETURNING asset_id
+    `,
+    [
+      resolveStorageProvider(imageUrl),
+      resolveObjectKey(imageUrl),
+      imageUrl,
+      JSON.stringify({ source: 'merchant_products_url' }),
+    ]
+  );
+
+  return insertResult.rows[0].asset_id;
+}
+
+async function insertPrimaryImage(client, productId, imageUrl) {
+  const assetId = await upsertMediaAssetFromUrl(client, imageUrl);
+
+  await client.query(
+    `
+      INSERT INTO public.product_images (
+        product_id,
+        asset_id,
+        sort_order,
+        is_primary
+      )
+      VALUES ($1, $2, 0, TRUE)
+    `,
+    [productId, assetId]
+  );
+}
+
 async function replacePrimaryImage(client, productId, imageUrl) {
   if (!imageUrl) return;
 
@@ -662,18 +741,7 @@ async function replacePrimaryImage(client, productId, imageUrl) {
     `,
     [productId]
   );
-  await client.query(
-    `
-      INSERT INTO public.product_images (
-        product_id,
-        image_url,
-        sort_order,
-        is_primary
-      )
-      VALUES ($1, $2, 0, TRUE)
-    `,
-    [productId, imageUrl]
-  );
+  await insertPrimaryImage(client, productId, imageUrl);
 }
 
 async function setPrimaryImage(client, productId, imageUrl) {
@@ -688,18 +756,7 @@ async function setPrimaryImage(client, productId, imageUrl) {
 
   if (!imageUrl) return;
 
-  await client.query(
-    `
-      INSERT INTO public.product_images (
-        product_id,
-        image_url,
-        sort_order,
-        is_primary
-      )
-      VALUES ($1, $2, 0, TRUE)
-    `,
-    [productId, imageUrl]
-  );
+  await insertPrimaryImage(client, productId, imageUrl);
 }
 
 async function replaceProductCategories(client, productId, categoryIds) {
