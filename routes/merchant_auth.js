@@ -79,6 +79,11 @@ router.post('/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid password' });
     }
 
+    const tokenExpiresIn = process.env.MERCHANT_JWT_EXPIRES_IN;
+    if (!tokenExpiresIn) {
+      return res.status(500).json({ success: false, error: 'MERCHANT_JWT_EXPIRES_IN is not configured' });
+    }
+
     const token = generateJWT(
       {
         merchant_user_id: merchantUser.merchant_user_id,
@@ -86,7 +91,7 @@ router.post('/auth/login', async (req, res) => {
         role: merchantUser.role,
         app: 'merchant',
       },
-      process.env.MERCHANT_JWT_EXPIRES_IN || '8h'
+      tokenExpiresIn
     );
 
     return res.status(200).json({
@@ -134,4 +139,3 @@ router.post('/auth/logout', (req, res) => {
 });
 
 module.exports = router;
-

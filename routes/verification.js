@@ -141,7 +141,9 @@ router.get('/verification/verify', async (req, res) => {
   // 生成临时JWT，绑定手机号码
   const token = generateJWT(
     { 
+      purpose: 'registration_verification',
       target: target,
+      type: type,
       code: code
     }, '10m');
 

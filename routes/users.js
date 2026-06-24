@@ -1,6 +1,6 @@
 const express = require('express');
 const { query } = require('../db/pgsql');
-const { verifySignature2, verifyJWT, isTokenExpired } = require('../secutiry/verify_signature');
+const { verifySignature2, verifyJWT, isTokenExpired, generateJWT } = require('../secutiry/verify_signature');
 const router = express.Router();
 const bcrypt = require('bcrypt'); // 用于密码哈希，需 npm install bcrypt
 
@@ -160,6 +160,19 @@ router.post('/users/register', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
 
+    const registrationPayload = jwtResult.payload || {};
+    const verifiedTarget = normalizeText(registrationPayload.target);
+    const verifiedType = normalizeText(registrationPayload.type);
+    if (registrationPayload.purpose !== 'registration_verification') {
+      return res.status(401).json({ success: false, error: 'Invalid registration token' });
+    }
+    if (verifiedType === 'phone' && verifiedTarget !== normalizeText(cell_phone)) {
+      return res.status(401).json({ success: false, error: 'Registration token does not match phone number' });
+    }
+    if (verifiedType === 'email' && verifiedTarget !== normalizeText(email)) {
+      return res.status(401).json({ success: false, error: 'Registration token does not match email' });
+    }
+
     // cell_phone 存为数组
     //const cellPhoneArr = Array.isArray(cell_phone) ? cell_phone : [cell_phone];
 
@@ -179,8 +192,24 @@ router.post('/users/register', async (req, res) => {
       RETURNING user_id, username, email, cell_phone, created_at
     `;
     const result = await query(insertSql, [username, password_hash, email, cell_phone]);
+    const user = result.rows[0];
 
-    res.status(200).json({ success: true, user: result.rows[0] });
+    const tokenExpiresIn = process.env.JWT_EXPIRES_IN;
+    if (!tokenExpiresIn) {
+      return res.status(500).json({ success: false, error: 'JWT_EXPIRES_IN is not configured' });
+    }
+
+    const loginToken = generateJWT(
+      { user_id: user.user_id, username: user.username, cell_phone: user.cell_phone },
+      tokenExpiresIn
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Registration successful',
+      token: loginToken,
+      user
+    });
   } catch (err) {
     console.error('Error saving user:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -215,9 +244,16 @@ router.post('/users/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid password' });
     }
 
+    const tokenExpiresIn = process.env.JWT_EXPIRES_IN;
+    if (!tokenExpiresIn) {
+      return res.status(500).json({ success: false, error: 'JWT_EXPIRES_IN is not configured' });
+    }
+
     // 生成 JWT token
-    const { generateJWT } = require('../secutiry/verify_signature');
-    const token = generateJWT({ user_id: user.user_id, username: user.username, cell_phone: user.cell_phone });
+    const token = generateJWT(
+      { user_id: user.user_id, username: user.username, cell_phone: user.cell_phone },
+      tokenExpiresIn
+    );
 
     res.status(200).json({
       success: true,
@@ -654,6 +690,15 @@ router.post('/user/validate', (req, res) => {
 
   if (!token) {
     return res.status(400).json({ success: false, error: 'Missing token' });
+  }
+
+  const jwtResult = verifyJWT(token);
+  if (!jwtResult.valid) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+  }
+
+  if (!jwtResult.payload || !jwtResult.payload.user_id) {
+    return res.status(401).json({ success: false, error: 'Invalid user session token' });
   }
 
   const expired = isTokenExpired(token);

@@ -86,7 +86,10 @@ function verifySignature2(req) {
         return clientSig === serverSig;
 }
 
-function generateJWT(payload, expiresIn='1h') {
+function generateJWT(payload, expiresIn = process.env.JWT_EXPIRES_IN) {
+    if (!expiresIn) {
+        throw new Error('JWT_EXPIRES_IN is not configured');
+    }
     return jwt.sign(payload, JWT_SECRET_KEY, { expiresIn });
 }
 
