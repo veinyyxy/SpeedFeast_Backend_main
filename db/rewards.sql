@@ -63,13 +63,61 @@ ALTER TABLE public.reward_items
 CREATE INDEX IF NOT EXISTS idx_reward_items_active_cost
   ON public.reward_items(active, points_cost, sort_order);
 
+WITH seed (
+  legacy_title,
+  title,
+  description,
+  points_cost,
+  reward_type,
+  asset_image_path,
+  sort_order,
+  discount_amount,
+  expires_in_days
+) AS (
+  VALUES
+    ('Fresh Fruit Reward', 'CA$3 Off Reward', 'Redeem 300 points for CA$3 off a future order.', 300, 'discount', 'assets/images/pears.jpg', 10, 3.00, 30),
+    ('Side Item Reward', 'CA$6 Off Reward', 'Redeem 600 points for CA$6 off a future order.', 600, 'discount', 'assets/images/carrots.jpg', 20, 6.00, 30),
+    ('Drink Reward', 'CA$9 Off Reward', 'Redeem 900 points for CA$9 off a future order.', 900, 'discount', 'assets/images/watermelon.jpg', 30, 9.00, 30),
+    ('Meal Reward', 'CA$15 Off Reward', 'Redeem 1500 points for CA$15 off a future order.', 1500, 'discount', 'assets/images/mushrooms.jpg', 40, 15.00, 30)
+)
+UPDATE public.reward_items existing
+SET title = seed.title,
+    description = seed.description,
+    reward_type = seed.reward_type,
+    asset_image_path = seed.asset_image_path,
+    sort_order = seed.sort_order,
+    discount_amount = seed.discount_amount,
+    expires_in_days = seed.expires_in_days,
+    updated_at = now()
+FROM seed
+WHERE existing.title = seed.legacy_title
+  AND existing.points_cost = seed.points_cost;
+
+WITH seed (
+  title,
+  description,
+  points_cost,
+  reward_type,
+  asset_image_path,
+  sort_order,
+  discount_amount,
+  expires_in_days
+) AS (
+  VALUES
+    ('CA$3 Off Reward', 'Redeem 300 points for CA$3 off a future order.', 300, 'discount', 'assets/images/pears.jpg', 10, 3.00, 30),
+    ('CA$6 Off Reward', 'Redeem 600 points for CA$6 off a future order.', 600, 'discount', 'assets/images/carrots.jpg', 20, 6.00, 30),
+    ('CA$9 Off Reward', 'Redeem 900 points for CA$9 off a future order.', 900, 'discount', 'assets/images/watermelon.jpg', 30, 9.00, 30),
+    ('CA$15 Off Reward', 'Redeem 1500 points for CA$15 off a future order.', 1500, 'discount', 'assets/images/mushrooms.jpg', 40, 15.00, 30)
+)
 INSERT INTO public.reward_items (
   title,
   description,
   points_cost,
   reward_type,
   asset_image_path,
-  sort_order
+  sort_order,
+  discount_amount,
+  expires_in_days
 )
 SELECT
   seed.title,
@@ -77,57 +125,17 @@ SELECT
   seed.points_cost,
   seed.reward_type,
   seed.asset_image_path,
-  seed.sort_order
-FROM (
-  VALUES
-    ('Fresh Fruit Reward', 'Use points toward selected fresh items.', 300, 'product', 'assets/images/pears.jpg', 10),
-    ('Side Item Reward', 'Use points toward selected side items.', 600, 'product', 'assets/images/carrots.jpg', 20),
-    ('Drink Reward', 'Use points toward selected beverages.', 900, 'product', 'assets/images/watermelon.jpg', 30),
-    ('Meal Reward', 'Use points toward selected meals.', 1500, 'discount', 'assets/images/mushrooms.jpg', 40)
-) AS seed(title, description, points_cost, reward_type, asset_image_path, sort_order)
+  seed.sort_order,
+  seed.discount_amount,
+  seed.expires_in_days
+FROM seed
 WHERE NOT EXISTS (
   SELECT 1
   FROM public.reward_items existing
-  WHERE existing.title = seed.title
-    AND existing.points_cost = seed.points_cost
+  WHERE existing.points_cost = seed.points_cost
+    AND existing.reward_type = seed.reward_type
+    AND existing.discount_amount = seed.discount_amount
 );
-
-UPDATE public.reward_items
-SET title = CASE points_cost
-      WHEN 300 THEN 'CA$3 Off Reward'
-      WHEN 600 THEN 'CA$6 Off Reward'
-      WHEN 900 THEN 'CA$9 Off Reward'
-      WHEN 1500 THEN 'CA$15 Off Reward'
-      ELSE title
-    END,
-    description = CASE points_cost
-      WHEN 300 THEN 'Redeem 300 points for CA$3 off a future order.'
-      WHEN 600 THEN 'Redeem 600 points for CA$6 off a future order.'
-      WHEN 900 THEN 'Redeem 900 points for CA$9 off a future order.'
-      WHEN 1500 THEN 'Redeem 1500 points for CA$15 off a future order.'
-      ELSE description
-    END,
-    reward_type = 'discount',
-    discount_amount = CASE points_cost
-      WHEN 300 THEN 3.00
-      WHEN 600 THEN 6.00
-      WHEN 900 THEN 9.00
-      WHEN 1500 THEN 15.00
-      ELSE discount_amount
-    END,
-    expires_in_days = 30,
-    updated_at = now()
-WHERE title IN (
-  'Fresh Fruit Reward',
-  'Side Item Reward',
-  'Drink Reward',
-  'Meal Reward',
-  'CA$3 Off Reward',
-  'CA$6 Off Reward',
-  'CA$9 Off Reward',
-  'CA$15 Off Reward'
-)
-  AND points_cost IN (300, 600, 900, 1500);
 
 CREATE TABLE IF NOT EXISTS public.reward_redemptions (
   redemption_id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
