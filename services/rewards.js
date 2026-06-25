@@ -39,22 +39,52 @@ function normalizeAccount(row) {
 }
 
 function normalizeRewardItem(row) {
+  const productId = row.product_id || null;
   return {
     reward_id: row.reward_id,
     title: row.title,
     description: row.description || '',
     points_cost: normalizeInt(row.points_cost),
     reward_type: row.reward_type || 'custom',
-    product_id: row.product_id || null,
+    product_id: productId,
     image_path: row.image_path || null,
     asset_image_path: row.asset_image_path || null,
     discount_amount: normalizeNumber(row.discount_amount),
     currency: row.currency || 'CAD',
     expires_in_days: normalizeInt(row.expires_in_days) || 30,
+    product_name: row.product_name || null,
+    product_image_path: row.product_image_path || null,
+    product_base_price: normalizeNumber(row.product_base_price),
+    product_status: row.product_status || null,
+    product: productId
+      ? {
+          product_id: productId,
+          name: row.product_name || '',
+          image_path: row.product_image_path || null,
+          base_price: normalizeNumber(row.product_base_price),
+          status: row.product_status || null,
+        }
+      : null,
   };
 }
 
 function normalizeRedemption(row) {
+  const rewardType =
+    row.redemption_reward_type || row.snapshot_reward_type || row.reward_type || 'discount';
+  const productId =
+    row.redemption_product_id || row.snapshot_product_id || row.product_id || null;
+  const productName =
+    row.redemption_product_name || row.snapshot_product_name || row.product_name || '';
+  const productImagePath =
+    row.redemption_product_image_path ||
+    row.snapshot_product_image_path ||
+    row.product_image_path ||
+    null;
+  const productUnitPrice = normalizeNumber(
+    row.redemption_product_unit_price ||
+      row.snapshot_product_unit_price ||
+      row.product_unit_price
+  );
   return {
     redemption_id: row.redemption_id,
     user_id: row.user_id,
@@ -63,6 +93,11 @@ function normalizeRedemption(row) {
     points_cost: normalizeInt(row.points_cost),
     discount_amount: normalizeNumber(row.discount_amount),
     currency: row.currency || 'CAD',
+    reward_type: rewardType,
+    product_id: productId,
+    product_name: productName,
+    product_image_path: productImagePath,
+    product_unit_price: productUnitPrice,
     status: row.effective_status || row.status || 'active',
     expires_at: row.expires_at || null,
     used_order_id: row.used_order_id || null,
@@ -72,11 +107,15 @@ function normalizeRedemption(row) {
       reward_id: row.reward_id,
       title: row.reward_title || row.title || '',
       description: row.reward_description || row.description || '',
-      reward_type: row.reward_type || 'discount',
+      reward_type: rewardType,
       points_cost: normalizeInt(row.reward_points_cost || row.points_cost),
       discount_amount: normalizeNumber(
         row.reward_discount_amount || row.discount_amount
       ),
+      product_id: productId,
+      product_name: productName,
+      product_image_path: productImagePath,
+      product_unit_price: productUnitPrice,
       asset_image_path: row.asset_image_path || null,
       image_path: row.image_path || null,
     },
@@ -128,12 +167,43 @@ async function ensureLoyaltyAccount(client, userId, options = {}) {
 async function listActiveRewardItems(client) {
   const result = await client.query(
     `
-      SELECT reward_id, title, description, points_cost, reward_type,
-             product_id, image_path, asset_image_path, discount_amount,
-             'CAD'::text AS currency, expires_in_days
-      FROM public.reward_items
-      WHERE active = true
-      ORDER BY points_cost ASC, sort_order ASC, title ASC
+      SELECT
+        ri.reward_id,
+        ri.title,
+        ri.description,
+        ri.points_cost,
+        ri.reward_type,
+        ri.product_id,
+        ri.image_path,
+        ri.asset_image_path,
+        ri.discount_amount,
+        'CAD'::text AS currency,
+        ri.expires_in_days,
+        p.name AS product_name,
+        p.base_price AS product_base_price,
+        p.status AS product_status,
+        COALESCE(product_image.public_url, ri.image_path) AS product_image_path
+      FROM public.reward_items ri
+      LEFT JOIN public.products p
+        ON p.product_id = ri.product_id
+      LEFT JOIN LATERAL (
+        SELECT ma.public_url
+        FROM public.product_images image
+        JOIN public.media_assets ma
+          ON ma.asset_id = image.asset_id
+         AND ma.deleted_at IS NULL
+        WHERE image.product_id = ri.product_id
+        ORDER BY image.is_primary DESC NULLS LAST,
+                 image.sort_order ASC NULLS LAST,
+                 image.image_id ASC
+        LIMIT 1
+      ) product_image ON TRUE
+      WHERE ri.active = true
+        AND (
+          ri.reward_type <> 'product'
+          OR (ri.product_id IS NOT NULL AND p.status = 'active')
+        )
+      ORDER BY ri.points_cost ASC, ri.sort_order ASC, ri.title ASC
     `
   );
 
@@ -283,6 +353,11 @@ async function getRewardRedemptions(userId, options = {}) {
         rr.points_cost,
         rr.discount_amount,
         rr.currency,
+        rr.reward_type AS redemption_reward_type,
+        rr.product_id AS redemption_product_id,
+        rr.product_name AS redemption_product_name,
+        rr.product_image_path AS redemption_product_image_path,
+        rr.product_unit_price AS redemption_product_unit_price,
         rr.status,
         CASE
           WHEN rr.status = 'active'
@@ -298,13 +373,31 @@ async function getRewardRedemptions(userId, options = {}) {
         ri.title AS reward_title,
         ri.description AS reward_description,
         ri.reward_type,
+        ri.product_id,
         ri.points_cost AS reward_points_cost,
         ri.discount_amount AS reward_discount_amount,
         ri.asset_image_path,
-        ri.image_path
+        ri.image_path,
+        p.name AS product_name,
+        p.base_price AS product_unit_price,
+        COALESCE(product_image.public_url, ri.image_path) AS product_image_path
       FROM public.reward_redemptions rr
       INNER JOIN public.reward_items ri
         ON ri.reward_id = rr.reward_id
+      LEFT JOIN public.products p
+        ON p.product_id = ri.product_id
+      LEFT JOIN LATERAL (
+        SELECT ma.public_url
+        FROM public.product_images image
+        JOIN public.media_assets ma
+          ON ma.asset_id = image.asset_id
+         AND ma.deleted_at IS NULL
+        WHERE image.product_id = ri.product_id
+        ORDER BY image.is_primary DESC NULLS LAST,
+                 image.sort_order ASC NULLS LAST,
+                 image.image_id ASC
+        LIMIT 1
+      ) product_image ON TRUE
       WHERE ${whereParts.join(' AND ')}
       ORDER BY rr.created_at DESC
     `,
@@ -326,13 +419,39 @@ async function redeemReward(userId, rewardId) {
 
     const rewardResult = await client.query(
       `
-        SELECT reward_id, title, description, points_cost, reward_type,
-               product_id, image_path, asset_image_path, discount_amount,
-               expires_in_days
-        FROM public.reward_items
-        WHERE reward_id = $1::uuid
-          AND active = true
-        FOR UPDATE
+        SELECT
+          ri.reward_id,
+          ri.title,
+          ri.description,
+          ri.points_cost,
+          ri.reward_type,
+          ri.product_id,
+          ri.image_path,
+          ri.asset_image_path,
+          ri.discount_amount,
+          ri.expires_in_days,
+          p.name AS product_name,
+          p.base_price AS product_base_price,
+          p.status AS product_status,
+          COALESCE(product_image.public_url, ri.image_path) AS product_image_path
+        FROM public.reward_items ri
+        LEFT JOIN public.products p
+          ON p.product_id = ri.product_id
+        LEFT JOIN LATERAL (
+          SELECT ma.public_url
+          FROM public.product_images image
+          JOIN public.media_assets ma
+            ON ma.asset_id = image.asset_id
+           AND ma.deleted_at IS NULL
+          WHERE image.product_id = ri.product_id
+          ORDER BY image.is_primary DESC NULLS LAST,
+                   image.sort_order ASC NULLS LAST,
+                   image.image_id ASC
+          LIMIT 1
+        ) product_image ON TRUE
+        WHERE ri.reward_id = $1::uuid
+          AND ri.active = true
+        FOR UPDATE OF ri
       `,
       [normalizedRewardId]
     );
@@ -347,15 +466,31 @@ async function redeemReward(userId, rewardId) {
       throw serviceError('Reward points cost is invalid.', 400, 'invalid_reward');
     }
 
+    const rewardType = reward.reward_type || 'discount';
+    if (!['discount', 'product'].includes(rewardType)) {
+      throw serviceError('Reward type is not supported yet.', 400, 'unsupported_reward_type');
+    }
+    if (rewardType === 'product') {
+      if (!reward.product_id || !reward.product_name) {
+        throw serviceError('Reward product is missing.', 409, 'reward_product_missing');
+      }
+      if (reward.product_status !== 'active') {
+        throw serviceError('Reward product is not available.', 409, 'reward_product_not_active');
+      }
+    }
+
     const account = await ensureLoyaltyAccount(client, userId, { lock: true });
     if (!account || account.available_points < pointsCost) {
       throw serviceError('Not enough points.', 409, 'not_enough_points');
     }
 
-    const discountAmount =
-      normalizeNumber(reward.discount_amount) > 0
+    const discountAmount = rewardType === 'product'
+      ? 0
+      : normalizeNumber(reward.discount_amount) > 0
         ? normalizeNumber(reward.discount_amount)
         : Number((pointsCost / 100).toFixed(2));
+    const productUnitPrice =
+      rewardType === 'product' ? normalizeNumber(reward.product_base_price) : 0;
     const expiresInDays = normalizeInt(reward.expires_in_days) || 30;
 
     const transactionResult = await client.query(
@@ -380,6 +515,9 @@ async function redeemReward(userId, rewardId) {
             'reward_id', $4::uuid,
             'reward_title', $5::text,
             'discount_amount', $6::numeric,
+            'reward_type', $7::text,
+            'product_id', $8::uuid,
+            'product_name', $9::text,
             'currency', 'CAD',
             'source', 'reward_redemption'
           )
@@ -394,6 +532,9 @@ async function redeemReward(userId, rewardId) {
         reward.reward_id,
         reward.title,
         discountAmount.toFixed(2),
+        rewardType,
+        reward.product_id,
+        reward.product_name || null,
       ]
     );
 
@@ -419,6 +560,11 @@ async function redeemReward(userId, rewardId) {
           points_cost,
           discount_amount,
           currency,
+          reward_type,
+          product_id,
+          product_name,
+          product_image_path,
+          product_unit_price,
           status,
           expires_at
         )
@@ -429,11 +575,21 @@ async function redeemReward(userId, rewardId) {
           $4,
           $5,
           'CAD',
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
           'active',
-          now() + ($6::int * interval '1 day')
+          now() + ($11::int * interval '1 day')
         )
         RETURNING redemption_id, user_id, reward_id, transaction_id,
-                  points_cost, discount_amount, currency, status,
+                  points_cost, discount_amount, currency, reward_type AS redemption_reward_type,
+                  product_id AS redemption_product_id,
+                  product_name AS redemption_product_name,
+                  product_image_path AS redemption_product_image_path,
+                  product_unit_price AS redemption_product_unit_price,
+                  status,
                   status AS effective_status, expires_at, used_order_id,
                   created_at, updated_at
       `,
@@ -443,6 +599,11 @@ async function redeemReward(userId, rewardId) {
         transactionResult.rows[0].transaction_id,
         pointsCost,
         discountAmount.toFixed(2),
+        rewardType,
+        rewardType === 'product' ? reward.product_id : null,
+        rewardType === 'product' ? reward.product_name : null,
+        rewardType === 'product' ? reward.product_image_path : null,
+        rewardType === 'product' ? productUnitPrice.toFixed(2) : null,
         expiresInDays,
       ]
     );
@@ -458,6 +619,10 @@ async function redeemReward(userId, rewardId) {
       reward_type: reward.reward_type,
       reward_points_cost: reward.points_cost,
       reward_discount_amount: reward.discount_amount,
+      product_id: reward.product_id,
+      product_name: reward.product_name,
+      product_image_path: reward.product_image_path,
+      product_unit_price: reward.product_base_price,
       asset_image_path: reward.asset_image_path,
       image_path: reward.image_path,
     });
@@ -500,6 +665,11 @@ async function prepareRewardRedemptionForOrder(
         rr.points_cost,
         rr.discount_amount,
         rr.currency,
+        rr.reward_type AS redemption_reward_type,
+        rr.product_id AS redemption_product_id,
+        rr.product_name AS redemption_product_name,
+        rr.product_image_path AS redemption_product_image_path,
+        rr.product_unit_price AS redemption_product_unit_price,
         rr.status,
         rr.expires_at,
         rr.used_order_id,
@@ -508,12 +678,16 @@ async function prepareRewardRedemptionForOrder(
         ri.title AS reward_title,
         ri.description AS reward_description,
         ri.reward_type,
+        ri.product_id,
         ri.points_cost AS reward_points_cost,
         ri.discount_amount AS reward_discount_amount,
-        ri.active AS reward_active
+        ri.active AS reward_active,
+        p.status AS current_product_status
       FROM public.reward_redemptions rr
       INNER JOIN public.reward_items ri
         ON ri.reward_id = rr.reward_id
+      LEFT JOIN public.products p
+        ON p.product_id = COALESCE(rr.product_id, ri.product_id)
       WHERE rr.redemption_id = $1::uuid
         AND rr.user_id = $2::uuid
       FOR UPDATE OF rr
@@ -534,8 +708,32 @@ async function prepareRewardRedemptionForOrder(
   if (redemption.expires_at && new Date(redemption.expires_at) <= new Date()) {
     throw serviceError('Reward voucher has expired.', 409, 'redemption_expired');
   }
-  if (redemption.reward_active !== true) {
-    throw serviceError('Reward is no longer active.', 409, 'reward_not_active');
+
+  const normalizedRedemption = normalizeRedemption({
+    ...redemption,
+    effective_status: redemption.status,
+  });
+
+  if (normalizedRedemption.reward_type === 'product') {
+    if (!normalizedRedemption.product_id) {
+      throw serviceError('Reward product is no longer available.', 409, 'reward_product_missing');
+    }
+    if (!redemption.current_product_status || redemption.current_product_status === 'archived') {
+      throw serviceError('Reward product is no longer available.', 409, 'reward_product_unavailable');
+    }
+
+    return {
+      ...normalizedRedemption,
+      discount_amount: 0,
+      applied_product: {
+        product_id: normalizedRedemption.product_id,
+        name: normalizedRedemption.product_name,
+        image_path: normalizedRedemption.product_image_path,
+        unit_price: normalizedRedemption.product_unit_price,
+      },
+      reward_title: redemption.reward_title,
+      reward_description: redemption.reward_description,
+    };
   }
 
   const baseAmount = normalizeNumber(discountBaseAmount);
@@ -546,10 +744,7 @@ async function prepareRewardRedemptionForOrder(
   }
 
   return {
-    ...normalizeRedemption({
-      ...redemption,
-      effective_status: redemption.status,
-    }),
+    ...normalizedRedemption,
     discount_amount: Number(discountAmount.toFixed(2)),
     reward_title: redemption.reward_title,
     reward_description: redemption.reward_description,
@@ -569,7 +764,13 @@ async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
         AND status = 'active'
         AND used_order_id IS NULL
       RETURNING redemption_id, user_id, reward_id, transaction_id,
-                points_cost, discount_amount, currency, status,
+                points_cost, discount_amount, currency,
+                reward_type AS redemption_reward_type,
+                product_id AS redemption_product_id,
+                product_name AS redemption_product_name,
+                product_image_path AS redemption_product_image_path,
+                product_unit_price AS redemption_product_unit_price,
+                status,
                 status AS effective_status, expires_at, used_order_id,
                 created_at, updated_at
     `,
@@ -612,9 +813,14 @@ async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
     reward_title: redemption.reward?.title || redemption.reward_title || '',
     reward_description:
       redemption.reward?.description || redemption.reward_description || '',
-    reward_type: redemption.reward?.reward_type || 'discount',
+    reward_type:
+      redemption.reward_type || redemption.reward?.reward_type || 'discount',
     reward_points_cost: redemption.points_cost,
     reward_discount_amount: redemption.discount_amount,
+    product_id: redemption.product_id,
+    product_name: redemption.product_name,
+    product_image_path: redemption.product_image_path,
+    product_unit_price: redemption.product_unit_price,
   });
 }
 

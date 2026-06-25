@@ -455,6 +455,12 @@ function normalizeOrderItem(row) {
     unit_price: unitPrice,
     price: subtotal,
     subtotal,
+    item_source: row.item_source || 'normal',
+    itemSource: row.item_source || 'normal',
+    reward_redemption_id: row.reward_redemption_id || null,
+    rewardRedemptionId: row.reward_redemption_id || null,
+    is_reward_item: row.item_source === 'reward',
+    isRewardItem: row.item_source === 'reward',
     selected_options: [],
     special_instructions: row.special_instructions || '',
     specialInstructions: row.special_instructions || '',
@@ -778,6 +784,8 @@ router.get('/orders/get_list', async (req, res) => {
             oi.quantity,
             oi.unit_price,
             oi.subtotal,
+            oi.item_source,
+            oi.reward_redemption_id,
             oi.special_instructions,
             oi.created_at,
             p.name AS product_name
@@ -1089,11 +1097,29 @@ router.post('/orders/create', async (req, res) => {
           totalsBeforeRewards.total
         )
       : null;
+    if (rewardRedemption?.reward_type === 'product') {
+      orderItems.push({
+        product_id: rewardRedemption.product_id,
+        product_name: rewardRedemption.product_name || 'Reward item',
+        quantity: 1,
+        unit_price: 0,
+        subtotal: 0,
+        selected_options: [],
+        special_instructions: 'Reward item',
+        item_source: 'reward',
+        reward_redemption_id: rewardRedemption.redemption_id,
+        product_unit_price: rewardRedemption.product_unit_price || 0,
+      });
+    }
+    const rewardDiscount =
+      rewardRedemption?.reward_type === 'discount'
+        ? rewardRedemption.discount_amount || 0
+        : 0;
     const totals = calculateTotals(
       subtotalAmount,
       fulfillmentType,
       tipAmount,
-      rewardRedemption?.discount_amount || 0
+      rewardDiscount
     );
     const fulfillmentDetail = {
       fulfillment_type: fulfillmentType,
@@ -1107,9 +1133,12 @@ router.post('/orders/create', async (req, res) => {
             redemption_id: rewardRedemption.redemption_id,
             reward_id: rewardRedemption.reward_id,
             title: rewardRedemption.reward?.title || rewardRedemption.reward_title,
+            reward_type: rewardRedemption.reward_type || 'discount',
             points_cost: rewardRedemption.points_cost,
-            discount_amount: rewardRedemption.discount_amount,
+            discount_amount: rewardDiscount,
             currency: rewardRedemption.currency || 'CAD',
+            product_id: rewardRedemption.product_id || null,
+            product_name: rewardRedemption.product_name || null,
           }
         : null,
     };
@@ -1160,11 +1189,14 @@ router.post('/orders/create', async (req, res) => {
             quantity,
             unit_price,
             subtotal,
+            item_source,
+            reward_redemption_id,
             special_instructions
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING order_item_id, order_id, product_id, quantity,
-                    unit_price, subtotal, special_instructions, created_at
+                    unit_price, subtotal, item_source, reward_redemption_id,
+                    special_instructions, created_at
         `,
         [
           order.order_id,
@@ -1172,6 +1204,8 @@ router.post('/orders/create', async (req, res) => {
           item.quantity,
           item.unit_price.toFixed(2),
           item.subtotal.toFixed(2),
+          item.item_source || 'normal',
+          item.reward_redemption_id || null,
           item.special_instructions || null,
         ]
       );

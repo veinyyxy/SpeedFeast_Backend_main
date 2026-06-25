@@ -3,6 +3,7 @@ const { pool } = require('../db/pgsql');
 const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
 
 const router = express.Router();
+const REWARD_TYPES = new Set(['discount', 'product']);
 
 class ValidationError extends Error {
   constructor(message, details = null) {
@@ -44,8 +45,15 @@ function normalizeRewardId(body) {
   return normalizeText(body.reward_id || body.rewardId || body.id);
 }
 
+function normalizeRewardType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return type || 'discount';
+}
+
 function normalizeRewardPayload(body, { requireRewardId = false } = {}) {
   const rewardId = normalizeRewardId(body);
+  const rewardType = normalizeRewardType(body.reward_type || body.rewardType);
+  const productId = normalizeText(body.product_id || body.productId);
   const title = normalizeText(body.title);
   const description = normalizeText(body.description);
   const pointsCost = normalizeInteger(body.points_cost ?? body.pointsCost);
@@ -64,12 +72,18 @@ function normalizeRewardPayload(body, { requireRewardId = false } = {}) {
 
   const details = {};
   if (requireRewardId && !rewardId) details.reward_id = 'reward_id is required';
+  if (!REWARD_TYPES.has(rewardType)) {
+    details.reward_type = 'reward_type must be discount or product';
+  }
   if (!title) details.title = 'title is required';
   if (!Number.isInteger(pointsCost) || pointsCost <= 0) {
     details.points_cost = 'points_cost must be greater than 0';
   }
-  if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+  if (rewardType === 'discount' && (!Number.isFinite(discountAmount) || discountAmount <= 0)) {
     details.discount_amount = 'discount_amount must be greater than 0';
+  }
+  if (rewardType === 'product' && !productId) {
+    details.product_id = 'product_id is required for product rewards';
   }
   if (!Number.isInteger(expiresInDays) || expiresInDays < 1) {
     details.expires_in_days = 'expires_in_days must be at least 1';
@@ -84,8 +98,9 @@ function normalizeRewardPayload(body, { requireRewardId = false } = {}) {
     title,
     description,
     points_cost: pointsCost,
-    reward_type: 'discount',
-    discount_amount: discountAmount,
+    reward_type: rewardType,
+    product_id: rewardType === 'product' ? productId : null,
+    discount_amount: rewardType === 'discount' ? discountAmount : 0,
     expires_in_days: expiresInDays,
     active,
     sort_order: sortOrder,
@@ -93,20 +108,59 @@ function normalizeRewardPayload(body, { requireRewardId = false } = {}) {
 }
 
 function normalizeRewardItem(row) {
+  const productId = row.product_id || null;
   return {
     reward_id: row.reward_id,
     title: row.title || '',
     description: row.description || '',
     points_cost: normalizeInteger(row.points_cost),
     reward_type: row.reward_type || 'discount',
+    product_id: productId,
     discount_amount: normalizeMoney(row.discount_amount),
     currency: 'CAD',
     expires_in_days: normalizeInteger(row.expires_in_days, 30),
     active: row.active === true,
     sort_order: normalizeInteger(row.sort_order),
+    product_name: row.product_name || '',
+    product_base_price: normalizeMoney(row.product_base_price),
+    product_status: row.product_status || '',
+    product_image_path: row.product_image_path || null,
+    product: productId
+      ? {
+          product_id: productId,
+          name: row.product_name || '',
+          base_price: normalizeMoney(row.product_base_price),
+          status: row.product_status || '',
+          image_path: row.product_image_path || null,
+        }
+      : null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function assertProductRewardCanUseProduct(productId) {
+  if (!productId) return;
+
+  const result = await pool.query(
+    `
+      SELECT product_id, status
+      FROM public.products
+      WHERE product_id = $1::uuid
+    `,
+    [productId]
+  );
+  const product = result.rows[0];
+  if (!product) {
+    throw new ValidationError('Reward product not found', {
+      product_id: 'Product was not found',
+    });
+  }
+  if (product.status === 'archived') {
+    throw new ValidationError('Reward product is archived', {
+      product_id: 'Archived products cannot be used as rewards',
+    });
+  }
 }
 
 async function fetchRewardItems(rewardId = null) {
@@ -114,17 +168,45 @@ async function fetchRewardItems(rewardId = null) {
   let whereClause = '';
   if (rewardId) {
     params.push(rewardId);
-    whereClause = 'WHERE reward_id = $1::uuid';
+    whereClause = 'WHERE ri.reward_id = $1::uuid';
   }
 
   const result = await pool.query(
     `
-      SELECT reward_id, title, description, points_cost, reward_type,
-             discount_amount, expires_in_days, active, sort_order,
-             created_at, updated_at
-      FROM public.reward_items
+      SELECT
+        ri.reward_id,
+        ri.title,
+        ri.description,
+        ri.points_cost,
+        ri.reward_type,
+        ri.product_id,
+        ri.discount_amount,
+        ri.expires_in_days,
+        ri.active,
+        ri.sort_order,
+        ri.created_at,
+        ri.updated_at,
+        p.name AS product_name,
+        p.base_price AS product_base_price,
+        p.status AS product_status,
+        COALESCE(product_image.public_url, ri.image_path) AS product_image_path
+      FROM public.reward_items ri
+      LEFT JOIN public.products p
+        ON p.product_id = ri.product_id
+      LEFT JOIN LATERAL (
+        SELECT ma.public_url
+        FROM public.product_images image
+        JOIN public.media_assets ma
+          ON ma.asset_id = image.asset_id
+         AND ma.deleted_at IS NULL
+        WHERE image.product_id = ri.product_id
+        ORDER BY image.is_primary DESC NULLS LAST,
+                 image.sort_order ASC NULLS LAST,
+                 image.image_id ASC
+        LIMIT 1
+      ) product_image ON TRUE
       ${whereClause}
-      ORDER BY active DESC, points_cost ASC, sort_order ASC, title ASC
+      ORDER BY ri.active DESC, ri.points_cost ASC, ri.sort_order ASC, ri.title ASC
     `,
     params
   );
@@ -170,13 +252,15 @@ router.post('/rewards/create', async (req, res) => {
   }
 
   try {
+    await assertProductRewardCanUseProduct(payload.product_id);
+
     const result = await pool.query(
       `
         INSERT INTO public.reward_items (
           title, description, points_cost, reward_type,
-          discount_amount, expires_in_days, active, sort_order
+          product_id, discount_amount, expires_in_days, active, sort_order
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING reward_id
       `,
       [
@@ -184,6 +268,7 @@ router.post('/rewards/create', async (req, res) => {
         payload.description,
         payload.points_cost,
         payload.reward_type,
+        payload.product_id,
         payload.discount_amount,
         payload.expires_in_days,
         payload.active,
@@ -197,6 +282,13 @@ router.post('/rewards/create', async (req, res) => {
       reward: rewards[0] || null,
     });
   } catch (err) {
+    if (err instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+        details: err.details,
+      });
+    }
     console.error('Error creating merchant reward:', err);
     return res.status(500).json({
       success: false,
@@ -224,6 +316,8 @@ router.post('/rewards/update', async (req, res) => {
   }
 
   try {
+    await assertProductRewardCanUseProduct(payload.product_id);
+
     const result = await pool.query(
       `
         UPDATE public.reward_items
@@ -231,12 +325,13 @@ router.post('/rewards/update', async (req, res) => {
             description = $2,
             points_cost = $3,
             reward_type = $4,
-            discount_amount = $5,
-            expires_in_days = $6,
-            active = $7,
-            sort_order = $8,
+            product_id = $5,
+            discount_amount = $6,
+            expires_in_days = $7,
+            active = $8,
+            sort_order = $9,
             updated_at = now()
-        WHERE reward_id = $9::uuid
+        WHERE reward_id = $10::uuid
         RETURNING reward_id
       `,
       [
@@ -244,6 +339,7 @@ router.post('/rewards/update', async (req, res) => {
         payload.description,
         payload.points_cost,
         payload.reward_type,
+        payload.product_id,
         payload.discount_amount,
         payload.expires_in_days,
         payload.active,
@@ -265,6 +361,13 @@ router.post('/rewards/update', async (req, res) => {
       reward: rewards[0] || null,
     });
   } catch (err) {
+    if (err instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+        details: err.details,
+      });
+    }
     console.error('Error updating merchant reward:', err);
     return res.status(500).json({
       success: false,
