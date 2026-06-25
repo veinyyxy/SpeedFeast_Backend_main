@@ -6,7 +6,10 @@ const {
   verifyJWT,
 } = require('../secutiry/verify_signature');
 const { getPaymentProvider } = require('../services/payments');
-const { reversePointsForOrder } = require('../services/rewards');
+const {
+  restoreOrderRewardRedemptions,
+  reversePointsForOrder,
+} = require('../services/rewards');
 
 const router = express.Router();
 
@@ -164,6 +167,9 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
       await reversePointsForOrder(client, payment.order_id, {
         source: 'stripe_webhook',
         reason: event?.type || 'stripe_refund',
+      });
+      await restoreOrderRewardRedemptions(client, payment.order_id, {
+        source: 'stripe_webhook',
       });
     }
   }

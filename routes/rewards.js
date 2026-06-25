@@ -1,8 +1,14 @@
 const express = require('express');
-const { verifySignature, verifyJWT } = require('../secutiry/verify_signature');
 const {
+  verifySignature,
+  verifySignature2,
+  verifyJWT,
+} = require('../secutiry/verify_signature');
+const {
+  getRewardRedemptions,
   getRewardsSummary,
   getRewardsTransactions,
+  redeemReward,
 } = require('../services/rewards');
 
 const router = express.Router();
@@ -13,7 +19,8 @@ function getBearerToken(req) {
 }
 
 function authenticateRequest(req, res) {
-  if (!verifySignature(req)) {
+  const verifier = req.method === 'GET' ? verifySignature : verifySignature2;
+  if (!verifier(req)) {
     res.status(401).send('Invalid signature');
     return null;
   }
@@ -70,6 +77,49 @@ router.get('/rewards/transactions', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
+    });
+  }
+});
+
+router.get('/rewards/redemptions', async (req, res) => {
+  const authPayload = authenticateRequest(req, res);
+  if (!authPayload) return;
+
+  try {
+    const redemptions = await getRewardRedemptions(authPayload.user_id, {
+      status: req.query.status,
+    });
+    return res.status(200).json({
+      success: true,
+      redemptions,
+    });
+  } catch (err) {
+    console.error('Error fetching reward redemptions:', err);
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message || 'Internal server error',
+      code: err.code || 'rewards_redemptions_error',
+    });
+  }
+});
+
+router.post('/rewards/redeem', async (req, res) => {
+  const authPayload = authenticateRequest(req, res);
+  if (!authPayload) return;
+
+  const rewardId = req.body.reward_id || req.body.rewardId;
+  try {
+    const data = await redeemReward(authPayload.user_id, rewardId);
+    return res.status(200).json({
+      success: true,
+      ...data,
+    });
+  } catch (err) {
+    console.error('Error redeeming reward:', err);
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message || 'Internal server error',
+      code: err.code || 'reward_redeem_error',
     });
   }
 });

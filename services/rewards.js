@@ -21,6 +21,13 @@ function calculateEarnPoints(totalAmount) {
   return Math.max(0, Math.floor(normalizeNumber(totalAmount) * pointsPerCad()));
 }
 
+function serviceError(message, statusCode = 400, code = 'rewards_error') {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
 function normalizeAccount(row) {
   return {
     user_id: row.user_id,
@@ -41,6 +48,38 @@ function normalizeRewardItem(row) {
     product_id: row.product_id || null,
     image_path: row.image_path || null,
     asset_image_path: row.asset_image_path || null,
+    discount_amount: normalizeNumber(row.discount_amount),
+    currency: row.currency || 'CAD',
+    expires_in_days: normalizeInt(row.expires_in_days) || 30,
+  };
+}
+
+function normalizeRedemption(row) {
+  return {
+    redemption_id: row.redemption_id,
+    user_id: row.user_id,
+    reward_id: row.reward_id,
+    transaction_id: row.transaction_id,
+    points_cost: normalizeInt(row.points_cost),
+    discount_amount: normalizeNumber(row.discount_amount),
+    currency: row.currency || 'CAD',
+    status: row.effective_status || row.status || 'active',
+    expires_at: row.expires_at || null,
+    used_order_id: row.used_order_id || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    reward: {
+      reward_id: row.reward_id,
+      title: row.reward_title || row.title || '',
+      description: row.reward_description || row.description || '',
+      reward_type: row.reward_type || 'discount',
+      points_cost: normalizeInt(row.reward_points_cost || row.points_cost),
+      discount_amount: normalizeNumber(
+        row.reward_discount_amount || row.discount_amount
+      ),
+      asset_image_path: row.asset_image_path || null,
+      image_path: row.image_path || null,
+    },
   };
 }
 
@@ -61,7 +100,7 @@ function normalizeTransaction(row) {
   };
 }
 
-async function ensureLoyaltyAccount(client, userId) {
+async function ensureLoyaltyAccount(client, userId, options = {}) {
   await client.query(
     `
       INSERT INTO public.loyalty_accounts (user_id)
@@ -71,12 +110,14 @@ async function ensureLoyaltyAccount(client, userId) {
     [userId]
   );
 
+  const lockClause = options.lock ? 'FOR UPDATE' : '';
   const result = await client.query(
     `
       SELECT user_id, available_points, pending_points,
              lifetime_earned_points, lifetime_redeemed_points
       FROM public.loyalty_accounts
       WHERE user_id = $1
+      ${lockClause}
     `,
     [userId]
   );
@@ -88,7 +129,8 @@ async function listActiveRewardItems(client) {
   const result = await client.query(
     `
       SELECT reward_id, title, description, points_cost, reward_type,
-             product_id, image_path, asset_image_path
+             product_id, image_path, asset_image_path, discount_amount,
+             'CAD'::text AS currency, expires_in_days
       FROM public.reward_items
       WHERE active = true
       ORDER BY points_cost ASC, sort_order ASC, title ASC
@@ -212,6 +254,420 @@ async function getRewardsTransactions(userId, options = {}) {
   } finally {
     client.release();
   }
+}
+
+async function getRewardRedemptions(userId, options = {}) {
+  const status = (options.status || '').toString().trim().toLowerCase();
+  const params = [userId];
+  const whereParts = ['rr.user_id = $1'];
+
+  if (status === 'active') {
+    whereParts.push(`rr.status = 'active'`);
+    whereParts.push(`(rr.expires_at IS NULL OR rr.expires_at > now())`);
+  } else if (status === 'expired') {
+    whereParts.push(`rr.status = 'active'`);
+    whereParts.push(`rr.expires_at IS NOT NULL`);
+    whereParts.push(`rr.expires_at <= now()`);
+  } else if (['used', 'cancelled'].includes(status)) {
+    params.push(status);
+    whereParts.push(`rr.status = $${params.length}`);
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        rr.redemption_id,
+        rr.user_id,
+        rr.reward_id,
+        rr.transaction_id,
+        rr.points_cost,
+        rr.discount_amount,
+        rr.currency,
+        rr.status,
+        CASE
+          WHEN rr.status = 'active'
+            AND rr.expires_at IS NOT NULL
+            AND rr.expires_at <= now()
+          THEN 'expired'
+          ELSE rr.status
+        END AS effective_status,
+        rr.expires_at,
+        rr.used_order_id,
+        rr.created_at,
+        rr.updated_at,
+        ri.title AS reward_title,
+        ri.description AS reward_description,
+        ri.reward_type,
+        ri.points_cost AS reward_points_cost,
+        ri.discount_amount AS reward_discount_amount,
+        ri.asset_image_path,
+        ri.image_path
+      FROM public.reward_redemptions rr
+      INNER JOIN public.reward_items ri
+        ON ri.reward_id = rr.reward_id
+      WHERE ${whereParts.join(' AND ')}
+      ORDER BY rr.created_at DESC
+    `,
+    params
+  );
+
+  return result.rows.map(normalizeRedemption);
+}
+
+async function redeemReward(userId, rewardId) {
+  const normalizedRewardId = (rewardId || '').toString().trim();
+  if (!normalizedRewardId) {
+    throw serviceError('reward_id is required', 400, 'missing_reward_id');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const rewardResult = await client.query(
+      `
+        SELECT reward_id, title, description, points_cost, reward_type,
+               product_id, image_path, asset_image_path, discount_amount,
+               expires_in_days
+        FROM public.reward_items
+        WHERE reward_id = $1::uuid
+          AND active = true
+        FOR UPDATE
+      `,
+      [normalizedRewardId]
+    );
+
+    const reward = rewardResult.rows[0];
+    if (!reward) {
+      throw serviceError('Reward was not found or is not active.', 404, 'reward_not_found');
+    }
+
+    const pointsCost = normalizeInt(reward.points_cost);
+    if (pointsCost <= 0) {
+      throw serviceError('Reward points cost is invalid.', 400, 'invalid_reward');
+    }
+
+    const account = await ensureLoyaltyAccount(client, userId, { lock: true });
+    if (!account || account.available_points < pointsCost) {
+      throw serviceError('Not enough points.', 409, 'not_enough_points');
+    }
+
+    const discountAmount =
+      normalizeNumber(reward.discount_amount) > 0
+        ? normalizeNumber(reward.discount_amount)
+        : Number((pointsCost / 100).toFixed(2));
+    const expiresInDays = normalizeInt(reward.expires_in_days) || 30;
+
+    const transactionResult = await client.query(
+      `
+        INSERT INTO public.loyalty_transactions (
+          user_id,
+          order_id,
+          transaction_type,
+          transaction_status,
+          points,
+          description,
+          metadata
+        )
+        VALUES (
+          $1,
+          NULL,
+          'redeem',
+          'available',
+          $2,
+          $3,
+          jsonb_build_object(
+            'reward_id', $4::uuid,
+            'reward_title', $5::text,
+            'discount_amount', $6::numeric,
+            'currency', 'CAD',
+            'source', 'reward_redemption'
+          )
+        )
+        RETURNING transaction_id, points, transaction_type, transaction_status,
+                  description, metadata, created_at
+      `,
+      [
+        userId,
+        -pointsCost,
+        `Redeemed ${reward.title}`,
+        reward.reward_id,
+        reward.title,
+        discountAmount.toFixed(2),
+      ]
+    );
+
+    const updatedAccountResult = await client.query(
+      `
+        UPDATE public.loyalty_accounts
+        SET available_points = available_points - $2,
+            lifetime_redeemed_points = lifetime_redeemed_points + $2,
+            updated_at = now()
+        WHERE user_id = $1
+        RETURNING user_id, available_points, pending_points,
+                  lifetime_earned_points, lifetime_redeemed_points
+      `,
+      [userId, pointsCost]
+    );
+
+    const redemptionResult = await client.query(
+      `
+        INSERT INTO public.reward_redemptions (
+          user_id,
+          reward_id,
+          transaction_id,
+          points_cost,
+          discount_amount,
+          currency,
+          status,
+          expires_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          'CAD',
+          'active',
+          now() + ($6::int * interval '1 day')
+        )
+        RETURNING redemption_id, user_id, reward_id, transaction_id,
+                  points_cost, discount_amount, currency, status,
+                  status AS effective_status, expires_at, used_order_id,
+                  created_at, updated_at
+      `,
+      [
+        userId,
+        reward.reward_id,
+        transactionResult.rows[0].transaction_id,
+        pointsCost,
+        discountAmount.toFixed(2),
+        expiresInDays,
+      ]
+    );
+
+    const rewardItems = await listActiveRewardItems(client);
+    await client.query('COMMIT');
+
+    const updatedAccount = normalizeAccount(updatedAccountResult.rows[0]);
+    const redemption = normalizeRedemption({
+      ...redemptionResult.rows[0],
+      reward_title: reward.title,
+      reward_description: reward.description,
+      reward_type: reward.reward_type,
+      reward_points_cost: reward.points_cost,
+      reward_discount_amount: reward.discount_amount,
+      asset_image_path: reward.asset_image_path,
+      image_path: reward.image_path,
+    });
+
+    return {
+      account: {
+        ...updatedAccount,
+        next_reward_points: nextRewardPoints(
+          updatedAccount.available_points,
+          rewardItems
+        ),
+      },
+      redemption,
+      transaction: normalizeTransaction(transactionResult.rows[0]),
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function prepareRewardRedemptionForOrder(
+  client,
+  userId,
+  redemptionId,
+  discountBaseAmount
+) {
+  const normalizedRedemptionId = (redemptionId || '').toString().trim();
+  if (!normalizedRedemptionId) return null;
+
+  const redemptionResult = await client.query(
+    `
+      SELECT
+        rr.redemption_id,
+        rr.user_id,
+        rr.reward_id,
+        rr.transaction_id,
+        rr.points_cost,
+        rr.discount_amount,
+        rr.currency,
+        rr.status,
+        rr.expires_at,
+        rr.used_order_id,
+        rr.created_at,
+        rr.updated_at,
+        ri.title AS reward_title,
+        ri.description AS reward_description,
+        ri.reward_type,
+        ri.points_cost AS reward_points_cost,
+        ri.discount_amount AS reward_discount_amount,
+        ri.active AS reward_active
+      FROM public.reward_redemptions rr
+      INNER JOIN public.reward_items ri
+        ON ri.reward_id = rr.reward_id
+      WHERE rr.redemption_id = $1::uuid
+        AND rr.user_id = $2::uuid
+      FOR UPDATE OF rr
+    `,
+    [normalizedRedemptionId, userId]
+  );
+
+  const redemption = redemptionResult.rows[0];
+  if (!redemption) {
+    throw serviceError('Reward voucher was not found.', 404, 'redemption_not_found');
+  }
+  if (redemption.status !== 'active') {
+    throw serviceError('Reward voucher is not active.', 409, 'redemption_not_active');
+  }
+  if (redemption.used_order_id) {
+    throw serviceError('Reward voucher has already been used.', 409, 'redemption_used');
+  }
+  if (redemption.expires_at && new Date(redemption.expires_at) <= new Date()) {
+    throw serviceError('Reward voucher has expired.', 409, 'redemption_expired');
+  }
+  if (redemption.reward_active !== true) {
+    throw serviceError('Reward is no longer active.', 409, 'reward_not_active');
+  }
+
+  const baseAmount = normalizeNumber(discountBaseAmount);
+  const configuredDiscount = normalizeNumber(redemption.discount_amount);
+  const discountAmount = Math.min(configuredDiscount, baseAmount);
+  if (discountAmount <= 0) {
+    throw serviceError('Reward discount cannot be applied to this order.', 409, 'invalid_reward_discount');
+  }
+
+  return {
+    ...normalizeRedemption({
+      ...redemption,
+      effective_status: redemption.status,
+    }),
+    discount_amount: Number(discountAmount.toFixed(2)),
+    reward_title: redemption.reward_title,
+    reward_description: redemption.reward_description,
+  };
+}
+
+async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
+  if (!redemption || !redemption.redemption_id) return null;
+
+  const updateResult = await client.query(
+    `
+      UPDATE public.reward_redemptions
+      SET status = 'used',
+          used_order_id = $2::uuid,
+          updated_at = now()
+      WHERE redemption_id = $1::uuid
+        AND status = 'active'
+        AND used_order_id IS NULL
+      RETURNING redemption_id, user_id, reward_id, transaction_id,
+                points_cost, discount_amount, currency, status,
+                status AS effective_status, expires_at, used_order_id,
+                created_at, updated_at
+    `,
+    [redemption.redemption_id, orderId]
+  );
+
+  const updatedRedemption = updateResult.rows[0];
+  if (!updatedRedemption) {
+    throw serviceError('Reward voucher could not be applied.', 409, 'redemption_apply_failed');
+  }
+
+  await client.query(
+    `
+      INSERT INTO public.order_reward_redemptions (
+        order_id,
+        redemption_id,
+        reward_id,
+        user_id,
+        points_cost,
+        discount_amount,
+        currency,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'applied')
+      ON CONFLICT DO NOTHING
+    `,
+    [
+      orderId,
+      updatedRedemption.redemption_id,
+      updatedRedemption.reward_id,
+      updatedRedemption.user_id,
+      updatedRedemption.points_cost,
+      Number(redemption.discount_amount || updatedRedemption.discount_amount).toFixed(2),
+      updatedRedemption.currency || 'CAD',
+    ]
+  );
+
+  return normalizeRedemption({
+    ...updatedRedemption,
+    reward_title: redemption.reward?.title || redemption.reward_title || '',
+    reward_description:
+      redemption.reward?.description || redemption.reward_description || '',
+    reward_type: redemption.reward?.reward_type || 'discount',
+    reward_points_cost: redemption.points_cost,
+    reward_discount_amount: redemption.discount_amount,
+  });
+}
+
+async function restoreOrderRewardRedemptions(client, orderId, options = {}) {
+  const source = options.source || 'order_status_change';
+  const result = await client.query(
+    `
+      SELECT
+        order_reward_redemption_id,
+        redemption_id
+      FROM public.order_reward_redemptions
+      WHERE order_id = $1::uuid
+        AND status = 'applied'
+      FOR UPDATE
+    `,
+    [orderId]
+  );
+
+  if (result.rows.length === 0) {
+    return { restored: false, count: 0, reason: 'no_applied_rewards' };
+  }
+
+  const redemptionIds = result.rows.map((row) => row.redemption_id);
+
+  await client.query(
+    `
+      UPDATE public.reward_redemptions
+      SET status = 'active',
+          used_order_id = NULL,
+          updated_at = now()
+      WHERE redemption_id = ANY($1::uuid[])
+        AND status = 'used'
+    `,
+    [redemptionIds]
+  );
+
+  await client.query(
+    `
+      UPDATE public.order_reward_redemptions
+      SET status = 'restored',
+          updated_at = now()
+      WHERE order_id = $1::uuid
+        AND status = 'applied'
+    `,
+    [orderId]
+  );
+
+  return {
+    restored: true,
+    count: redemptionIds.length,
+    source,
+    redemption_ids: redemptionIds,
+  };
 }
 
 async function awardPointsForCompletedOrder(client, orderId) {
@@ -465,7 +921,12 @@ async function reversePointsForOrder(client, orderId, options = {}) {
 module.exports = {
   awardPointsForCompletedOrder,
   calculateEarnPoints,
+  getRewardRedemptions,
   getRewardsTransactions,
   getRewardsSummary,
+  markRewardRedemptionUsedForOrder,
+  prepareRewardRedemptionForOrder,
+  redeemReward,
+  restoreOrderRewardRedemptions,
   reversePointsForOrder,
 };

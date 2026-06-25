@@ -3,6 +3,7 @@ const { pool } = require('../db/pgsql');
 const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
 const {
   awardPointsForCompletedOrder,
+  restoreOrderRewardRedemptions,
   reversePointsForOrder,
 } = require('../services/rewards');
 const { getPaymentProvider } = require('../services/payments');
@@ -210,6 +211,8 @@ function normalizeMerchantOrder(row, items, payment, review) {
     items: reviewedItems,
     payment,
     payment_status: payment?.payment_status || null,
+    reward: fulfillmentDetail.reward || null,
+    reward_redemption: fulfillmentDetail.reward || null,
     is_reviewed: Boolean(review),
     review,
     order_review: review,
@@ -220,6 +223,8 @@ function normalizeMerchantOrder(row, items, payment, review) {
       delivery_service_fee: Number(pricing.delivery_service_fee || 0),
       taxes: Number(pricing.taxes || 0),
       tip_amount: Number(pricing.tip_amount || 0),
+      reward_discount: Number(pricing.reward_discount || 0),
+      total_before_rewards: Number(pricing.total_before_rewards || 0),
       total: Number(pricing.total || row.total_amount || 0),
     },
     table_number: fulfillmentDetail.table_number || null,
@@ -570,6 +575,7 @@ router.post('/orders/refund', async (req, res) => {
   let responseStatus = 200;
   let responseBody = null;
   let rewardsResult = null;
+  let rewardRedemptionsResult = null;
 
   try {
     await client.query('BEGIN');
@@ -654,6 +660,11 @@ router.post('/orders/refund', async (req, res) => {
         source: 'merchant_refund',
         reason: note,
       });
+      rewardRedemptionsResult = await restoreOrderRewardRedemptions(
+        client,
+        orderId,
+        { source: 'merchant_refund' }
+      );
 
       await client.query('COMMIT');
       responseBody = {
@@ -799,6 +810,11 @@ router.post('/orders/refund', async (req, res) => {
           source: 'merchant_refund',
           reason: note,
         });
+        rewardRedemptionsResult = await restoreOrderRewardRedemptions(
+          client,
+          orderId,
+          { source: 'merchant_refund' }
+        );
       } else {
         responseStatus = 202;
       }
@@ -830,6 +846,7 @@ router.post('/orders/refund', async (req, res) => {
     return res.status(responseStatus).json({
       ...responseBody,
       rewards: rewardsResult,
+      reward_redemptions: rewardRedemptionsResult,
       order: orders[0] || null,
     });
   } catch (err) {
@@ -942,6 +959,11 @@ router.post('/orders/status/update', async (req, res) => {
           reason: note,
         })
       : null;
+    const rewardRedemptionsResult = nextStatus === 'cancelled'
+      ? await restoreOrderRewardRedemptions(client, orderId, {
+          source: 'merchant_cancel',
+        })
+      : null;
 
     await client.query('COMMIT');
 
@@ -958,6 +980,7 @@ router.post('/orders/status/update', async (req, res) => {
       success: true,
       order: orders[0],
       rewards: rewardsResult,
+      reward_redemptions: rewardRedemptionsResult,
     });
   } catch (err) {
     await client.query('ROLLBACK');

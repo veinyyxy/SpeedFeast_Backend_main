@@ -1,7 +1,12 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
 const { verifySignature, verifySignature2, verifyJWT } = require('../secutiry/verify_signature');
-const { reversePointsForOrder } = require('../services/rewards');
+const {
+  markRewardRedemptionUsedForOrder,
+  prepareRewardRedemptionForOrder,
+  restoreOrderRewardRedemptions,
+  reversePointsForOrder,
+} = require('../services/rewards');
 
 const router = express.Router();
 
@@ -349,11 +354,17 @@ function validateOptionGroupsForParent(
   };
 }
 
-function calculateTotals(subtotal, fulfillmentType, tipAmount) {
+function calculateTotals(subtotal, fulfillmentType, tipAmount, rewardDiscount = 0) {
   const deliveryFee = fulfillmentType === 'delivery' ? 4.25 : 0;
   const deliveryServiceFee = fulfillmentType === 'delivery' ? 2.02 : 0;
   const taxes = toMoney(subtotal * 0.13);
-  const total = toMoney(subtotal + deliveryFee + deliveryServiceFee + taxes + tipAmount);
+  const totalBeforeRewards = toMoney(
+    subtotal + deliveryFee + deliveryServiceFee + taxes + tipAmount
+  );
+  const appliedRewardDiscount = toMoney(
+    Math.min(Math.max(Number(rewardDiscount) || 0, 0), totalBeforeRewards)
+  );
+  const total = toMoney(Math.max(totalBeforeRewards - appliedRewardDiscount, 0));
 
   return {
     subtotal: toMoney(subtotal),
@@ -361,6 +372,8 @@ function calculateTotals(subtotal, fulfillmentType, tipAmount) {
     delivery_service_fee: toMoney(deliveryServiceFee),
     taxes,
     tip_amount: tipAmount,
+    reward_discount: appliedRewardDiscount,
+    total_before_rewards: totalBeforeRewards,
     total,
   };
 }
@@ -685,6 +698,8 @@ function normalizeRecentOrder(row, items, payment, review) {
     items,
     payment,
     payment_status: payment?.payment_status || null,
+    reward: fulfillmentDetail.reward || null,
+    reward_redemption: fulfillmentDetail.reward || null,
     can_review: ['completed', 'delivered'].includes(status),
     is_reviewed: Boolean(review),
     review,
@@ -694,6 +709,8 @@ function normalizeRecentOrder(row, items, payment, review) {
       delivery_service_fee: Number(pricing.delivery_service_fee || 0),
       taxes: Number(pricing.taxes || 0),
       tip_amount: Number(pricing.tip_amount || 0),
+      reward_discount: Number(pricing.reward_discount || 0),
+      total_before_rewards: Number(pricing.total_before_rewards || 0),
       total: Number(pricing.total || row.total_amount || 0),
     },
     table_number: fulfillmentDetail.table_number || null,
@@ -892,6 +909,11 @@ router.post('/orders/cancel', async (req, res) => {
       source: 'customer_cancel',
       reason: 'customer_cancelled_order',
     });
+    const rewardRedemptionsResult = await restoreOrderRewardRedemptions(
+      client,
+      orderId,
+      { source: 'customer_cancel' }
+    );
 
     await client.query('COMMIT');
 
@@ -900,6 +922,7 @@ router.post('/orders/cancel', async (req, res) => {
       message: 'Order cancelled successfully',
       order: updateResult.rows[0],
       rewards: rewardsResult,
+      reward_redemptions: rewardRedemptionsResult,
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -923,6 +946,8 @@ router.post('/orders/create', async (req, res) => {
   const fulfillmentType = normalizeFulfillmentType(req.body.fulfillment_type || 'delivery');
   const tipAmount = normalizeTipAmount(req.body.tip_amount);
   const items = normalizeItems(req.body.items);
+  const rewardRedemptionId =
+    req.body.reward_redemption_id || req.body.rewardRedemptionId || null;
 
   if (!fulfillmentType || items.length === 0) {
     return res.status(400).json({
@@ -1051,7 +1076,25 @@ router.post('/orders/create', async (req, res) => {
       });
     }
 
-    const totals = calculateTotals(subtotalAmount, fulfillmentType, tipAmount);
+    const totalsBeforeRewards = calculateTotals(
+      subtotalAmount,
+      fulfillmentType,
+      tipAmount
+    );
+    const rewardRedemption = rewardRedemptionId
+      ? await prepareRewardRedemptionForOrder(
+          client,
+          userId,
+          rewardRedemptionId,
+          totalsBeforeRewards.total
+        )
+      : null;
+    const totals = calculateTotals(
+      subtotalAmount,
+      fulfillmentType,
+      tipAmount,
+      rewardRedemption?.discount_amount || 0
+    );
     const fulfillmentDetail = {
       fulfillment_type: fulfillmentType,
       table_id: dineInTable?.table_id || null,
@@ -1059,6 +1102,16 @@ router.post('/orders/create', async (req, res) => {
       pickup_location: req.body.pickup_location || null,
       delivery_note: req.body.delivery_note || null,
       pricing: totals,
+      reward: rewardRedemption
+        ? {
+            redemption_id: rewardRedemption.redemption_id,
+            reward_id: rewardRedemption.reward_id,
+            title: rewardRedemption.reward?.title || rewardRedemption.reward_title,
+            points_cost: rewardRedemption.points_cost,
+            discount_amount: rewardRedemption.discount_amount,
+            currency: rewardRedemption.currency || 'CAD',
+          }
+        : null,
     };
 
     const orderResult = await client.query(
@@ -1088,6 +1141,14 @@ router.post('/orders/create', async (req, res) => {
     );
 
     const order = orderResult.rows[0];
+    if (rewardRedemption) {
+      await markRewardRedemptionUsedForOrder(
+        client,
+        rewardRedemption,
+        order.order_id
+      );
+    }
+
     const insertedItems = [];
 
     for (const item of orderItems) {
@@ -1168,9 +1229,10 @@ router.post('/orders/create', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error creating order:', err);
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       success: false,
-      error: 'Internal server error',
+      error: err.statusCode ? err.message : 'Internal server error',
+      code: err.code || 'order_create_error',
     });
   } finally {
     client.release();
