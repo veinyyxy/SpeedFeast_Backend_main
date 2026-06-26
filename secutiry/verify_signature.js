@@ -86,6 +86,23 @@ function verifySignature2(req) {
         return clientSig === serverSig;
 }
 
+function verifySignaturePayload(req, payload = '') {
+    const clientID = req.headers['x-client-id'];
+    const timestamp = req.headers['x-timestamp'];
+    const nonce = req.headers['x-nonce'];
+    const clientSig = req.headers['x-signature'];
+    const data = `${clientID}-${timestamp}-${nonce}-${payload || ''}`
+    const serverSig = generateSignature(data);
+
+    console.log('Client Sig:', clientSig);
+    console.log('Server Sig:', serverSig);
+    console.log('Data:', data);
+
+    const now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - parseInt(timestamp)) > 300) return false;
+    return clientSig === serverSig;
+}
+
 function generateJWT(payload, expiresIn = process.env.JWT_EXPIRES_IN) {
     if (!expiresIn) {
         throw new Error('JWT_EXPIRES_IN is not configured');
@@ -118,4 +135,4 @@ function isTokenExpired(token) {
   }
 }
 
-module.exports = { verifySignature, generateJWT, verifySignature2, verifyJWT, isTokenExpired };
+module.exports = { verifySignature, generateJWT, verifySignature2, verifySignaturePayload, verifyJWT, isTokenExpired };

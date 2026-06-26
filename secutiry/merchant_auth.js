@@ -1,6 +1,7 @@
 const {
   verifySignature,
   verifySignature2,
+  verifySignaturePayload,
   verifyJWT,
 } = require('./verify_signature');
 
@@ -41,6 +42,33 @@ function authenticateMerchantRequest(req, res) {
   return payload;
 }
 
+function authenticateMerchantUploadRequest(req, res) {
+  if (!verifySignaturePayload(req, '')) {
+    res.status(401).send('Invalid signature');
+    return null;
+  }
+
+  const token = getBearerToken(req);
+  if (!token) {
+    res.status(401).json({ success: false, error: 'Missing token' });
+    return null;
+  }
+
+  const jwtResult = verifyJWT(token);
+  if (!jwtResult.valid) {
+    res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    return null;
+  }
+
+  const payload = jwtResult.payload;
+  if (payload.app !== 'merchant' || !payload.merchant_user_id) {
+    res.status(403).json({ success: false, error: 'Merchant token required' });
+    return null;
+  }
+
+  return payload;
+}
+
 function hasMerchantRole(payload, allowedRoles) {
   if (!Array.isArray(allowedRoles) || allowedRoles.length === 0) return true;
   return allowedRoles.includes(payload.role);
@@ -48,8 +76,8 @@ function hasMerchantRole(payload, allowedRoles) {
 
 module.exports = {
   authenticateMerchantRequest,
+  authenticateMerchantUploadRequest,
   getBearerToken,
   hasMerchantRole,
   verifyRequestSignature,
 };
-
