@@ -236,6 +236,8 @@ function normalizeMerchantOrder(row, items, payment, review) {
     table_number: fulfillmentDetail.table_number || null,
     pickup_location: fulfillmentDetail.pickup_location || null,
     delivery_note: fulfillmentDetail.delivery_note || null,
+    order_note: fulfillmentDetail.order_note || null,
+    orderNote: fulfillmentDetail.order_note || null,
     estimated_delivery: fulfillmentDetail.estimated_delivery || null,
     created_at: row.created_at,
     updated_at: row.updated_at,

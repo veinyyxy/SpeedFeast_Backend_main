@@ -84,6 +84,11 @@ function normalizeSpecialInstructions(value) {
   return value.toString().trim().slice(0, 500);
 }
 
+function normalizeOrderNote(value) {
+  if (value === null || value === undefined) return '';
+  return value.toString().trim().slice(0, 1000);
+}
+
 function normalizeFulfillmentType(value) {
   if (value === 'dine-in') return 'dine_in';
   if (value === 'take_out') return 'takeout';
@@ -722,6 +727,8 @@ function normalizeRecentOrder(row, items, payment, review) {
     table_number: fulfillmentDetail.table_number || null,
     pickup_location: fulfillmentDetail.pickup_location || null,
     delivery_note: fulfillmentDetail.delivery_note || null,
+    order_note: fulfillmentDetail.order_note || null,
+    orderNote: fulfillmentDetail.order_note || null,
     estimated_delivery: fulfillmentDetail.estimated_delivery || null,
     actual_delivery: isFinished ? row.updated_at : null,
     created_at: row.created_at,
@@ -1127,6 +1134,7 @@ router.post('/orders/create', async (req, res) => {
       table_number: dineInTable?.table_number || null,
       pickup_location: req.body.pickup_location || null,
       delivery_note: req.body.delivery_note || null,
+      order_note: normalizeOrderNote(req.body.order_note || req.body.orderNote) || null,
       pricing: totals,
       reward: rewardRedemption
         ? {
