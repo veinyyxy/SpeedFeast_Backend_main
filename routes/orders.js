@@ -7,6 +7,14 @@ const {
   restoreOrderRewardRedemptions,
   reversePointsForOrder,
 } = require('../services/rewards');
+const {
+  DEFAULT_ORDER_PRICING_CONFIG,
+  getOrderPricingConfig,
+} = require('../services/pricing_config');
+const {
+  businessStateAt,
+  getOrderOperationsConfig,
+} = require('../services/order_operations_config');
 
 const router = express.Router();
 
@@ -99,6 +107,36 @@ function normalizeFulfillmentType(value) {
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
   return value.toString().trim();
+}
+
+function orderPricingScopeFromRequest(body) {
+  const shippingAddress =
+    body.shipping_address && typeof body.shipping_address === 'object'
+      ? body.shipping_address
+      : body.shippingAddress && typeof body.shippingAddress === 'object'
+        ? body.shippingAddress
+        : {};
+
+  return {
+    countryCode:
+      body.country_code ||
+      body.countryCode ||
+      shippingAddress.country_code ||
+      shippingAddress.countryCode ||
+      shippingAddress.country ||
+      'CA',
+    regionCode:
+      body.region_code ||
+      body.regionCode ||
+      shippingAddress.region_code ||
+      shippingAddress.regionCode ||
+      shippingAddress.province_code ||
+      shippingAddress.provinceCode ||
+      shippingAddress.province ||
+      'MB',
+    city: body.city || shippingAddress.city || null,
+    merchantId: body.merchant_id || body.merchantId || null,
+  };
 }
 
 function extractTableToken(value) {
@@ -359,10 +397,29 @@ function validateOptionGroupsForParent(
   };
 }
 
-function calculateTotals(subtotal, fulfillmentType, tipAmount, rewardDiscount = 0) {
-  const deliveryFee = fulfillmentType === 'delivery' ? 4.25 : 0;
-  const deliveryServiceFee = fulfillmentType === 'delivery' ? 2.02 : 0;
-  const taxes = toMoney(subtotal * 0.13);
+function calculateTotals(
+  subtotal,
+  fulfillmentType,
+  tipAmount,
+  rewardDiscount = 0,
+  pricingConfig = {}
+) {
+  const taxRate = Number.isFinite(Number(pricingConfig.taxRate))
+    ? Number(pricingConfig.taxRate)
+    : DEFAULT_ORDER_PRICING_CONFIG.taxRate;
+  const configuredDeliveryFee = Number.isFinite(Number(pricingConfig.deliveryFee))
+    ? Number(pricingConfig.deliveryFee)
+    : DEFAULT_ORDER_PRICING_CONFIG.deliveryFee;
+  const configuredDeliveryServiceFee = Number.isFinite(
+    Number(pricingConfig.deliveryServiceFee)
+  )
+    ? Number(pricingConfig.deliveryServiceFee)
+    : DEFAULT_ORDER_PRICING_CONFIG.deliveryServiceFee;
+  const deliveryFee =
+    fulfillmentType === 'delivery' ? configuredDeliveryFee : 0;
+  const deliveryServiceFee =
+    fulfillmentType === 'delivery' ? configuredDeliveryServiceFee : 0;
+  const taxes = toMoney(subtotal * taxRate);
   const totalBeforeRewards = toMoney(
     subtotal + deliveryFee + deliveryServiceFee + taxes + tipAmount
   );
@@ -375,6 +432,7 @@ function calculateTotals(subtotal, fulfillmentType, tipAmount, rewardDiscount = 
     subtotal: toMoney(subtotal),
     delivery_fee: toMoney(deliveryFee),
     delivery_service_fee: toMoney(deliveryServiceFee),
+    tax_rate: taxRate,
     taxes,
     tip_amount: tipAmount,
     reward_discount: appliedRewardDiscount,
@@ -957,7 +1015,7 @@ router.post('/orders/create', async (req, res) => {
   if (!authPayload) return;
 
   const userId = authPayload.user_id;
-  const currency = req.body.currency || 'CAD';
+  const requestedCurrency = normalizeText(req.body.currency).toUpperCase();
   const fulfillmentType = normalizeFulfillmentType(req.body.fulfillment_type || 'delivery');
   const tipAmount = normalizeTipAmount(req.body.tip_amount);
   const items = normalizeItems(req.body.items);
@@ -969,14 +1027,6 @@ router.post('/orders/create', async (req, res) => {
       success: false,
       error: 'Missing required fields',
       required: ['fulfillment_type', 'items'],
-    });
-  }
-
-  if (currency !== 'CAD') {
-    return res.status(400).json({
-      success: false,
-      error: 'Unsupported currency',
-      supported: ['CAD'],
     });
   }
 
@@ -1000,6 +1050,34 @@ router.post('/orders/create', async (req, res) => {
 
   try {
     await client.query('BEGIN');
+
+    const pricingConfig = await getOrderPricingConfig(
+      client,
+      orderPricingScopeFromRequest(req.body)
+    );
+    const operationsConfig = await getOrderOperationsConfig(
+      client,
+      orderPricingScopeFromRequest(req.body)
+    );
+    const businessState = businessStateAt(operationsConfig.businessHours);
+    if (!businessState.isOpen) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: `Restaurant is currently closed. ${businessState.label}.`,
+        business_status: businessState,
+      });
+    }
+
+    const currency = pricingConfig.currency || 'CAD';
+    if (requestedCurrency && requestedCurrency !== currency) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported currency',
+        supported: [currency],
+      });
+    }
 
     let shippingAddressId = null;
     if (fulfillmentType === 'delivery') {
@@ -1094,7 +1172,9 @@ router.post('/orders/create', async (req, res) => {
     const totalsBeforeRewards = calculateTotals(
       subtotalAmount,
       fulfillmentType,
-      tipAmount
+      tipAmount,
+      0,
+      pricingConfig
     );
     const rewardRedemption = rewardRedemptionId
       ? await prepareRewardRedemptionForOrder(
@@ -1126,7 +1206,8 @@ router.post('/orders/create', async (req, res) => {
       subtotalAmount,
       fulfillmentType,
       tipAmount,
-      rewardDiscount
+      rewardDiscount,
+      pricingConfig
     );
     const fulfillmentDetail = {
       fulfillment_type: fulfillmentType,
@@ -1136,6 +1217,7 @@ router.post('/orders/create', async (req, res) => {
       delivery_note: req.body.delivery_note || null,
       order_note: normalizeOrderNote(req.body.order_note || req.body.orderNote) || null,
       pricing: totals,
+      pricing_config_scope: pricingConfig.scope || null,
       reward: rewardRedemption
         ? {
             redemption_id: rewardRedemption.redemption_id,
