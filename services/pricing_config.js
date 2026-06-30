@@ -1,4 +1,12 @@
 const { pool } = require('../db/pgsql');
+const {
+  firstConfigRows,
+  normalizeCountryCode,
+  normalizeEnvironment,
+  normalizeRegionCode,
+  normalizeText,
+  readSystemConfigRows,
+} = require('./system_config_service');
 
 const DEFAULT_ORDER_PRICING_CONFIG = Object.freeze({
   currency: 'CAD',
@@ -20,70 +28,9 @@ const PRICING_CONFIG_KEYS = Object.freeze([
   'pricing.tax',
 ]);
 
-const VALID_ENVIRONMENTS = new Set(['dev', 'test', 'staging', 'prod']);
-
-const COUNTRY_ALIASES = new Map([
-  ['CANADA', 'CA'],
-  ['CAN', 'CA'],
-]);
-
-const REGION_ALIASES = new Map([
-  ['MANITOBA', 'MB'],
-  ['ONTARIO', 'ON'],
-  ['QUEBEC', 'QC'],
-  ['ALBERTA', 'AB'],
-  ['BRITISH COLUMBIA', 'BC'],
-  ['SASKATCHEWAN', 'SK'],
-  ['NOVA SCOTIA', 'NS'],
-  ['NEW BRUNSWICK', 'NB'],
-  ['NEWFOUNDLAND AND LABRADOR', 'NL'],
-  ['PRINCE EDWARD ISLAND', 'PE'],
-  ['NORTHWEST TERRITORIES', 'NT'],
-  ['NUNAVUT', 'NU'],
-  ['YUKON', 'YT'],
-]);
-
-function normalizeText(value) {
-  if (value === undefined || value === null) return '';
-  return value.toString().trim();
-}
-
-function normalizeEnvironment(value) {
-  const normalized = normalizeText(value) || 'prod';
-  return VALID_ENVIRONMENTS.has(normalized) ? normalized : 'prod';
-}
-
-function normalizeCountryCode(value) {
-  const raw = normalizeText(value);
-  if (!raw) return null;
-  const upper = raw.toUpperCase();
-  if (COUNTRY_ALIASES.has(upper)) return COUNTRY_ALIASES.get(upper);
-  return /^[A-Z]{2}$/.test(upper) ? upper : null;
-}
-
-function normalizeRegionCode(value) {
-  const raw = normalizeText(value);
-  if (!raw) return null;
-  const upper = raw.toUpperCase();
-  if (REGION_ALIASES.has(upper)) return REGION_ALIASES.get(upper);
-  return /^[A-Z]{2}$/.test(upper) ? upper : null;
-}
-
 function normalizeCurrency(value, fallback = DEFAULT_ORDER_PRICING_CONFIG.currency) {
   const currency = normalizeText(value).toUpperCase();
   return /^[A-Z]{3}$/.test(currency) ? currency : fallback;
-}
-
-function firstConfigRows(rows) {
-  const configs = new Map();
-
-  for (const row of rows) {
-    if (!configs.has(row.config_key)) {
-      configs.set(row.config_key, row);
-    }
-  }
-
-  return configs;
 }
 
 function readConfigString(row, fallback, fieldNames = []) {
@@ -150,42 +97,15 @@ async function getOrderPricingConfig(
   const normalizedMerchantId = normalizeText(merchantId) || null;
 
   try {
-    const result = await db.query(
-      `
-        SELECT
-          config_key,
-          config_value,
-          value_type,
-          (
-            CASE WHEN merchant_id IS NOT NULL AND merchant_id = $6::uuid THEN 32 ELSE 0 END +
-            CASE WHEN city IS NOT NULL AND city = $5 THEN 16 ELSE 0 END +
-            CASE WHEN region_code IS NOT NULL AND region_code = $4 THEN 8 ELSE 0 END +
-            CASE WHEN country_code IS NOT NULL AND country_code = $3 THEN 4 ELSE 0 END +
-            CASE WHEN app_scope = $1 THEN 2 ELSE 0 END +
-            CASE WHEN app_scope = 'all' THEN 1 ELSE 0 END
-          ) AS specificity
-        FROM public.system_config
-        WHERE active = TRUE
-          AND app_scope IN ('all', $1)
-          AND environment = $2
-          AND ($3::char(2) IS NULL OR country_code IS NULL OR country_code = $3)
-          AND ($4::text IS NULL OR region_code IS NULL OR region_code = $4)
-          AND ($5::text IS NULL OR city IS NULL OR city = $5)
-          AND ($6::uuid IS NULL OR merchant_id IS NULL OR merchant_id = $6)
-          AND config_key = ANY($7::text[])
-        ORDER BY config_key, specificity DESC, version DESC, updated_at DESC
-      `,
-      [
-        normalizedAppScope,
-        normalizedEnvironment,
-        normalizedCountryCode,
-        normalizedRegionCode,
-        normalizedCity,
-        normalizedMerchantId,
-        PRICING_CONFIG_KEYS,
-      ]
-    );
-
+    const result = await readSystemConfigRows(db, {
+      appScope: normalizedAppScope,
+      environment: normalizedEnvironment,
+      countryCode: normalizedCountryCode,
+      regionCode: normalizedRegionCode,
+      city: normalizedCity,
+      merchantId: normalizedMerchantId,
+      configKeys: PRICING_CONFIG_KEYS,
+    });
     const configs = firstConfigRows(result.rows);
     const currency = normalizeCurrency(
       readConfigString(

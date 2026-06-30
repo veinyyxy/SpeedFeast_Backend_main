@@ -1,4 +1,12 @@
 const { pool } = require('../db/pgsql');
+const {
+  firstConfigRows,
+  normalizeCountryCode,
+  normalizeEnvironment,
+  normalizeRegionCode,
+  normalizeText,
+  readSystemConfigRows,
+} = require('./system_config_service');
 
 const DEFAULT_BUSINESS_HOURS_CONFIG = Object.freeze({
   timezone: 'America/Winnipeg',
@@ -35,7 +43,6 @@ const ORDER_OPERATION_CONFIG_KEYS = Object.freeze([
   'fulfillment.pickup_eta',
 ]);
 
-const VALID_ENVIRONMENTS = new Set(['dev', 'test', 'staging', 'prod']);
 const WEEKDAY_KEYS = Object.freeze([
   'sunday',
   'monday',
@@ -45,38 +52,6 @@ const WEEKDAY_KEYS = Object.freeze([
   'friday',
   'saturday',
 ]);
-
-function normalizeText(value) {
-  if (value === undefined || value === null) return '';
-  return value.toString().trim();
-}
-
-function normalizeEnvironment(value) {
-  const normalized = normalizeText(value) || 'prod';
-  return VALID_ENVIRONMENTS.has(normalized) ? normalized : 'prod';
-}
-
-function normalizeCountryCode(value) {
-  const upper = normalizeText(value).toUpperCase();
-  if (!upper) return null;
-  if (upper === 'CANADA' || upper === 'CAN') return 'CA';
-  return /^[A-Z]{2}$/.test(upper) ? upper : null;
-}
-
-function normalizeRegionCode(value) {
-  const upper = normalizeText(value).toUpperCase();
-  if (!upper) return null;
-  if (upper === 'MANITOBA') return 'MB';
-  return /^[A-Z]{2}$/.test(upper) ? upper : null;
-}
-
-function firstConfigRows(rows) {
-  const configs = new Map();
-  for (const row of rows) {
-    if (!configs.has(row.config_key)) configs.set(row.config_key, row);
-  }
-  return configs;
-}
 
 function readJsonConfig(row, fallback) {
   const value = row?.config_value;
@@ -105,42 +80,15 @@ async function getOrderOperationsConfig(
   const normalizedMerchantId = normalizeText(merchantId) || null;
 
   try {
-    const result = await db.query(
-      `
-        SELECT
-          config_key,
-          config_value,
-          value_type,
-          (
-            CASE WHEN merchant_id IS NOT NULL AND merchant_id = $6::uuid THEN 32 ELSE 0 END +
-            CASE WHEN city IS NOT NULL AND city = $5 THEN 16 ELSE 0 END +
-            CASE WHEN region_code IS NOT NULL AND region_code = $4 THEN 8 ELSE 0 END +
-            CASE WHEN country_code IS NOT NULL AND country_code = $3 THEN 4 ELSE 0 END +
-            CASE WHEN app_scope = $1 THEN 2 ELSE 0 END +
-            CASE WHEN app_scope = 'all' THEN 1 ELSE 0 END
-          ) AS specificity
-        FROM public.system_config
-        WHERE active = TRUE
-          AND app_scope IN ('all', $1)
-          AND environment = $2
-          AND ($3::char(2) IS NULL OR country_code IS NULL OR country_code = $3)
-          AND ($4::text IS NULL OR region_code IS NULL OR region_code = $4)
-          AND ($5::text IS NULL OR city IS NULL OR city = $5)
-          AND ($6::uuid IS NULL OR merchant_id IS NULL OR merchant_id = $6)
-          AND config_key = ANY($7::text[])
-        ORDER BY config_key, specificity DESC, version DESC, updated_at DESC
-      `,
-      [
-        normalizedAppScope,
-        normalizedEnvironment,
-        normalizedCountryCode,
-        normalizedRegionCode,
-        normalizedCity,
-        normalizedMerchantId,
-        ORDER_OPERATION_CONFIG_KEYS,
-      ]
-    );
-
+    const result = await readSystemConfigRows(db, {
+      appScope: normalizedAppScope,
+      environment: normalizedEnvironment,
+      countryCode: normalizedCountryCode,
+      regionCode: normalizedRegionCode,
+      city: normalizedCity,
+      merchantId: normalizedMerchantId,
+      configKeys: ORDER_OPERATION_CONFIG_KEYS,
+    });
     const configs = firstConfigRows(result.rows);
     return {
       businessHours: readJsonConfig(
@@ -207,7 +155,8 @@ function normalizeIntervals(value) {
         Number.isInteger(item.open) &&
         Number.isInteger(item.close) &&
         item.close > item.open
-    );
+    )
+    .sort((a, b) => a.open - b.open);
 }
 
 function zonedParts(date, timezone) {
