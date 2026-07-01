@@ -600,14 +600,26 @@ async function fetchRecentOrderItemOptions(orderItemIds) {
 
 function normalizePayment(row) {
   if (!row) return null;
+  const amount = Number(row.amount || 0);
+  const refundedAmount = Number(row.refunded_amount || 0);
+  const refundableAmount = Math.max(
+    0,
+    Number((amount - refundedAmount).toFixed(2))
+  );
+
   return {
     payment_id: row.payment_id,
     provider: row.provider,
     provider_payment_id: row.provider_payment_id,
     provider_session_id: row.provider_session_id,
-    amount: Number(row.amount || 0),
+    amount,
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     payment_status: row.payment_status || 'pending',
+    refunded_amount: refundedAmount,
+    refundedAmount,
+    refundable_amount: refundableAmount,
+    refundableAmount,
+    refunds: Array.isArray(row.refunds) ? row.refunds : [],
     checkout_url: row.checkout_url || null,
     failure_message: row.failure_message || null,
     created_at: row.created_at,
@@ -634,9 +646,30 @@ async function fetchRecentOrderPayments(orderIds) {
           payment_status,
           checkout_url,
           failure_message,
+          COALESCE(refund_summary.refunded_amount, 0)::numeric AS refunded_amount,
+          COALESCE(refund_summary.refunds, '[]'::jsonb) AS refunds,
           created_at,
           updated_at
         FROM public.payments
+        LEFT JOIN LATERAL (
+          SELECT
+            COALESCE(SUM(amount), 0)::numeric AS refunded_amount,
+            jsonb_agg(
+              jsonb_build_object(
+                'refund_id', refund_id,
+                'provider_refund_id', provider_refund_id,
+                'amount', amount,
+                'currency', currency,
+                'refund_status', refund_status,
+                'reason', reason,
+                'created_at', created_at
+              )
+              ORDER BY created_at DESC
+            ) FILTER (WHERE refund_status = 'succeeded') AS refunds
+          FROM public.payment_refunds
+          WHERE payment_id = payments.payment_id
+            AND refund_status = 'succeeded'
+        ) refund_summary ON true
         WHERE order_id = ANY($1::uuid[])
         ORDER BY order_id, created_at DESC
       `,
@@ -767,6 +800,11 @@ function normalizeRecentOrder(row, items, payment, review) {
     items,
     payment,
     payment_status: payment?.payment_status || null,
+    refunded_amount: payment?.refunded_amount || 0,
+    refundedAmount: payment?.refunded_amount || 0,
+    refundable_amount: payment?.refundable_amount || 0,
+    refundableAmount: payment?.refundable_amount || 0,
+    refunds: payment?.refunds || [],
     reward: fulfillmentDetail.reward || null,
     reward_redemption: fulfillmentDetail.reward || null,
     can_review: ['completed', 'delivered'].includes(status),

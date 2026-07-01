@@ -249,15 +249,7 @@ class StripePaymentProvider extends PaymentProvider {
       eventType === 'refund.updated' ||
       eventType === 'charge.refund.updated'
     ) {
-      if (object.status !== 'succeeded') return null;
-
-      return {
-        payment_id: metadata.payment_id || null,
-        order_id: metadata.order_id || null,
-        provider_payment_id: object.payment_intent || null,
-        provider_session_id: null,
-        payment_status: 'refunded',
-      };
+      return null;
     }
 
     return null;

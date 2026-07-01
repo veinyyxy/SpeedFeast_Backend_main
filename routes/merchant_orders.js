@@ -20,6 +20,7 @@ const ORDER_STATUSES = new Set([
   'delivered',
   'completed',
   'cancelled',
+  'partially_refunded',
   'refunded',
 ]);
 
@@ -65,6 +66,17 @@ function normalizeRefundReason(value) {
 
 function normalizeRefundNote(value) {
   return normalizeText(value)?.slice(0, 500) || 'Merchant refund';
+}
+
+function normalizeRefundAmount(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return Number(parsed.toFixed(2));
+}
+
+function isFullRefund(refundedAmount, paymentAmount) {
+  return Number(refundedAmount || 0) >= Number(paymentAmount || 0) - 0.005;
 }
 
 function normalizeAddress(row) {
@@ -129,14 +141,19 @@ function normalizeOrderItemOption(row) {
 
 function normalizePayment(row) {
   if (!row) return null;
+  const amount = Number(row.amount || 0);
+  const refundedAmount = Number(row.refunded_amount || 0);
   return {
     payment_id: row.payment_id,
     provider: row.provider,
     provider_payment_id: row.provider_payment_id,
     provider_session_id: row.provider_session_id,
-    amount: Number(row.amount || 0),
+    amount,
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     payment_status: row.payment_status || 'pending',
+    refunded_amount: refundedAmount,
+    refundable_amount: Math.max(0, Number((amount - refundedAmount).toFixed(2))),
+    refunds: Array.isArray(row.refunds) ? row.refunds : [],
     checkout_url: row.checkout_url || null,
     failure_message: row.failure_message || null,
     created_at: row.created_at,
@@ -217,6 +234,11 @@ function normalizeMerchantOrder(row, items, payment, review) {
     items: reviewedItems,
     payment,
     payment_status: payment?.payment_status || null,
+    refunded_amount: payment?.refunded_amount || 0,
+    refundedAmount: payment?.refunded_amount || 0,
+    refundable_amount: payment?.refundable_amount || 0,
+    refundableAmount: payment?.refundable_amount || 0,
+    refunds: payment?.refunds || [],
     reward: fulfillmentDetail.reward || null,
     reward_redemption: fulfillmentDetail.reward || null,
     is_reviewed: Boolean(review),
@@ -397,9 +419,30 @@ async function fetchLatestPayments(orderIds) {
           payment_status,
           checkout_url,
           failure_message,
+          COALESCE(refund_summary.refunded_amount, 0)::numeric AS refunded_amount,
+          COALESCE(refund_summary.refunds, '[]'::jsonb) AS refunds,
           created_at,
           updated_at
         FROM public.payments
+        LEFT JOIN LATERAL (
+          SELECT
+            COALESCE(SUM(amount), 0)::numeric AS refunded_amount,
+            jsonb_agg(
+              jsonb_build_object(
+                'refund_id', refund_id,
+                'provider_refund_id', provider_refund_id,
+                'amount', amount,
+                'currency', currency,
+                'refund_status', refund_status,
+                'reason', reason,
+                'created_at', created_at
+              )
+              ORDER BY created_at DESC
+            ) FILTER (WHERE refund_status = 'succeeded') AS refunds
+          FROM public.payment_refunds
+          WHERE payment_id = payments.payment_id
+            AND refund_status = 'succeeded'
+        ) refund_summary ON true
         WHERE order_id = ANY($1::uuid[])
         ORDER BY order_id, created_at DESC
       `,
@@ -479,6 +522,7 @@ function nextStatusesFor(currentStatus, fulfillmentType) {
   }
   if (current === 'on_the_way') return ['delivered', 'cancelled', 'refunded'];
   if (current === 'delivered' || current === 'completed') return ['refunded'];
+  if (current === 'partially_refunded') return ['refunded'];
   return [];
 }
 
@@ -573,11 +617,20 @@ router.post('/orders/refund', async (req, res) => {
   const orderId = normalizeText(req.body.order_id || req.body.orderId);
   const note = normalizeRefundNote(req.body.note || req.body.reason);
   const providerReason = normalizeRefundReason(req.body.provider_reason || req.body.providerReason);
+  const requestedRefundAmount = normalizeRefundAmount(
+    req.body.amount ?? req.body.refund_amount ?? req.body.refundAmount
+  );
 
   if (!orderId) {
     return res.status(400).json({
       success: false,
       error: 'order_id is required',
+    });
+  }
+  if (Number.isNaN(requestedRefundAmount)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Refund amount must be a valid number',
     });
   }
 
@@ -654,7 +707,12 @@ router.post('/orders/refund', async (req, res) => {
 
     const refundedAmount = Number(existingRefundResult.rows[0]?.refunded_amount || 0);
     const paymentAmount = Number(payment.amount || 0);
-    if (payment.payment_status === 'refunded' || refundedAmount >= paymentAmount) {
+    const refundableAmount = Math.max(
+      0,
+      Number((paymentAmount - refundedAmount).toFixed(2))
+    );
+
+    if (payment.payment_status === 'refunded' || isFullRefund(refundedAmount, paymentAmount)) {
       await client.query(
         `
           UPDATE public."Order"
@@ -681,10 +739,30 @@ router.post('/orders/refund', async (req, res) => {
         success: true,
         already_refunded: true,
         refund_status: 'succeeded',
+        refunded_amount: Number(refundedAmount.toFixed(2)),
+        refundable_amount: 0,
         refunds: existingRefundResult.rows[0]?.refunds || [],
       };
     } else {
-      const refundAmount = Number((paymentAmount - refundedAmount).toFixed(2));
+      const refundAmount = requestedRefundAmount === null
+        ? refundableAmount
+        : requestedRefundAmount;
+      if (refundAmount <= 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Refund amount must be greater than 0',
+          refundable_amount: refundableAmount,
+        });
+      }
+      if (refundAmount > refundableAmount) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Refund amount exceeds the remaining refundable amount',
+          refundable_amount: refundableAmount,
+        });
+      }
       const refundInsertResult = await client.query(
         `
           INSERT INTO public.payment_refunds (
@@ -769,23 +847,39 @@ router.post('/orders/refund', async (req, res) => {
         ]
       );
 
+      const actualRefundAmount = Number(providerRefund.amount || refundAmount);
+      const totalRefundedAmount = Number(
+        (refundedAmount + actualRefundAmount).toFixed(2)
+      );
+      const remainingRefundableAmount = Math.max(
+        0,
+        Number((paymentAmount - totalRefundedAmount).toFixed(2))
+      );
+      const nextRefundOrderStatus = isFullRefund(totalRefundedAmount, paymentAmount)
+        ? 'refunded'
+        : 'partially_refunded';
+
       if (refundStatus === 'succeeded') {
         await client.query(
           `
             UPDATE public.payments
-            SET payment_status = 'refunded',
+            SET payment_status = $1,
                 raw_response = COALESCE(raw_response, '{}'::jsonb)
-                  || jsonb_build_object('refund', $1::jsonb),
+                  || jsonb_build_object('refund', $2::jsonb),
                 updated_at = now()
-            WHERE payment_id = $2::uuid
+            WHERE payment_id = $3::uuid
           `,
-          [JSON.stringify(providerRefund.raw_response || {}), payment.payment_id]
+          [
+            nextRefundOrderStatus === 'refunded' ? 'refunded' : 'paid',
+            JSON.stringify(providerRefund.raw_response || {}),
+            payment.payment_id,
+          ]
         );
 
         await client.query(
           `
             UPDATE public."Order"
-            SET order_status = 'refunded',
+            SET order_status = $1,
                 updated_at = now(),
                 fulfillment_detail = jsonb_set(
                   COALESCE(fulfillment_detail, '{}'::jsonb),
@@ -795,36 +889,45 @@ router.post('/orders/refund', async (req, res) => {
                     '[]'::jsonb
                   ) || jsonb_build_array(
                     jsonb_build_object(
-                      'status', 'refunded',
-                      'previous_status', $1::text,
+                      'status', $1::text,
+                      'previous_status', $2::text,
                       'changed_at', now(),
-                      'changed_by', $2::uuid,
-                      'note', $3::text,
-                      'refund_id', $4::uuid
+                      'changed_by', $3::uuid,
+                      'note', $4::text,
+                      'refund_id', $5::uuid,
+                      'refund_amount', $6::numeric,
+                      'refunded_amount', $7::numeric,
+                      'refundable_amount', $8::numeric
                     )
                   ),
                   true
                 )
-            WHERE order_id = $5::uuid
+            WHERE order_id = $9::uuid
           `,
           [
+            nextRefundOrderStatus,
             order.order_status,
             authPayload.merchant_user_id,
             note,
             refundId,
+            actualRefundAmount.toFixed(2),
+            totalRefundedAmount.toFixed(2),
+            remainingRefundableAmount.toFixed(2),
             orderId,
           ]
         );
 
-        rewardsResult = await reversePointsForOrder(client, orderId, {
-          source: 'merchant_refund',
-          reason: note,
-        });
-        rewardRedemptionsResult = await restoreOrderRewardRedemptions(
-          client,
-          orderId,
-          { source: 'merchant_refund' }
-        );
+        if (nextRefundOrderStatus === 'refunded') {
+          rewardsResult = await reversePointsForOrder(client, orderId, {
+            source: 'merchant_refund',
+            reason: note,
+          });
+          rewardRedemptionsResult = await restoreOrderRewardRedemptions(
+            client,
+            orderId,
+            { source: 'merchant_refund' }
+          );
+        }
       } else {
         responseStatus = 202;
       }
@@ -836,11 +939,20 @@ router.post('/orders/refund', async (req, res) => {
           refund_id: refundId,
           provider_refund_id: providerRefund.provider_refund_id,
           refund_status: refundStatus,
-          amount: Number(providerRefund.amount || refundAmount),
+          amount: actualRefundAmount,
           currency: (providerRefund.currency || payment.currency || 'CAD')
             .toString()
             .toUpperCase(),
         },
+        refund_status: refundStatus === 'succeeded'
+          ? nextRefundOrderStatus
+          : refundStatus,
+        refunded_amount: refundStatus === 'succeeded'
+          ? totalRefundedAmount
+          : Number(refundedAmount.toFixed(2)),
+        refundable_amount: refundStatus === 'succeeded'
+          ? remainingRefundableAmount
+          : refundableAmount,
       };
     }
 
@@ -885,7 +997,7 @@ router.post('/orders/status/update', async (req, res) => {
   if (!ORDER_STATUSES.has(nextStatus)) {
     return res.status(400).json({ success: false, error: 'Invalid status' });
   }
-  if (nextStatus === 'refunded') {
+  if (nextStatus === 'refunded' || nextStatus === 'partially_refunded') {
     return res.status(400).json({
       success: false,
       error: 'Use the refund endpoint to refund an order',

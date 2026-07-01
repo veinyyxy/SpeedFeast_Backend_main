@@ -22,10 +22,10 @@ ALTER TABLE public."Order"
       'delivered',
       'completed',
       'cancelled',
+      'partially_refunded',
       'refunded'
     )
   );
 
 COMMENT ON COLUMN public."Order".order_status
-  IS 'Customer and merchant order flow: created -> paid -> accepted -> preparing -> ready -> on_the_way/delivered or completed; terminal states are cancelled/refunded.';
-
+  IS 'Customer and merchant order flow: created -> paid -> accepted -> preparing -> ready -> on_the_way/delivered or completed; refund states are partially_refunded/refunded; terminal states are cancelled/refunded.';
