@@ -79,6 +79,20 @@ function isFullRefund(refundedAmount, paymentAmount) {
   return Number(refundedAmount || 0) >= Number(paymentAmount || 0) - 0.005;
 }
 
+function normalizeProviderRefundStatus(status) {
+  const value = normalizeText(status)?.toLowerCase();
+  if (value === 'cancelled' || value === 'canceled') return 'cancelled';
+  if (value === 'succeeded' || value === 'failed' || value === 'pending') {
+    return value;
+  }
+  return 'pending';
+}
+
+function normalizeMoneyAmount(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
+}
+
 function normalizeAddress(row) {
   if (!row || !row.address_id) return null;
   return {
@@ -507,6 +521,156 @@ async function buildMerchantOrders(rows) {
   );
 }
 
+async function upsertProviderRefunds(client, payment, refunds) {
+  let syncedCount = 0;
+  for (const refund of refunds || []) {
+    const providerRefundId = normalizeText(refund.provider_refund_id);
+    if (!providerRefundId) continue;
+
+    const amount = normalizeMoneyAmount(refund.amount);
+    const status = normalizeProviderRefundStatus(refund.refund_status);
+    const currency = (refund.currency || payment.currency || 'CAD')
+      .toString()
+      .trim()
+      .toUpperCase();
+    const reason = normalizeText(refund.reason) || 'Provider sync';
+    const rawResponse = JSON.stringify(refund.raw_response || {});
+
+    const existingResult = await client.query(
+      `
+        SELECT refund_id
+        FROM public.payment_refunds
+        WHERE payment_id = $1::uuid
+          AND provider_refund_id = $2
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [payment.payment_id, providerRefundId]
+    );
+
+    if (existingResult.rows.length > 0) {
+      await client.query(
+        `
+          UPDATE public.payment_refunds
+          SET amount = $1,
+              currency = $2,
+              refund_status = $3,
+              reason = $4,
+              raw_response = $5::jsonb,
+              updated_at = now()
+          WHERE refund_id = $6::uuid
+        `,
+        [
+          amount.toFixed(2),
+          currency,
+          status,
+          reason,
+          rawResponse,
+          existingResult.rows[0].refund_id,
+        ]
+      );
+    } else {
+      await client.query(
+        `
+          INSERT INTO public.payment_refunds (
+            payment_id,
+            order_id,
+            provider_refund_id,
+            amount,
+            currency,
+            refund_status,
+            reason,
+            raw_response
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        `,
+        [
+          payment.payment_id,
+          payment.order_id,
+          providerRefundId,
+          amount.toFixed(2),
+          currency,
+          status,
+          reason,
+          rawResponse,
+        ]
+      );
+    }
+    syncedCount += 1;
+  }
+  return syncedCount;
+}
+
+async function summarizePaymentRefunds(client, paymentId) {
+  const result = await client.query(
+    `
+      SELECT COALESCE(SUM(amount), 0)::numeric AS refunded_amount
+      FROM public.payment_refunds
+      WHERE payment_id = $1::uuid
+        AND refund_status = 'succeeded'
+    `,
+    [paymentId]
+  );
+  return normalizeMoneyAmount(result.rows[0]?.refunded_amount || 0);
+}
+
+async function applySyncedPaymentState(client, order, payment, providerSync) {
+  const paymentAmount = normalizeMoneyAmount(providerSync.amount || payment.amount);
+  const refundedAmount = await summarizePaymentRefunds(client, payment.payment_id);
+  const refundableAmount = Math.max(
+    0,
+    Number((paymentAmount - refundedAmount).toFixed(2))
+  );
+  const fullyRefunded = isFullRefund(refundedAmount, paymentAmount);
+  const nextPaymentStatus = fullyRefunded
+    ? 'refunded'
+    : providerSync.payment_status || payment.payment_status || 'pending';
+
+  await client.query(
+    `
+      UPDATE public.payments
+      SET payment_status = $1,
+          amount = $2,
+          currency = $3,
+          raw_response = COALESCE(raw_response, '{}'::jsonb)
+            || jsonb_build_object('provider_sync', $4::jsonb),
+          updated_at = now()
+      WHERE payment_id = $5::uuid
+    `,
+    [
+      nextPaymentStatus,
+      paymentAmount.toFixed(2),
+      (providerSync.currency || payment.currency || 'CAD')
+        .toString()
+        .trim()
+        .toUpperCase(),
+      JSON.stringify(providerSync.raw_response || {}),
+      payment.payment_id,
+    ]
+  );
+
+  let nextOrderStatus = order.order_status;
+  if (refundedAmount > 0) {
+    nextOrderStatus = fullyRefunded ? 'refunded' : 'partially_refunded';
+    await client.query(
+      `
+        UPDATE public."Order"
+        SET order_status = $1,
+            updated_at = now()
+        WHERE order_id = $2::uuid
+      `,
+      [nextOrderStatus, order.order_id]
+    );
+  }
+
+  return {
+    payment_status: nextPaymentStatus,
+    order_status: nextOrderStatus,
+    refunded_amount: refundedAmount,
+    refundable_amount: refundableAmount,
+  };
+}
+
 function nextStatusesFor(currentStatus, fulfillmentType) {
   const current = normalizeOrderStatus(currentStatus);
   const isDelivery = fulfillmentType === 'delivery';
@@ -607,6 +771,131 @@ router.get('/orders/detail', async (req, res) => {
   } catch (err) {
     console.error('Error fetching merchant order detail:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+router.post('/orders/payments/sync', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  const orderId = normalizeText(req.body.order_id || req.body.orderId);
+  if (!orderId) {
+    return res.status(400).json({
+      success: false,
+      error: 'order_id is required',
+    });
+  }
+
+  const client = await pool.connect();
+  let rewardsResult = null;
+  let rewardRedemptionsResult = null;
+
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `
+        SELECT order_id, user_id, order_status, total_amount, currency
+        FROM public."Order"
+        WHERE order_id = $1::uuid
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+    const order = orderResult.rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    const paymentResult = await client.query(
+      `
+        SELECT *
+        FROM public.payments
+        WHERE order_id = $1::uuid
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+    const payment = paymentResult.rows[0];
+    if (!payment) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'No payment was found for this order',
+      });
+    }
+
+    const provider = getPaymentProvider(payment.provider);
+    const providerSync = await provider.syncPaymentRecords({ payment });
+    const syncedRefundCount = await upsertProviderRefunds(
+      client,
+      payment,
+      providerSync.refunds || []
+    );
+    const syncSummary = await applySyncedPaymentState(
+      client,
+      order,
+      payment,
+      providerSync
+    );
+
+    if (
+      syncSummary.order_status === 'refunded' &&
+      order.order_status !== 'refunded'
+    ) {
+      rewardsResult = await reversePointsForOrder(client, orderId, {
+        source: 'merchant_payment_sync',
+        reason: 'Payment provider sync',
+      });
+      rewardRedemptionsResult = await restoreOrderRewardRedemptions(
+        client,
+        orderId,
+        { source: 'merchant_payment_sync' }
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const refreshedOrderResult = await pool.query(
+      `
+        ${baseOrderSelect()}
+        WHERE o.order_id = $1
+      `,
+      [orderId]
+    );
+    const orders = await buildMerchantOrders(refreshedOrderResult.rows);
+
+    return res.status(200).json({
+      success: true,
+      sync: {
+        provider: payment.provider,
+        refunds_synced: syncedRefundCount,
+        ...syncSummary,
+      },
+      rewards: rewardsResult,
+      reward_redemptions: rewardRedemptionsResult,
+      order: orders[0] || null,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error syncing merchant order payment records:', err);
+    const unsupported = err.message && err.message.includes('not implemented');
+    const statusCode = unsupported
+      ? 501
+      : err.statusCode && err.statusCode < 500
+      ? 400
+      : 500;
+    return res.status(statusCode).json({
+      success: false,
+      error: unsupported
+        ? 'Payment provider does not support sync yet'
+        : err.message || 'Internal server error',
+    });
+  } finally {
+    client.release();
   }
 });
 

@@ -20,7 +20,7 @@ class StripePaymentProvider extends PaymentProvider {
     }
   }
 
-  async stripeRequest(path, params, options = {}) {
+  async stripeRequest(path, params = {}, options = {}) {
     this.ensureConfigured();
 
     if (typeof fetch !== 'function') {
@@ -34,12 +34,25 @@ class StripePaymentProvider extends PaymentProvider {
     if (options.idempotencyKey) {
       headers['Idempotency-Key'] = options.idempotencyKey;
     }
-
-    const response = await fetch(`https://api.stripe.com/v1${path}`, {
-      method: 'POST',
+    const method = options.method || 'POST';
+    const url = new URL(`https://api.stripe.com/v1${path}`);
+    const requestOptions = {
+      method,
       headers,
-      body: new URLSearchParams(params),
-    });
+    };
+
+    if (method === 'GET') {
+      delete headers['Content-Type'];
+      for (const [key, value] of Object.entries(params || {})) {
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.set(key, value.toString());
+        }
+      }
+    } else {
+      requestOptions.body = new URLSearchParams(params);
+    }
+
+    const response = await fetch(url, requestOptions);
 
     const responseText = await response.text();
     let data = {};
@@ -63,6 +76,10 @@ class StripePaymentProvider extends PaymentProvider {
     }
 
     return data;
+  }
+
+  async stripeGet(path, params = {}) {
+    return this.stripeRequest(path, params, { method: 'GET' });
   }
 
   async createPayment({ order, payment }) {
@@ -134,6 +151,69 @@ class StripePaymentProvider extends PaymentProvider {
       amount: Number(refund.amount || amountInCents) / 100,
       currency: refund.currency || payment.currency || 'CAD',
       raw_response: refund,
+    };
+  }
+
+  normalizeRefund(refund, payment) {
+    const rawStatus = refund.status === 'canceled'
+      ? 'cancelled'
+      : refund.status || 'pending';
+    const status = rawStatus === 'requires_action' ? 'pending' : rawStatus;
+    return {
+      provider_refund_id: refund.id || '',
+      refund_status: status,
+      amount: Number(refund.amount || 0) / 100,
+      currency: (refund.currency || payment.currency || 'CAD')
+        .toString()
+        .toUpperCase(),
+      reason: refund.reason || '',
+      created_at: refund.created
+        ? new Date(Number(refund.created) * 1000).toISOString()
+        : null,
+      raw_response: refund,
+    };
+  }
+
+  mapPaymentIntentStatus(status) {
+    if (status === 'succeeded') return 'paid';
+    if (status === 'canceled') return 'cancelled';
+    if (status === 'requires_action') return 'requires_action';
+    if (status === 'requires_payment_method') return 'failed';
+    return 'pending';
+  }
+
+  async syncPaymentRecords({ payment }) {
+    const paymentIntent = payment.provider_payment_id;
+    if (!paymentIntent || !paymentIntent.startsWith('pi_')) {
+      throw new Error('A Stripe payment intent is required to sync payment records.');
+    }
+
+    const paymentIntentData = await this.stripeGet(
+      `/payment_intents/${paymentIntent}`
+    );
+    const refunds = [];
+    let startingAfter = null;
+
+    do {
+      const response = await this.stripeGet('/refunds', {
+        payment_intent: paymentIntent,
+        limit: '100',
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      const data = Array.isArray(response.data) ? response.data : [];
+      refunds.push(...data.map((refund) => this.normalizeRefund(refund, payment)));
+      startingAfter =
+        response.has_more && data.length > 0 ? data[data.length - 1].id : null;
+    } while (startingAfter);
+
+    return {
+      payment_status: this.mapPaymentIntentStatus(paymentIntentData.status),
+      amount: Number(paymentIntentData.amount || payment.amount * 100) / 100,
+      currency: (paymentIntentData.currency || payment.currency || 'CAD')
+        .toString()
+        .toUpperCase(),
+      refunds,
+      raw_response: paymentIntentData,
     };
   }
 

@@ -15,6 +15,10 @@ class PaymentProvider {
     throw new Error(`${this.name} refundPayment is not implemented`);
   }
 
+  async syncPaymentRecords() {
+    throw new Error(`${this.name} syncPaymentRecords is not implemented`);
+  }
+
   async handleWebhook() {
     throw new Error(`${this.name} handleWebhook is not implemented`);
   }
