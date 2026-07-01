@@ -5,6 +5,7 @@ const {
   normalizeAppScope,
   normalizeCountryCode,
   readSystemConfigRows,
+  resolveStoreProfileAssets,
 } = require('../services/system_config_service');
 
 const router = express.Router();
@@ -40,10 +41,11 @@ router.get('/config', async (req, res) => {
       merchantId,
       configKeys: configKey ? [configKey] : null,
     });
+    const rows = await resolveStoreProfileAssets(undefined, result.rows);
 
     return res.status(200).json({
       success: true,
-      configs: buildConfigMap(result.rows),
+      configs: buildConfigMap(rows),
     });
   } catch (err) {
     console.error('Error fetching system config:', err);

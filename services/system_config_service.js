@@ -112,6 +112,72 @@ function buildConfigMap(rows) {
   return configs;
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+async function resolveStoreProfileAssets(db = pool, rows = []) {
+  const profileRows = rows.filter(
+    (row) =>
+      row.config_key === 'store.profile' &&
+      row.config_value &&
+      typeof row.config_value === 'object' &&
+      !Array.isArray(row.config_value)
+  );
+  const assetIds = [
+    ...new Set(
+      profileRows
+        .map((row) => normalizeText(row.config_value.logo?.asset_id))
+        .filter((assetId) => assetId && isUuid(assetId))
+    ),
+  ];
+
+  if (assetIds.length === 0) return rows;
+
+  const result = await db.query(
+    `
+      SELECT asset_id, public_url
+      FROM public.media_assets
+      WHERE asset_id = ANY($1::uuid[])
+        AND deleted_at IS NULL
+        AND status = 'ready'
+    `,
+    [assetIds]
+  );
+  const urlsByAssetId = new Map(
+    result.rows.map((row) => [row.asset_id, row.public_url])
+  );
+
+  return rows.map((row) => {
+    if (
+      row.config_key !== 'store.profile' ||
+      !row.config_value ||
+      typeof row.config_value !== 'object' ||
+      Array.isArray(row.config_value)
+    ) {
+      return row;
+    }
+
+    const assetId = normalizeText(row.config_value.logo?.asset_id);
+    const publicUrl = urlsByAssetId.get(assetId);
+    if (!assetId || !isUuid(assetId) || !publicUrl) return row;
+
+    return {
+      ...row,
+      config_value: {
+        ...row.config_value,
+        logo: {
+          ...(row.config_value.logo || {}),
+          asset_id: assetId,
+          url: publicUrl,
+        },
+      },
+    };
+  });
+}
+
 async function readSystemConfigRows(
   db = pool,
   {
@@ -316,5 +382,6 @@ module.exports = {
   normalizeRegionCode,
   normalizeText,
   readSystemConfigRows,
+  resolveStoreProfileAssets,
   upsertSystemConfig,
 };

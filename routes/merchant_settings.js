@@ -13,6 +13,7 @@ const {
   firstConfigRows,
   normalizeEnvironment,
   readSystemConfigRows,
+  resolveStoreProfileAssets,
   upsertSystemConfig,
 } = require('../services/system_config_service');
 
@@ -26,6 +27,7 @@ const SETTINGS_SCOPE = Object.freeze({
 });
 
 const CONFIG_KEYS = Object.freeze([
+  'store.profile',
   'pricing.currency',
   'pricing.delivery_fee',
   'pricing.delivery_service_fee',
@@ -43,6 +45,23 @@ const WEEKDAY_KEYS = Object.freeze([
   'saturday',
   'sunday',
 ]);
+
+const DEFAULT_STORE_PROFILE_CONFIG = Object.freeze({
+  logo: {
+    alt: 'SpeedFeast Restaurant logo',
+    asset_id: null,
+  },
+  name: 'SpeedFeast Restaurant',
+  phone: '+1 (204) 555-0138',
+  address: {
+    city: 'Winnipeg',
+    line1: '630 Guelph Street',
+    region: 'MB',
+    country: 'Canada',
+    display: '630 Guelph Street, Winnipeg, MB, Canada',
+    postal_code: 'R3M 3B2',
+  },
+});
 
 class ValidationError extends Error {
   constructor(message, details = null) {
@@ -239,8 +258,111 @@ function normalizePublicHolidays(value, details) {
   };
 }
 
+function buildAddressDisplay(address) {
+  return [
+    address.line1,
+    address.city,
+    address.region,
+    address.country,
+  ]
+    .map((part) => normalizeText(part))
+    .filter(Boolean)
+    .join(', ');
+}
+
+function normalizeRequiredText(value, fieldName, details, fallback = '') {
+  const text = normalizeText(value);
+  if (!text) {
+    details[fieldName] = 'Required';
+    return fallback;
+  }
+  return text;
+}
+
+function normalizeStoreProfile(value, details) {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? value
+      : DEFAULT_STORE_PROFILE_CONFIG;
+  const address =
+    source.address &&
+    typeof source.address === 'object' &&
+    !Array.isArray(source.address)
+      ? source.address
+      : DEFAULT_STORE_PROFILE_CONFIG.address;
+  const logo =
+    source.logo && typeof source.logo === 'object' && !Array.isArray(source.logo)
+      ? source.logo
+      : DEFAULT_STORE_PROFILE_CONFIG.logo;
+
+  const normalizedAddress = {
+    line1: normalizeRequiredText(
+      address.line1,
+      'store.profile.address.line1',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.address.line1
+    ),
+    city: normalizeRequiredText(
+      address.city,
+      'store.profile.address.city',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.address.city
+    ),
+    region: normalizeRequiredText(
+      address.region,
+      'store.profile.address.region',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.address.region
+    ),
+    country: normalizeRequiredText(
+      address.country,
+      'store.profile.address.country',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.address.country
+    ),
+    postal_code: normalizeRequiredText(
+      address.postal_code ?? address.postalCode,
+      'store.profile.address.postal_code',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.address.postal_code
+    ),
+  };
+  normalizedAddress.display =
+    normalizeText(address.display) || buildAddressDisplay(normalizedAddress);
+
+  const assetId = normalizeText(logo.asset_id ?? logo.assetId) || null;
+  const logoConfig = {
+    alt:
+      normalizeText(logo.alt) ||
+      `${normalizeText(source.name) || DEFAULT_STORE_PROFILE_CONFIG.name} logo`,
+    asset_id: assetId,
+  };
+  const logoUrl = normalizeText(logo.url ?? logo.public_url ?? logo.publicUrl);
+  if (logoUrl) logoConfig.url = logoUrl;
+
+  return {
+    logo: logoConfig,
+    name: normalizeRequiredText(
+      source.name,
+      'store.profile.name',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.name
+    ),
+    phone: normalizeRequiredText(
+      source.phone,
+      'store.profile.phone',
+      details,
+      DEFAULT_STORE_PROFILE_CONFIG.phone
+    ),
+    address: normalizedAddress,
+  };
+}
+
 function buildDefaultConfig() {
   return {
+    store: {
+      profile: DEFAULT_STORE_PROFILE_CONFIG,
+    },
     pricing: {
       currency: DEFAULT_ORDER_PRICING_CONFIG.currency,
       delivery_fee: DEFAULT_ORDER_PRICING_CONFIG.deliveryFee,
@@ -263,6 +385,12 @@ function buildConfigFromRows(rows) {
   const config = buildDefaultConfig();
   const values = firstConfigRows(rows);
 
+  if (values.has('store.profile')) {
+    const profile = values.get('store.profile').config_value;
+    if (profile && typeof profile === 'object' && !Array.isArray(profile)) {
+      config.store.profile = profile;
+    }
+  }
   if (values.has('pricing.currency')) {
     config.pricing.currency = normalizeCurrency(
       values.get('pricing.currency').config_value
@@ -349,6 +477,13 @@ function normalizeBusinessHours(value, details) {
 
 function normalizeSettingsPayload(body) {
   const details = {};
+  const store = body.store || {};
+  const storeProfile =
+    store.profile ||
+    body.store_profile ||
+    body.storeProfile ||
+    body['store.profile'] ||
+    null;
   const pricing = body.pricing || {};
   const operations = body.operations || {};
   const fulfillment = body.fulfillment || {};
@@ -380,6 +515,11 @@ function normalizeSettingsPayload(body) {
   }
 
   const payload = {
+    store: {
+      profile: storeProfile
+        ? normalizeStoreProfile(storeProfile, details)
+        : null,
+    },
     pricing: {
       currency,
       delivery_fee: normalizeMoney(
@@ -429,7 +569,8 @@ async function fetchBuyerConfig(db = pool) {
     configKeys: CONFIG_KEYS,
     environmentFallback: 'dev',
   });
-  return buildConfigFromRows(result.rows);
+  const rows = await resolveStoreProfileAssets(db, result.rows);
+  return buildConfigFromRows(rows);
 }
 
 async function upsertConfig(client, key, value, valueType, description) {
@@ -493,6 +634,15 @@ router.post('/settings/buyer-config', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (payload.store.profile) {
+      await upsertConfig(
+        client,
+        'store.profile',
+        payload.store.profile,
+        'json',
+        'Store profile for order client'
+      );
+    }
     await upsertConfig(
       client,
       'pricing.currency',
