@@ -45,6 +45,17 @@ function normalizeProvider(value) {
   return provider || 'stripe';
 }
 
+function normalizePaymentFlow(value, platform) {
+  const flow = value ? value.toString().trim().toLowerCase() : '';
+  if (flow === 'payment_sheet' || flow === 'redirect') return flow;
+
+  const normalizedPlatform = platform
+    ? platform.toString().trim().toLowerCase()
+    : '';
+  if (['android', 'ios'].includes(normalizedPlatform)) return 'payment_sheet';
+  return 'redirect';
+}
+
 function canCreatePaymentForOrder(status) {
   return ['created', 'paid'].includes((status || '').toString().toLowerCase());
 }
@@ -184,6 +195,10 @@ router.post('/payments/create', async (req, res) => {
   const userId = authPayload.user_id;
   const orderId = req.body.order_id || req.body.orderId;
   const providerName = normalizeProvider(req.body.provider);
+  const paymentFlow = normalizePaymentFlow(
+    req.body.flow || req.body.payment_flow || req.body.paymentFlow,
+    req.body.platform
+  );
 
   if (!orderId) {
     return res.status(400).json({
@@ -266,7 +281,12 @@ router.post('/payments/create', async (req, res) => {
     );
 
     const payment = paymentResult.rows[0];
-    const providerPayment = await provider.createPayment({ order, payment });
+    const providerPayment = await provider.createPayment({
+      order,
+      payment,
+      flow: paymentFlow,
+      platform: req.body.platform,
+    });
 
     const updateResult = await client.query(
       `
@@ -305,8 +325,12 @@ router.post('/payments/create', async (req, res) => {
       payment_status: savedPayment.payment_status,
       amount: Number(savedPayment.amount || 0),
       currency: savedPayment.currency?.toString().trim() || 'CAD',
+      flow: providerPayment.flow || paymentFlow,
       checkout_url: savedPayment.checkout_url,
       client_secret: savedPayment.client_secret,
+      publishable_key: providerPayment.publishable_key || null,
+      customer_id: providerPayment.customer_id || null,
+      ephemeral_key: providerPayment.ephemeral_key || null,
     });
   } catch (err) {
     await client.query('ROLLBACK');

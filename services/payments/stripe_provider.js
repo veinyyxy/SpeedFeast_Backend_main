@@ -6,6 +6,7 @@ class StripePaymentProvider extends PaymentProvider {
     super('stripe');
     this.secretKey = process.env.STRIPE_SECRET_KEY || '';
     this.webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    this.publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
     this.successUrl =
       process.env.STRIPE_SUCCESS_URL ||
       'http://localhost:3000/payment-success?session_id={CHECKOUT_SESSION_ID}';
@@ -82,7 +83,14 @@ class StripePaymentProvider extends PaymentProvider {
     return this.stripeRequest(path, params, { method: 'GET' });
   }
 
-  async createPayment({ order, payment }) {
+  async createPayment({ order, payment, flow = 'redirect' }) {
+    if (flow === 'payment_sheet') {
+      return this.createPaymentIntent({ order, payment });
+    }
+    return this.createCheckoutSession({ order, payment });
+  }
+
+  async createCheckoutSession({ order, payment }) {
     const amountInCents = Math.round(Number(order.total_amount) * 100);
     if (!Number.isInteger(amountInCents) || amountInCents <= 0) {
       throw new Error('Order amount is invalid for Stripe payment.');
@@ -106,11 +114,44 @@ class StripePaymentProvider extends PaymentProvider {
 
     return {
       provider: this.name,
+      flow: 'redirect',
       provider_payment_id: session.payment_intent || session.id,
       provider_session_id: session.id,
       checkout_url: session.url || '',
       client_secret: session.client_secret || '',
       raw_response: session,
+      payment_status: 'pending',
+    };
+  }
+
+  async createPaymentIntent({ order, payment }) {
+    const amountInCents = Math.round(Number(order.total_amount) * 100);
+    if (!Number.isInteger(amountInCents) || amountInCents <= 0) {
+      throw new Error('Order amount is invalid for Stripe payment.');
+    }
+    if (!this.publishableKey.startsWith('pk_')) {
+      throw new Error('Stripe publishable key is not configured. Please set STRIPE_PUBLISHABLE_KEY.');
+    }
+
+    const currency = (order.currency || 'CAD').toString().trim().toLowerCase();
+    const intent = await this.stripeRequest('/payment_intents', {
+      amount: amountInCents.toString(),
+      currency,
+      description: `SpeedFeast Order ${order.order_id}`,
+      'automatic_payment_methods[enabled]': 'true',
+      'metadata[order_id]': order.order_id,
+      'metadata[payment_id]': payment.payment_id,
+    });
+
+    return {
+      provider: this.name,
+      flow: 'payment_sheet',
+      provider_payment_id: intent.id,
+      provider_session_id: null,
+      checkout_url: '',
+      client_secret: intent.client_secret || '',
+      publishable_key: this.publishableKey,
+      raw_response: intent,
       payment_status: 'pending',
     };
   }
