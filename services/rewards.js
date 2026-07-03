@@ -1,6 +1,19 @@
 const { pool } = require('../db/pgsql');
+const {
+  firstConfigRows,
+  normalizeEnvironment,
+  readSystemConfigRows,
+} = require('./system_config_service');
 
 const COMPLETED_STATUSES = new Set(['completed', 'delivered']);
+const REWARD_EARN_RATE_CONFIG_KEY = 'rewards.earn_rate';
+const DEFAULT_REWARD_POINTS_PER_CAD = 10;
+const REWARD_CONFIG_SCOPE = Object.freeze({
+  appScope: 'order_client',
+  countryCode: 'CA',
+  regionCode: 'MB',
+  environment: normalizeEnvironment(process.env.NODE_ENV || 'dev', 'dev'),
+});
 
 function normalizeNumber(value) {
   const number = Number(value);
@@ -12,13 +25,68 @@ function normalizeInt(value) {
   return Number.isInteger(number) ? number : 0;
 }
 
-function pointsPerCad() {
-  const configured = Number.parseInt(process.env.REWARD_POINTS_PER_CAD, 10);
-  return Number.isInteger(configured) && configured > 0 ? configured : 10;
+function defaultPointsPerCad() {
+  const configured = Number.parseFloat(process.env.REWARD_POINTS_PER_CAD);
+  const rounded = Number.isFinite(configured)
+    ? Number(configured.toFixed(4))
+    : 0;
+  return rounded > 0
+    ? rounded
+    : DEFAULT_REWARD_POINTS_PER_CAD;
 }
 
-function calculateEarnPoints(totalAmount) {
-  return Math.max(0, Math.floor(normalizeNumber(totalAmount) * pointsPerCad()));
+function normalizePointsPerCad(value, fallback = defaultPointsPerCad()) {
+  const parsed = Number.parseFloat(value);
+  const rounded = Number.isFinite(parsed) ? Number(parsed.toFixed(4)) : 0;
+  return rounded > 0 ? rounded : fallback;
+}
+
+function normalizeEarnRateConfig(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return {
+      points_per_cad: normalizePointsPerCad(
+        value.points_per_cad ?? value.pointsPerCad ?? value.rate ?? value.value
+      ),
+      currency: (value.currency || 'CAD').toString().trim().toUpperCase(),
+    };
+  }
+
+  return {
+    points_per_cad: normalizePointsPerCad(value),
+    currency: 'CAD',
+  };
+}
+
+async function getRewardEarnRate(db = pool) {
+  try {
+    const result = await readSystemConfigRows(db, {
+      appScope: REWARD_CONFIG_SCOPE.appScope,
+      environment: REWARD_CONFIG_SCOPE.environment,
+      countryCode: REWARD_CONFIG_SCOPE.countryCode,
+      regionCode: REWARD_CONFIG_SCOPE.regionCode,
+      city: null,
+      merchantId: null,
+      configKeys: [REWARD_EARN_RATE_CONFIG_KEY],
+      environmentFallback: 'dev',
+    });
+    const values = firstConfigRows(result.rows);
+    if (values.has(REWARD_EARN_RATE_CONFIG_KEY)) {
+      return normalizeEarnRateConfig(
+        values.get(REWARD_EARN_RATE_CONFIG_KEY).config_value
+      );
+    }
+  } catch (err) {
+    console.error('Error loading reward earn rate config:', err);
+  }
+
+  return normalizeEarnRateConfig(defaultPointsPerCad());
+}
+
+function calculateEarnPoints(totalAmount, pointsPerCad = defaultPointsPerCad()) {
+  return Math.max(
+    0,
+    Math.floor(normalizeNumber(totalAmount) * normalizePointsPerCad(pointsPerCad))
+  );
 }
 
 function serviceError(message, statusCode = 400, code = 'rewards_error') {
@@ -232,6 +300,7 @@ async function getRewardsSummary(userId) {
     await client.query('BEGIN');
     const account = await ensureLoyaltyAccount(client, userId);
     const rewards = await listActiveRewardItems(client);
+    const earnRate = await getRewardEarnRate(client);
     await client.query('COMMIT');
 
     const availablePoints = account?.available_points || 0;
@@ -243,8 +312,8 @@ async function getRewardsSummary(userId) {
       lifetime_redeemed_points: account?.lifetime_redeemed_points || 0,
       next_reward_points: nextRewardPoints(availablePoints, rewards),
       earn_rate: {
-        points_per_cad: pointsPerCad(),
-        currency: 'CAD',
+        points_per_cad: earnRate.points_per_cad,
+        currency: earnRate.currency,
       },
       rewards,
     };
@@ -904,7 +973,8 @@ async function awardPointsForCompletedOrder(client, orderId) {
     return { awarded: false, reason: 'unsupported_currency' };
   }
 
-  const points = calculateEarnPoints(order.total_amount);
+  const earnRate = await getRewardEarnRate(client);
+  const points = calculateEarnPoints(order.total_amount, earnRate.points_per_cad);
   if (points <= 0) {
     return { awarded: false, reason: 'zero_points' };
   }
@@ -931,7 +1001,7 @@ async function awardPointsForCompletedOrder(client, orderId) {
         $4,
         jsonb_build_object(
           'currency', $5::text,
-          'points_per_cad', $6::int,
+          'points_per_cad', $6::numeric,
           'source', 'order_completed'
         )
       )
@@ -945,8 +1015,8 @@ async function awardPointsForCompletedOrder(client, orderId) {
       order.order_id,
       points,
       `Earned ${points} points from completed order`,
-      order.currency || 'CAD',
-      pointsPerCad(),
+      earnRate.currency || order.currency || 'CAD',
+      earnRate.points_per_cad,
     ]
   );
 
@@ -1125,8 +1195,12 @@ async function reversePointsForOrder(client, orderId, options = {}) {
 }
 
 module.exports = {
+  DEFAULT_REWARD_POINTS_PER_CAD,
+  REWARD_CONFIG_SCOPE,
+  REWARD_EARN_RATE_CONFIG_KEY,
   awardPointsForCompletedOrder,
   calculateEarnPoints,
+  getRewardEarnRate,
   getRewardRedemptions,
   getRewardsTransactions,
   getRewardsSummary,

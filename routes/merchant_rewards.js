@@ -1,6 +1,12 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
 const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const {
+  REWARD_CONFIG_SCOPE,
+  REWARD_EARN_RATE_CONFIG_KEY,
+  getRewardEarnRate,
+} = require('../services/rewards');
+const { upsertSystemConfig } = require('../services/system_config_service');
 
 const router = express.Router();
 const REWARD_TYPES = new Set(['discount', 'product']);
@@ -32,6 +38,24 @@ function normalizeInteger(value, fallback = 0) {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function normalizePositiveNumber(value, fieldName, details) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    details[fieldName] = 'Must be a number greater than 0';
+    return 0;
+  }
+  if (parsed > 10000) {
+    details[fieldName] = 'Must be 10000 or less';
+    return 0;
+  }
+  const rounded = Number(parsed.toFixed(4));
+  if (rounded <= 0) {
+    details[fieldName] = 'Must be at least 0.0001';
+    return 0;
+  }
+  return rounded;
 }
 
 function normalizeMoney(value, fallback = 0) {
@@ -230,6 +254,88 @@ router.get('/rewards', async (req, res) => {
       success: false,
       error: 'Internal server error',
     });
+  }
+});
+
+router.get('/rewards/settings', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  try {
+    const earnRate = await getRewardEarnRate();
+    return res.status(200).json({
+      success: true,
+      settings: {
+        earn_rate: earnRate,
+      },
+    });
+  } catch (err) {
+    console.error('Error fetching merchant reward settings:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+router.post('/rewards/settings', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  const body = req.body || {};
+  const earnRate = body.earn_rate || body.earnRate || body;
+  const details = {};
+  const pointsPerCad = normalizePositiveNumber(
+    earnRate.points_per_cad ?? earnRate.pointsPerCad ?? earnRate.rate,
+    'points_per_cad',
+    details
+  );
+
+  if (Object.keys(details).length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid reward settings',
+      details,
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await upsertSystemConfig(client, {
+      configKey: REWARD_EARN_RATE_CONFIG_KEY,
+      value: {
+        points_per_cad: pointsPerCad,
+        currency: 'CAD',
+      },
+      valueType: 'json',
+      description: 'Reward points earned per CAD spent',
+      appScope: REWARD_CONFIG_SCOPE.appScope,
+      environment: REWARD_CONFIG_SCOPE.environment,
+      countryCode: REWARD_CONFIG_SCOPE.countryCode,
+      regionCode: REWARD_CONFIG_SCOPE.regionCode,
+      city: null,
+      merchantId: null,
+      environmentFallback: 'dev',
+    });
+    await client.query('COMMIT');
+
+    const savedEarnRate = await getRewardEarnRate();
+    return res.status(200).json({
+      success: true,
+      settings: {
+        earn_rate: savedEarnRate,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating merchant reward settings:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  } finally {
+    client.release();
   }
 });
 
