@@ -90,6 +90,15 @@ class StripePaymentProvider extends PaymentProvider {
     return this.createCheckoutSession({ order, payment });
   }
 
+  resolvePaymentFlow({ platform } = {}) {
+    const normalizedPlatform = platform
+      ? platform.toString().trim().toLowerCase()
+      : '';
+    return ['android', 'ios'].includes(normalizedPlatform)
+      ? 'payment_sheet'
+      : 'redirect';
+  }
+
   async createCheckoutSession({ order, payment }) {
     const amountInCents = Math.round(Number(order.total_amount) * 100);
     if (!Number.isInteger(amountInCents) || amountInCents <= 0) {
@@ -223,15 +232,34 @@ class StripePaymentProvider extends PaymentProvider {
     return 'pending';
   }
 
-  async syncPaymentRecords({ payment }) {
-    const paymentIntent = payment.provider_payment_id;
-    if (!paymentIntent || !paymentIntent.startsWith('pi_')) {
-      throw new Error('A Stripe payment intent is required to sync payment records.');
-    }
+  mapCheckoutSessionStatus(session) {
+    const status = (session.status || '').toString().toLowerCase();
+    const paymentStatus = (session.payment_status || '').toString().toLowerCase();
 
-    const paymentIntentData = await this.stripeGet(
-      `/payment_intents/${paymentIntent}`
-    );
+    if (paymentStatus === 'paid' || paymentStatus === 'no_payment_required') {
+      return 'paid';
+    }
+    if (status === 'expired') return 'failed';
+    return 'pending';
+  }
+
+  getCheckoutSessionId(payment) {
+    if (payment.provider_session_id?.startsWith('cs_')) {
+      return payment.provider_session_id;
+    }
+    if (payment.provider_payment_id?.startsWith('cs_')) {
+      return payment.provider_payment_id;
+    }
+    return null;
+  }
+
+  getPaymentIntentId(paymentIntent) {
+    if (!paymentIntent) return null;
+    if (typeof paymentIntent === 'string') return paymentIntent;
+    return paymentIntent.id || null;
+  }
+
+  async listRefundsForPaymentIntent(paymentIntent, payment) {
     const refunds = [];
     let startingAfter = null;
 
@@ -247,14 +275,68 @@ class StripePaymentProvider extends PaymentProvider {
         response.has_more && data.length > 0 ? data[data.length - 1].id : null;
     } while (startingAfter);
 
+    return refunds;
+  }
+
+  async syncPaymentRecords({ payment }) {
+    let checkoutSession = null;
+    let paymentIntent = payment.provider_payment_id?.startsWith('pi_')
+      ? payment.provider_payment_id
+      : null;
+    let expandedPaymentIntent = null;
+    const checkoutSessionId = this.getCheckoutSessionId(payment);
+
+    if (!paymentIntent && checkoutSessionId) {
+      checkoutSession = await this.stripeGet(
+        `/checkout/sessions/${checkoutSessionId}`,
+        { 'expand[]': 'payment_intent' }
+      );
+      paymentIntent = this.getPaymentIntentId(checkoutSession.payment_intent);
+      if (
+        checkoutSession.payment_intent &&
+        typeof checkoutSession.payment_intent === 'object'
+      ) {
+        expandedPaymentIntent = checkoutSession.payment_intent;
+      }
+
+      if (!paymentIntent) {
+        return {
+          provider_payment_id: payment.provider_payment_id || checkoutSession.id,
+          provider_session_id: checkoutSession.id,
+          payment_status: this.mapCheckoutSessionStatus(checkoutSession),
+          amount: Number(checkoutSession.amount_total || payment.amount * 100) / 100,
+          currency: (checkoutSession.currency || payment.currency || 'CAD')
+            .toString()
+            .toUpperCase(),
+          refunds: [],
+          raw_response: checkoutSession,
+        };
+      }
+    }
+
+    if (!paymentIntent || !paymentIntent.startsWith('pi_')) {
+      throw new Error('A Stripe payment intent or checkout session is required to sync payment records.');
+    }
+
+    const paymentIntentData = expandedPaymentIntent ||
+      await this.stripeGet(`/payment_intents/${paymentIntent}`);
+    const refunds = await this.listRefundsForPaymentIntent(
+      paymentIntent,
+      payment
+    );
+
     return {
+      provider_payment_id: paymentIntent,
+      provider_session_id: checkoutSession?.id || payment.provider_session_id || null,
       payment_status: this.mapPaymentIntentStatus(paymentIntentData.status),
       amount: Number(paymentIntentData.amount || payment.amount * 100) / 100,
       currency: (paymentIntentData.currency || payment.currency || 'CAD')
         .toString()
         .toUpperCase(),
       refunds,
-      raw_response: paymentIntentData,
+      raw_response: checkoutSession
+        ? { checkout_session: checkoutSession, payment_intent: paymentIntentData }
+        : paymentIntentData,
     };
   }
 
@@ -323,7 +405,7 @@ class StripePaymentProvider extends PaymentProvider {
         order_id: metadata.order_id || object.client_reference_id || null,
         provider_payment_id: object.payment_intent || object.id,
         provider_session_id: object.id,
-        payment_status: 'cancelled',
+        payment_status: 'failed',
       };
     }
 

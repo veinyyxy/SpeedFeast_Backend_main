@@ -7,6 +7,10 @@ class PaymentProvider {
     throw new Error(`${this.name} createPayment is not implemented`);
   }
 
+  resolvePaymentFlow() {
+    return 'redirect';
+  }
+
   async getPaymentStatus() {
     throw new Error(`${this.name} getPaymentStatus is not implemented`);
   }

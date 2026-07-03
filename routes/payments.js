@@ -40,22 +40,6 @@ function authenticateRequest(req, res) {
   return jwtResult.payload;
 }
 
-function normalizeProvider(value) {
-  const provider = value ? value.toString().trim().toLowerCase() : 'stripe';
-  return provider || 'stripe';
-}
-
-function normalizePaymentFlow(value, platform) {
-  const flow = value ? value.toString().trim().toLowerCase() : '';
-  if (flow === 'payment_sheet' || flow === 'redirect') return flow;
-
-  const normalizedPlatform = platform
-    ? platform.toString().trim().toLowerCase()
-    : '';
-  if (['android', 'ios'].includes(normalizedPlatform)) return 'payment_sheet';
-  return 'redirect';
-}
-
 function canCreatePaymentForOrder(status) {
   return ['created', 'paid'].includes((status || '').toString().toLowerCase());
 }
@@ -194,11 +178,6 @@ router.post('/payments/create', async (req, res) => {
 
   const userId = authPayload.user_id;
   const orderId = req.body.order_id || req.body.orderId;
-  const providerName = normalizeProvider(req.body.provider);
-  const paymentFlow = normalizePaymentFlow(
-    req.body.flow || req.body.payment_flow || req.body.paymentFlow,
-    req.body.platform
-  );
 
   if (!orderId) {
     return res.status(400).json({
@@ -210,7 +189,11 @@ router.post('/payments/create', async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const provider = getPaymentProvider(providerName);
+    const provider = getPaymentProvider();
+    const providerName = provider.name;
+    const paymentFlow = provider.resolvePaymentFlow({
+      platform: req.body.platform,
+    });
     await client.query('BEGIN');
 
     const orderResult = await client.query(

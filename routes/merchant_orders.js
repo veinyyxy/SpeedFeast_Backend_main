@@ -632,10 +632,12 @@ async function applySyncedPaymentState(client, order, payment, providerSync) {
       SET payment_status = $1,
           amount = $2,
           currency = $3,
+          provider_payment_id = COALESCE($4::text, provider_payment_id),
+          provider_session_id = COALESCE($5::text, provider_session_id),
           raw_response = COALESCE(raw_response, '{}'::jsonb)
-            || jsonb_build_object('provider_sync', $4::jsonb),
+            || jsonb_build_object('provider_sync', $6::jsonb),
           updated_at = now()
-      WHERE payment_id = $5::uuid
+      WHERE payment_id = $7::uuid
     `,
     [
       nextPaymentStatus,
@@ -644,12 +646,15 @@ async function applySyncedPaymentState(client, order, payment, providerSync) {
         .toString()
         .trim()
         .toUpperCase(),
+      normalizeText(providerSync.provider_payment_id),
+      normalizeText(providerSync.provider_session_id),
       JSON.stringify(providerSync.raw_response || {}),
       payment.payment_id,
     ]
   );
 
   let nextOrderStatus = order.order_status;
+  const currentOrderStatus = (order.order_status || '').toString().toLowerCase();
   if (refundedAmount > 0) {
     nextOrderStatus = fullyRefunded ? 'refunded' : 'partially_refunded';
     await client.query(
@@ -661,6 +666,23 @@ async function applySyncedPaymentState(client, order, payment, providerSync) {
       `,
       [nextOrderStatus, order.order_id]
     );
+  } else if (
+    nextPaymentStatus === 'paid' &&
+    ['created', 'paid'].includes(currentOrderStatus)
+  ) {
+    nextOrderStatus = 'paid';
+    if (currentOrderStatus !== 'paid') {
+      await client.query(
+        `
+          UPDATE public."Order"
+          SET order_status = $1,
+              updated_at = now()
+          WHERE order_id = $2::uuid
+            AND order_status IN ('created', 'paid')
+        `,
+        [nextOrderStatus, order.order_id]
+      );
+    }
   }
 
   return {
