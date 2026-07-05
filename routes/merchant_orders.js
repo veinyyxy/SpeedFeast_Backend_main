@@ -7,6 +7,10 @@ const {
   reversePointsForOrder,
 } = require('../services/rewards');
 const { getPaymentProvider } = require('../services/payments');
+const {
+  recordNewPaidOrderNotification,
+  sendMerchantNotificationInBackground,
+} = require('../services/merchant_notifications');
 
 const router = express.Router();
 
@@ -811,6 +815,7 @@ router.post('/orders/payments/sync', async (req, res) => {
   const client = await pool.connect();
   let rewardsResult = null;
   let rewardRedemptionsResult = null;
+  let merchantNotificationId = null;
 
   try {
     await client.query('BEGIN');
@@ -865,6 +870,26 @@ router.post('/orders/payments/sync', async (req, res) => {
     );
 
     if (
+      syncSummary.payment_status === 'paid' &&
+      syncSummary.order_status === 'paid'
+    ) {
+      const notification = await recordNewPaidOrderNotification(
+        client,
+        orderId,
+        {
+          source: 'merchant_payment_sync',
+          provider: payment.provider,
+          payment_id: payment.payment_id,
+          provider_payment_id: providerSync.provider_payment_id || payment.provider_payment_id,
+          provider_session_id: providerSync.provider_session_id || payment.provider_session_id,
+        }
+      );
+      if (notification.queued) {
+        merchantNotificationId = notification.notification_id;
+      }
+    }
+
+    if (
       syncSummary.order_status === 'refunded' &&
       order.order_status !== 'refunded'
     ) {
@@ -880,6 +905,9 @@ router.post('/orders/payments/sync', async (req, res) => {
     }
 
     await client.query('COMMIT');
+    if (merchantNotificationId) {
+      sendMerchantNotificationInBackground(merchantNotificationId);
+    }
 
     const refreshedOrderResult = await pool.query(
       `

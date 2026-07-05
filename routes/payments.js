@@ -7,6 +7,10 @@ const {
 } = require('../secutiry/verify_signature');
 const { getPaymentProvider } = require('../services/payments');
 const {
+  recordNewPaidOrderNotification,
+  sendMerchantNotificationInBackground,
+} = require('../services/merchant_notifications');
+const {
   restoreOrderRewardRedemptions,
   reversePointsForOrder,
 } = require('../services/rewards');
@@ -135,6 +139,7 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
   if (!payment) return null;
 
   const nextOrderStatus = paymentStatusToOrderStatus(update.payment_status);
+  let merchantNotificationId = null;
   if (nextOrderStatus) {
     if (nextOrderStatus === 'paid') {
       await client.query(
@@ -147,6 +152,22 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
         `,
         [nextOrderStatus, payment.order_id]
       );
+      const notification = await recordNewPaidOrderNotification(
+        client,
+        payment.order_id,
+        {
+          source: 'payment_webhook',
+          provider: providerName,
+          payment_id: payment.payment_id,
+          provider_payment_id: payment.provider_payment_id,
+          provider_session_id: payment.provider_session_id,
+          event_type: event?.type || null,
+          provider_event_id: event?.id || null,
+        }
+      );
+      if (notification.queued) {
+        merchantNotificationId = notification.notification_id;
+      }
     } else if (nextOrderStatus === 'refunded') {
       await client.query(
         `
@@ -169,6 +190,7 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
     }
   }
 
+  payment.merchant_notification_id = merchantNotificationId;
   return payment;
 }
 
@@ -422,7 +444,12 @@ router.post('/payments/webhook/stripe', async (req, res) => {
       ]
     );
 
+    const merchantNotificationId = payment?.merchant_notification_id || null;
+
     await client.query('COMMIT');
+    if (merchantNotificationId) {
+      sendMerchantNotificationInBackground(merchantNotificationId);
+    }
     return res.status(200).json({ received: true });
   } catch (err) {
     await client.query('ROLLBACK');
