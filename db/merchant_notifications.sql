@@ -103,6 +103,16 @@ CREATE TABLE IF NOT EXISTS public.merchant_notification_reads (
 CREATE INDEX IF NOT EXISTS idx_merchant_notification_reads_user
   ON public.merchant_notification_reads(merchant_user_id, read_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.merchant_notification_dismissals (
+  notification_id uuid NOT NULL REFERENCES public.merchant_notification_outbox(notification_id) ON DELETE CASCADE,
+  merchant_user_id uuid NOT NULL REFERENCES public.merchant_users(merchant_user_id) ON DELETE CASCADE,
+  dismissed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (notification_id, merchant_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_merchant_notification_dismissals_user
+  ON public.merchant_notification_dismissals(merchant_user_id, dismissed_at DESC);
+
 CREATE TABLE IF NOT EXISTS public.merchant_notification_deliveries (
   delivery_id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   notification_id uuid NOT NULL REFERENCES public.merchant_notification_outbox(notification_id) ON DELETE CASCADE,

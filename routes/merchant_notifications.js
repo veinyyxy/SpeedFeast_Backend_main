@@ -45,6 +45,28 @@ function normalizeBoolean(value) {
   return text === 'true' || text === '1' || text === 'yes';
 }
 
+let dismissalsSchemaPromise = null;
+
+function ensureNotificationDismissalsSchema() {
+  if (!dismissalsSchemaPromise) {
+    dismissalsSchemaPromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS public.merchant_notification_dismissals (
+        notification_id uuid NOT NULL REFERENCES public.merchant_notification_outbox(notification_id) ON DELETE CASCADE,
+        merchant_user_id uuid NOT NULL REFERENCES public.merchant_users(merchant_user_id) ON DELETE CASCADE,
+        dismissed_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (notification_id, merchant_user_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_merchant_notification_dismissals_user
+        ON public.merchant_notification_dismissals(merchant_user_id, dismissed_at DESC);
+    `).catch((err) => {
+      dismissalsSchemaPromise = null;
+      throw err;
+    });
+  }
+  return dismissalsSchemaPromise;
+}
+
 function normalizeNotification(row) {
   return {
     notification_id: row.notification_id,
@@ -85,7 +107,7 @@ router.get('/notifications', async (req, res) => {
   const orderId = normalizeText(req.query.order_id || req.query.orderId);
 
   const params = [authPayload.merchant_user_id];
-  const whereParts = [];
+  const whereParts = ['d.notification_id IS NULL'];
   if (orderId) {
     params.push(orderId);
     whereParts.push(`n.order_id = $${params.length}::uuid`);
@@ -99,6 +121,7 @@ router.get('/notifications', async (req, res) => {
   const offsetParam = params.length;
 
   try {
+    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
         SELECT
@@ -119,7 +142,10 @@ router.get('/notifications', async (req, res) => {
         LEFT JOIN public.merchant_notification_reads r
           ON r.notification_id = n.notification_id
          AND r.merchant_user_id = $1::uuid
-        ${whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : ''}
+        LEFT JOIN public.merchant_notification_dismissals d
+          ON d.notification_id = n.notification_id
+         AND d.merchant_user_id = $1::uuid
+        WHERE ${whereParts.join(' AND ')}
         ORDER BY n.created_at DESC
         LIMIT $${limitParam}
         OFFSET $${offsetParam}
@@ -147,6 +173,7 @@ router.get('/notifications/unread-count', async (req, res) => {
   if (!authPayload) return;
 
   try {
+    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
         SELECT COUNT(*)::integer AS unread_count
@@ -154,7 +181,11 @@ router.get('/notifications/unread-count', async (req, res) => {
         LEFT JOIN public.merchant_notification_reads r
           ON r.notification_id = n.notification_id
          AND r.merchant_user_id = $1::uuid
+        LEFT JOIN public.merchant_notification_dismissals d
+          ON d.notification_id = n.notification_id
+         AND d.merchant_user_id = $1::uuid
         WHERE r.read_at IS NULL
+          AND d.notification_id IS NULL
       `,
       [authPayload.merchant_user_id]
     );
@@ -241,6 +272,7 @@ router.post('/notifications/read-all', async (req, res) => {
   if (!authPayload) return;
 
   try {
+    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
         INSERT INTO public.merchant_notification_reads (
@@ -249,7 +281,13 @@ router.post('/notifications/read-all', async (req, res) => {
           read_at
         )
         SELECT notification_id, $1::uuid, now()
-        FROM public.merchant_notification_outbox
+        FROM public.merchant_notification_outbox n
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM public.merchant_notification_dismissals d
+          WHERE d.notification_id = n.notification_id
+            AND d.merchant_user_id = $1::uuid
+        )
         ON CONFLICT (notification_id, merchant_user_id)
         DO UPDATE SET read_at = EXCLUDED.read_at
       `,
@@ -263,6 +301,48 @@ router.post('/notifications/read-all', async (req, res) => {
     });
   } catch (err) {
     console.error('Error marking merchant notifications read:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+router.post('/notifications/delete-read', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  try {
+    await ensureNotificationDismissalsSchema();
+    const result = await pool.query(
+      `
+        INSERT INTO public.merchant_notification_dismissals (
+          notification_id,
+          merchant_user_id,
+          dismissed_at
+        )
+        SELECT n.notification_id, $1::uuid, now()
+        FROM public.merchant_notification_outbox n
+        INNER JOIN public.merchant_notification_reads r
+          ON r.notification_id = n.notification_id
+         AND r.merchant_user_id = $1::uuid
+        LEFT JOIN public.merchant_notification_dismissals d
+          ON d.notification_id = n.notification_id
+         AND d.merchant_user_id = $1::uuid
+        WHERE d.notification_id IS NULL
+        ON CONFLICT (notification_id, merchant_user_id)
+        DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
+      `,
+      [authPayload.merchant_user_id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      dismissed_count: result.rowCount || 0,
+      dismissedCount: result.rowCount || 0,
+    });
+  } catch (err) {
+    console.error('Error deleting read merchant notifications:', err);
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -314,6 +394,61 @@ router.post('/notifications/test', async (req, res) => {
     });
   } finally {
     client.release();
+  }
+});
+
+router.post('/notifications/:notification_id/delete', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  const notificationId = normalizeText(
+    req.params.notification_id || req.params.notificationId
+  );
+  if (!notificationId) {
+    return res.status(400).json({
+      success: false,
+      error: 'notification_id is required',
+    });
+  }
+
+  try {
+    await ensureNotificationDismissalsSchema();
+    const result = await pool.query(
+      `
+        WITH target AS (
+          SELECT notification_id
+          FROM public.merchant_notification_outbox
+          WHERE notification_id = $1::uuid
+          LIMIT 1
+        )
+        INSERT INTO public.merchant_notification_dismissals (
+          notification_id,
+          merchant_user_id,
+          dismissed_at
+        )
+        SELECT notification_id, $2::uuid, now()
+        FROM target
+        ON CONFLICT (notification_id, merchant_user_id)
+        DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
+        RETURNING notification_id
+      `,
+      [notificationId, authPayload.merchant_user_id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notification not found',
+      });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Error deleting merchant notification:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
   }
 });
 

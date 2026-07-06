@@ -2,8 +2,11 @@ const { pool } = require('../db/pgsql');
 const fcmProvider = require('./fcm_provider');
 
 const NEW_PAID_ORDER_EVENT = 'new_paid_order';
+const CUSTOMER_CANCELLED_ORDER_EVENT = 'customer_cancelled_order';
 const ACTION_OPEN_ORDER = 'open_order';
 const ACTION_OPEN_ORDERS = 'open_orders';
+const ANDROID_NEW_ORDERS_CHANNEL_ID = 'new_orders';
+const ANDROID_ORDER_CANCELLED_CHANNEL_ID = 'order_cancelled';
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -45,6 +48,12 @@ function toFcmData(data) {
   }, {});
 }
 
+function getAndroidChannelId(eventType) {
+  return eventType === CUSTOMER_CANCELLED_ORDER_EVENT
+    ? ANDROID_ORDER_CANCELLED_CHANNEL_ID
+    : ANDROID_NEW_ORDERS_CHANNEL_ID;
+}
+
 async function fetchOrderNotificationContext(client, orderId) {
   const textOrderId = normalizeText(orderId);
   if (!textOrderId) return null;
@@ -69,6 +78,17 @@ function buildNewPaidOrderContent(order, orderId) {
 
   return {
     title: 'New paid order',
+    body: `Order #${shortOrderId(orderId)} - ${fulfillment} - ${currency} ${total.toFixed(2)}`,
+  };
+}
+
+function buildCustomerCancelledOrderContent(order, orderId) {
+  const currency = normalizeText(order?.currency) || 'CAD';
+  const total = normalizeMoney(order?.total_amount);
+  const fulfillment = humanizeFulfillment(order?.fulfillment_type);
+
+  return {
+    title: 'Order cancelled by customer',
     body: `Order #${shortOrderId(orderId)} - ${fulfillment} - ${currency} ${total.toFixed(2)}`,
   };
 }
@@ -153,6 +173,38 @@ async function recordNewPaidOrderNotification(client, orderId, payload = {}) {
   });
 }
 
+async function recordCustomerCancelledOrderNotification(
+  client,
+  orderId,
+  payload = {}
+) {
+  const textOrderId = normalizeText(orderId);
+  if (!textOrderId) return { queued: false, reason: 'missing_order_id' };
+
+  const order = await fetchOrderNotificationContext(client, textOrderId);
+  if (!order) return { queued: false, reason: 'order_not_found' };
+
+  const content = buildCustomerCancelledOrderContent(order, textOrderId);
+  return recordMerchantNotification(client, {
+    eventType: CUSTOMER_CANCELLED_ORDER_EVENT,
+    orderId: textOrderId,
+    dedupeKey: `${CUSTOMER_CANCELLED_ORDER_EVENT}:${textOrderId}`,
+    title: content.title,
+    body: content.body,
+    actionType: ACTION_OPEN_ORDER,
+    actionPayload: {
+      order_id: textOrderId,
+      status: 'cancelled',
+      cancelled_by: 'customer',
+    },
+    payload: {
+      ...normalizeObject(payload),
+      source: payload.source || 'customer_cancelled_order',
+      cancelled_by: 'customer',
+    },
+  });
+}
+
 async function fetchNotificationContext(notificationId) {
   const result = await pool.query(
     `
@@ -219,7 +271,7 @@ function buildMerchantNotificationMessage(notification, token) {
     android: {
       priority: 'high',
       notification: {
-        channel_id: 'new_orders',
+        channel_id: getAndroidChannelId(eventType),
         sound: 'default',
       },
     },
@@ -416,6 +468,7 @@ module.exports = {
   ACTION_OPEN_ORDER,
   ACTION_OPEN_ORDERS,
   recordMerchantNotification,
+  recordCustomerCancelledOrderNotification,
   recordNewPaidOrderNotification,
   sendMerchantNotificationById,
   sendMerchantNotificationInBackground,

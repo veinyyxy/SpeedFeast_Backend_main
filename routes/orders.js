@@ -15,6 +15,10 @@ const {
   businessStateAt,
   getOrderOperationsConfig,
 } = require('../services/order_operations_config');
+const {
+  recordCustomerCancelledOrderNotification,
+  sendMerchantNotificationInBackground,
+} = require('../services/merchant_notifications');
 
 const router = express.Router();
 
@@ -952,6 +956,7 @@ router.post('/orders/cancel', async (req, res) => {
   }
 
   const client = await pool.connect();
+  let merchantNotificationId = null;
 
   try {
     await client.query('BEGIN');
@@ -1025,8 +1030,23 @@ router.post('/orders/cancel', async (req, res) => {
       orderId,
       { source: 'customer_cancel' }
     );
+    const notification = await recordCustomerCancelledOrderNotification(
+      client,
+      orderId,
+      {
+        source: 'customer_cancel',
+        previous_status: currentOrder.order_status,
+        user_id: userId,
+      }
+    );
+    if (notification.queued) {
+      merchantNotificationId = notification.notification_id;
+    }
 
     await client.query('COMMIT');
+    if (merchantNotificationId) {
+      sendMerchantNotificationInBackground(merchantNotificationId);
+    }
 
     return res.status(200).json({
       success: true,
