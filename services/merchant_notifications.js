@@ -2,6 +2,8 @@ const { pool } = require('../db/pgsql');
 const fcmProvider = require('./fcm_provider');
 
 const NEW_PAID_ORDER_EVENT = 'new_paid_order';
+const ACTION_OPEN_ORDER = 'open_order';
+const ACTION_OPEN_ORDERS = 'open_orders';
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -11,6 +13,12 @@ function normalizeText(value) {
 function normalizeMoney(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) ? Number(number.toFixed(2)) : 0;
+}
+
+function normalizeObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : {};
 }
 
 function shortOrderId(orderId) {
@@ -29,27 +37,83 @@ function humanizeFulfillment(value) {
     .join(' ');
 }
 
-async function recordNewPaidOrderNotification(client, orderId, payload = {}) {
-  if (!orderId) return { queued: false, reason: 'missing_order_id' };
+function toFcmData(data) {
+  return Object.entries(data || {}).reduce((acc, [key, value]) => {
+    if (value === undefined || value === null) return acc;
+    acc[key] = typeof value === 'string' ? value : JSON.stringify(value);
+    return acc;
+  }, {});
+}
+
+async function fetchOrderNotificationContext(client, orderId) {
+  const textOrderId = normalizeText(orderId);
+  if (!textOrderId) return null;
+
+  const result = await client.query(
+    `
+      SELECT order_id, total_amount, currency, fulfillment_type
+      FROM public."Order"
+      WHERE order_id = $1::uuid
+      LIMIT 1
+    `,
+    [textOrderId]
+  );
+
+  return result.rows[0] || null;
+}
+
+function buildNewPaidOrderContent(order, orderId) {
+  const currency = normalizeText(order?.currency) || 'CAD';
+  const total = normalizeMoney(order?.total_amount);
+  const fulfillment = humanizeFulfillment(order?.fulfillment_type);
+
+  return {
+    title: 'New paid order',
+    body: `Order #${shortOrderId(orderId)} - ${fulfillment} - ${currency} ${total.toFixed(2)}`,
+  };
+}
+
+async function recordMerchantNotification(client, options = {}) {
+  const eventType = normalizeText(options.eventType || options.event_type);
+  if (!eventType) return { queued: false, reason: 'missing_event_type' };
+
+  const orderId = normalizeText(options.orderId || options.order_id) || null;
+  const dedupeKey =
+    normalizeText(options.dedupeKey || options.dedupe_key) ||
+    `${eventType}:${orderId || Date.now().toString()}`;
+  const actionType =
+    normalizeText(options.actionType || options.action_type) ||
+    (orderId ? ACTION_OPEN_ORDER : ACTION_OPEN_ORDERS);
+  const actionPayload = {
+    ...normalizeObject(options.actionPayload || options.action_payload),
+  };
+  if (orderId && !actionPayload.order_id) actionPayload.order_id = orderId;
 
   const result = await client.query(
     `
       INSERT INTO public.merchant_notification_outbox (
         event_type,
         order_id,
+        dedupe_key,
+        title,
+        body,
+        action_type,
+        action_payload,
         payload
       )
-      VALUES ($1, $2::uuid, $3::jsonb)
-      ON CONFLICT (event_type, order_id) DO NOTHING
+      VALUES ($1, $2::uuid, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
+      ON CONFLICT (event_type, dedupe_key) DO NOTHING
       RETURNING notification_id
     `,
     [
-      NEW_PAID_ORDER_EVENT,
+      eventType,
       orderId,
-      JSON.stringify({
-        ...payload,
-        source: payload.source || 'payment_status_paid',
-      }),
+      dedupeKey,
+      normalizeText(options.title) || 'Merchant notification',
+      normalizeText(options.body),
+      actionType,
+      JSON.stringify(actionPayload),
+      JSON.stringify(normalizeObject(options.payload)),
     ]
   );
 
@@ -63,6 +127,32 @@ async function recordNewPaidOrderNotification(client, orderId, payload = {}) {
   };
 }
 
+async function recordNewPaidOrderNotification(client, orderId, payload = {}) {
+  const textOrderId = normalizeText(orderId);
+  if (!textOrderId) return { queued: false, reason: 'missing_order_id' };
+
+  const order = await fetchOrderNotificationContext(client, textOrderId);
+  if (!order) return { queued: false, reason: 'order_not_found' };
+
+  const content = buildNewPaidOrderContent(order, textOrderId);
+  return recordMerchantNotification(client, {
+    eventType: NEW_PAID_ORDER_EVENT,
+    orderId: textOrderId,
+    dedupeKey: `${NEW_PAID_ORDER_EVENT}:${textOrderId}`,
+    title: content.title,
+    body: content.body,
+    actionType: ACTION_OPEN_ORDER,
+    actionPayload: {
+      order_id: textOrderId,
+      status: 'paid',
+    },
+    payload: {
+      ...normalizeObject(payload),
+      source: payload.source || 'payment_status_paid',
+    },
+  });
+}
+
 async function fetchNotificationContext(notificationId) {
   const result = await pool.query(
     `
@@ -70,13 +160,18 @@ async function fetchNotificationContext(notificationId) {
         n.notification_id,
         n.event_type,
         n.order_id,
+        n.dedupe_key,
+        n.title,
+        n.body,
+        n.action_type,
+        n.action_payload,
         n.payload,
         n.status,
         o.total_amount,
         o.currency,
         o.fulfillment_type
       FROM public.merchant_notification_outbox n
-      INNER JOIN public."Order" o
+      LEFT JOIN public."Order" o
         ON o.order_id = n.order_id
       WHERE n.notification_id = $1::uuid
     `,
@@ -99,14 +194,12 @@ async function fetchActiveMerchantDeviceTokens() {
   return result.rows;
 }
 
-function buildNewPaidOrderMessage(notification, token) {
-  const currency = normalizeText(notification.currency) || 'CAD';
-  const total = normalizeMoney(notification.total_amount);
-  const orderId = normalizeText(notification.order_id);
-  const shortId = shortOrderId(orderId);
-  const fulfillment = humanizeFulfillment(notification.fulfillment_type);
-  const title = 'New paid order';
-  const body = `Order #${shortId} · ${fulfillment} · ${currency} ${total.toFixed(2)}`;
+function buildMerchantNotificationMessage(notification, token) {
+  const actionPayload = normalizeObject(notification.action_payload);
+  const orderId = normalizeText(actionPayload.order_id || notification.order_id);
+  const eventType = normalizeText(notification.event_type);
+  const title = normalizeText(notification.title) || 'SpeedFeast Merchant';
+  const body = normalizeText(notification.body) || 'You have a new notification.';
 
   return {
     token,
@@ -114,12 +207,15 @@ function buildNewPaidOrderMessage(notification, token) {
       title,
       body,
     },
-    data: {
-      type: NEW_PAID_ORDER_EVENT,
-      order_id: orderId,
-      status: 'paid',
+    data: toFcmData({
+      type: eventType,
+      event_type: eventType,
       notification_id: normalizeText(notification.notification_id),
-    },
+      order_id: orderId,
+      action_type: normalizeText(notification.action_type) || ACTION_OPEN_ORDERS,
+      action_payload: actionPayload,
+      status: actionPayload.status || '',
+    }),
     android: {
       priority: 'high',
       notification: {
@@ -196,6 +292,49 @@ async function deactivateInvalidDeviceTokens(failures) {
   return result.rowCount || 0;
 }
 
+async function recordDeliveryResults(notificationId, tokens, results) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const result = results[index];
+    const sent = result.status === 'fulfilled';
+    const error =
+      sent
+        ? null
+        : result.reason?.message ||
+          result.reason?.toString() ||
+          'FCM send failed';
+    const response =
+      sent
+        ? result.value || {}
+        : {
+            status: result.reason?.status || null,
+            details: result.reason?.details || null,
+          };
+
+    await pool.query(
+      `
+        INSERT INTO public.merchant_notification_deliveries (
+          notification_id,
+          device_token_id,
+          platform,
+          status,
+          response,
+          error_message
+        )
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6)
+      `,
+      [
+        notificationId,
+        token.device_token_id,
+        token.platform || 'unknown',
+        sent ? 'sent' : 'failed',
+        JSON.stringify(response),
+        error,
+      ]
+    );
+  }
+}
+
 async function sendMerchantNotificationById(notificationId) {
   const notification = await fetchNotificationContext(notificationId);
   if (!notification) return { sent: false, reason: 'notification_not_found' };
@@ -222,18 +361,24 @@ async function sendMerchantNotificationById(notificationId) {
   const results = await Promise.allSettled(
     tokens.map((token) =>
       fcmProvider.sendMessage(
-        buildNewPaidOrderMessage(notification, token.fcm_token)
+        buildMerchantNotificationMessage(notification, token.fcm_token)
       )
     )
   );
-  const successCount = results.filter((result) => result.status === 'fulfilled').length;
+  await recordDeliveryResults(notificationId, tokens, results);
+
+  const successCount = results.filter((result) => result.status === 'fulfilled')
+    .length;
   const failed = results
     .map((result, index) => ({ result, token: tokens[index] }))
     .filter((item) => item.result.status === 'rejected')
     .map((item) => ({
       device_token_id: item.token.device_token_id,
       platform: item.token.platform,
-      error: item.result.reason?.message || item.result.reason?.toString() || 'FCM send failed',
+      error:
+        item.result.reason?.message ||
+        item.result.reason?.toString() ||
+        'FCM send failed',
       status: item.result.reason?.status || null,
     }));
   const deactivatedTokenCount = await deactivateInvalidDeviceTokens(failed);
@@ -268,6 +413,9 @@ function sendMerchantNotificationInBackground(notificationId) {
 
 module.exports = {
   NEW_PAID_ORDER_EVENT,
+  ACTION_OPEN_ORDER,
+  ACTION_OPEN_ORDERS,
+  recordMerchantNotification,
   recordNewPaidOrderNotification,
   sendMerchantNotificationById,
   sendMerchantNotificationInBackground,
