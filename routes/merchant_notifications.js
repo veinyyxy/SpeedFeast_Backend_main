@@ -6,6 +6,11 @@ const {
   recordMerchantNotification,
   sendMerchantNotificationInBackground,
 } = require('../services/merchant_notifications');
+const notificationRepository = require('../services/notifications/notification_repository');
+const {
+  OWNER_TYPES,
+  RECIPIENT_TYPES,
+} = require('../services/notifications/notification_core');
 
 const router = express.Router();
 const PLATFORMS = new Set([
@@ -45,36 +50,42 @@ function normalizeBoolean(value) {
   return text === 'true' || text === '1' || text === 'yes';
 }
 
-let dismissalsSchemaPromise = null;
+function merchantRecipientKeys(merchantUserId) {
+  return [
+    'merchant:all',
+    `${RECIPIENT_TYPES.MERCHANT_USER}:${merchantUserId}`,
+  ];
+}
 
-function ensureNotificationDismissalsSchema() {
-  if (!dismissalsSchemaPromise) {
-    dismissalsSchemaPromise = pool.query(`
-      CREATE TABLE IF NOT EXISTS public.merchant_notification_dismissals (
-        notification_id uuid NOT NULL REFERENCES public.merchant_notification_outbox(notification_id) ON DELETE CASCADE,
-        merchant_user_id uuid NOT NULL REFERENCES public.merchant_users(merchant_user_id) ON DELETE CASCADE,
-        dismissed_at timestamptz NOT NULL DEFAULT now(),
-        PRIMARY KEY (notification_id, merchant_user_id)
-      );
+function normalizeDeviceToken(row) {
+  return {
+    ...row,
+    merchant_user_id: row.owner_id,
+    merchantUserId: row.owner_id,
+  };
+}
 
-      CREATE INDEX IF NOT EXISTS idx_merchant_notification_dismissals_user
-        ON public.merchant_notification_dismissals(merchant_user_id, dismissed_at DESC);
-    `).catch((err) => {
-      dismissalsSchemaPromise = null;
-      throw err;
-    });
-  }
-  return dismissalsSchemaPromise;
+function orderIdFromNotification(row) {
+  const actionPayload =
+    row.action_payload && typeof row.action_payload === 'object'
+      ? row.action_payload
+      : {};
+  return normalizeText(
+    actionPayload.order_id ||
+      actionPayload.orderId ||
+      (row.entity_type === 'order' ? row.entity_id : row.order_id)
+  );
 }
 
 function normalizeNotification(row) {
+  const orderId = orderIdFromNotification(row);
   return {
     notification_id: row.notification_id,
     notificationId: row.notification_id,
     event_type: row.event_type,
     eventType: row.event_type,
-    order_id: row.order_id,
-    orderId: row.order_id,
+    order_id: orderId,
+    orderId,
     title: row.title,
     body: row.body,
     action_type: row.action_type,
@@ -105,12 +116,22 @@ router.get('/notifications', async (req, res) => {
   const offset = normalizeOffset(req.query.offset);
   const unreadOnly = normalizeBoolean(req.query.unread_only || req.query.unreadOnly);
   const orderId = normalizeText(req.query.order_id || req.query.orderId);
+  const ownerType = OWNER_TYPES.MERCHANT_USER;
+  const ownerId = authPayload.merchant_user_id;
+  const recipientKeys = merchantRecipientKeys(ownerId);
 
-  const params = [authPayload.merchant_user_id];
-  const whereParts = ['d.notification_id IS NULL'];
+  const params = [ownerType, ownerId, recipientKeys];
+  const whereParts = [
+    'n.recipient_key = ANY($3::text[])',
+    'd.notification_id IS NULL',
+  ];
   if (orderId) {
     params.push(orderId);
-    whereParts.push(`n.order_id = $${params.length}::uuid`);
+    whereParts.push(`(
+      (n.entity_type = 'order' AND n.entity_id = $${params.length}::uuid)
+      OR n.action_payload->>'order_id' = $${params.length}
+      OR n.action_payload->>'orderId' = $${params.length}
+    )`);
   }
   if (unreadOnly) {
     whereParts.push('r.read_at IS NULL');
@@ -121,13 +142,16 @@ router.get('/notifications', async (req, res) => {
   const offsetParam = params.length;
 
   try {
-    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
         SELECT
           n.notification_id,
+          n.recipient_type,
+          n.recipient_id,
+          n.recipient_key,
           n.event_type,
-          n.order_id,
+          n.entity_type,
+          n.entity_id,
           n.title,
           n.body,
           n.action_type,
@@ -138,13 +162,15 @@ router.get('/notifications', async (req, res) => {
           n.sent_at,
           n.created_at,
           n.updated_at
-        FROM public.merchant_notification_outbox n
-        LEFT JOIN public.merchant_notification_reads r
+        FROM public.notification_outbox n
+        LEFT JOIN public.notification_reads r
           ON r.notification_id = n.notification_id
-         AND r.merchant_user_id = $1::uuid
-        LEFT JOIN public.merchant_notification_dismissals d
+         AND r.owner_type = $1
+         AND r.owner_id = $2::uuid
+        LEFT JOIN public.notification_dismissals d
           ON d.notification_id = n.notification_id
-         AND d.merchant_user_id = $1::uuid
+         AND d.owner_type = $1
+         AND d.owner_id = $2::uuid
         WHERE ${whereParts.join(' AND ')}
         ORDER BY n.created_at DESC
         LIMIT $${limitParam}
@@ -172,22 +198,28 @@ router.get('/notifications/unread-count', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
 
+  const ownerType = OWNER_TYPES.MERCHANT_USER;
+  const ownerId = authPayload.merchant_user_id;
+  const recipientKeys = merchantRecipientKeys(ownerId);
+
   try {
-    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
         SELECT COUNT(*)::integer AS unread_count
-        FROM public.merchant_notification_outbox n
-        LEFT JOIN public.merchant_notification_reads r
+        FROM public.notification_outbox n
+        LEFT JOIN public.notification_reads r
           ON r.notification_id = n.notification_id
-         AND r.merchant_user_id = $1::uuid
-        LEFT JOIN public.merchant_notification_dismissals d
+         AND r.owner_type = $1
+         AND r.owner_id = $2::uuid
+        LEFT JOIN public.notification_dismissals d
           ON d.notification_id = n.notification_id
-         AND d.merchant_user_id = $1::uuid
+         AND d.owner_type = $1
+         AND d.owner_id = $2::uuid
         WHERE r.read_at IS NULL
+          AND n.recipient_key = ANY($3::text[])
           AND d.notification_id IS NULL
       `,
-      [authPayload.merchant_user_id]
+      [ownerType, ownerId, recipientKeys]
     );
 
     return res.status(200).json({
@@ -224,39 +256,17 @@ router.post('/notifications/device-token', async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      `
-        INSERT INTO public.merchant_device_tokens (
-          merchant_user_id,
-          platform,
-          fcm_token,
-          active,
-          metadata,
-          last_seen_at
-        )
-        VALUES ($1::uuid, $2, $3, TRUE, $4::jsonb, now())
-        ON CONFLICT (fcm_token)
-        DO UPDATE SET
-          merchant_user_id = EXCLUDED.merchant_user_id,
-          platform = EXCLUDED.platform,
-          active = TRUE,
-          metadata = EXCLUDED.metadata,
-          last_seen_at = now(),
-          updated_at = now()
-        RETURNING device_token_id, merchant_user_id, platform, active,
-                  last_seen_at, created_at, updated_at
-      `,
-      [
-        authPayload.merchant_user_id,
-        platform,
-        token,
-        JSON.stringify(metadata),
-      ]
-    );
+    const deviceToken = await notificationRepository.registerDeviceToken(pool, {
+      ownerType: OWNER_TYPES.MERCHANT_USER,
+      ownerId: authPayload.merchant_user_id,
+      fcmToken: token,
+      platform,
+      metadata,
+    });
 
     return res.status(200).json({
       success: true,
-      device_token: result.rows[0],
+      device_token: normalizeDeviceToken(deviceToken),
     });
   } catch (err) {
     console.error('Error registering merchant device token:', err);
@@ -271,27 +281,31 @@ router.post('/notifications/read-all', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
 
+  const ownerType = OWNER_TYPES.MERCHANT_USER;
+  const ownerId = authPayload.merchant_user_id;
+  const recipientKeys = merchantRecipientKeys(ownerId);
+
   try {
-    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
-        INSERT INTO public.merchant_notification_reads (
+        INSERT INTO public.notification_reads (
           notification_id,
-          merchant_user_id,
+          owner_type,
+          owner_id,
           read_at
         )
-        SELECT notification_id, $1::uuid, now()
-        FROM public.merchant_notification_outbox n
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM public.merchant_notification_dismissals d
-          WHERE d.notification_id = n.notification_id
-            AND d.merchant_user_id = $1::uuid
-        )
-        ON CONFLICT (notification_id, merchant_user_id)
+        SELECT n.notification_id, $1, $2::uuid, now()
+        FROM public.notification_outbox n
+        LEFT JOIN public.notification_dismissals d
+          ON d.notification_id = n.notification_id
+         AND d.owner_type = $1
+         AND d.owner_id = $2::uuid
+        WHERE n.recipient_key = ANY($3::text[])
+          AND d.notification_id IS NULL
+        ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET read_at = EXCLUDED.read_at
       `,
-      [authPayload.merchant_user_id]
+      [ownerType, ownerId, recipientKeys]
     );
 
     return res.status(200).json({
@@ -312,28 +326,35 @@ router.post('/notifications/delete-read', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
 
+  const ownerType = OWNER_TYPES.MERCHANT_USER;
+  const ownerId = authPayload.merchant_user_id;
+  const recipientKeys = merchantRecipientKeys(ownerId);
+
   try {
-    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
-        INSERT INTO public.merchant_notification_dismissals (
+        INSERT INTO public.notification_dismissals (
           notification_id,
-          merchant_user_id,
+          owner_type,
+          owner_id,
           dismissed_at
         )
-        SELECT n.notification_id, $1::uuid, now()
-        FROM public.merchant_notification_outbox n
-        INNER JOIN public.merchant_notification_reads r
+        SELECT n.notification_id, $1, $2::uuid, now()
+        FROM public.notification_outbox n
+        INNER JOIN public.notification_reads r
           ON r.notification_id = n.notification_id
-         AND r.merchant_user_id = $1::uuid
-        LEFT JOIN public.merchant_notification_dismissals d
+         AND r.owner_type = $1
+         AND r.owner_id = $2::uuid
+        LEFT JOIN public.notification_dismissals d
           ON d.notification_id = n.notification_id
-         AND d.merchant_user_id = $1::uuid
-        WHERE d.notification_id IS NULL
-        ON CONFLICT (notification_id, merchant_user_id)
+         AND d.owner_type = $1
+         AND d.owner_id = $2::uuid
+        WHERE n.recipient_key = ANY($3::text[])
+          AND d.notification_id IS NULL
+        ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
       `,
-      [authPayload.merchant_user_id]
+      [ownerType, ownerId, recipientKeys]
     );
 
     return res.status(200).json({
@@ -401,6 +422,9 @@ router.post('/notifications/:notification_id/delete', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
 
+  const ownerType = OWNER_TYPES.MERCHANT_USER;
+  const ownerId = authPayload.merchant_user_id;
+  const recipientKeys = merchantRecipientKeys(ownerId);
   const notificationId = normalizeText(
     req.params.notification_id || req.params.notificationId
   );
@@ -412,27 +436,28 @@ router.post('/notifications/:notification_id/delete', async (req, res) => {
   }
 
   try {
-    await ensureNotificationDismissalsSchema();
     const result = await pool.query(
       `
         WITH target AS (
           SELECT notification_id
-          FROM public.merchant_notification_outbox
+          FROM public.notification_outbox
           WHERE notification_id = $1::uuid
+            AND recipient_key = ANY($4::text[])
           LIMIT 1
         )
-        INSERT INTO public.merchant_notification_dismissals (
+        INSERT INTO public.notification_dismissals (
           notification_id,
-          merchant_user_id,
+          owner_type,
+          owner_id,
           dismissed_at
         )
-        SELECT notification_id, $2::uuid, now()
+        SELECT notification_id, $2, $3::uuid, now()
         FROM target
-        ON CONFLICT (notification_id, merchant_user_id)
+        ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
         RETURNING notification_id
       `,
-      [notificationId, authPayload.merchant_user_id]
+      [notificationId, ownerType, ownerId, recipientKeys]
     );
 
     if (result.rowCount === 0) {
@@ -456,6 +481,9 @@ router.post('/notifications/:notification_id/read', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
 
+  const ownerType = OWNER_TYPES.MERCHANT_USER;
+  const ownerId = authPayload.merchant_user_id;
+  const recipientKeys = merchantRecipientKeys(ownerId);
   const notificationId = normalizeText(
     req.params.notification_id || req.params.notificationId
   );
@@ -470,11 +498,12 @@ router.post('/notifications/:notification_id/read', async (req, res) => {
     const existsResult = await pool.query(
       `
         SELECT notification_id
-        FROM public.merchant_notification_outbox
+        FROM public.notification_outbox
         WHERE notification_id = $1::uuid
+          AND recipient_key = ANY($2::text[])
         LIMIT 1
       `,
-      [notificationId]
+      [notificationId, recipientKeys]
     );
     if (existsResult.rowCount === 0) {
       return res.status(404).json({
@@ -485,16 +514,17 @@ router.post('/notifications/:notification_id/read', async (req, res) => {
 
     await pool.query(
       `
-        INSERT INTO public.merchant_notification_reads (
+        INSERT INTO public.notification_reads (
           notification_id,
-          merchant_user_id,
+          owner_type,
+          owner_id,
           read_at
         )
-        VALUES ($1::uuid, $2::uuid, now())
-        ON CONFLICT (notification_id, merchant_user_id)
+        VALUES ($1::uuid, $2, $3::uuid, now())
+        ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET read_at = EXCLUDED.read_at
       `,
-      [notificationId, authPayload.merchant_user_id]
+      [notificationId, ownerType, ownerId]
     );
 
     return res.status(200).json({ success: true });
@@ -522,16 +552,11 @@ router.post('/notifications/device-token/deactivate', async (req, res) => {
   }
 
   try {
-    await pool.query(
-      `
-        UPDATE public.merchant_device_tokens
-        SET active = FALSE,
-            updated_at = now()
-        WHERE fcm_token = $1
-          AND merchant_user_id = $2::uuid
-      `,
-      [token, authPayload.merchant_user_id]
-    );
+    await notificationRepository.deactivateDeviceToken(pool, {
+      ownerType: OWNER_TYPES.MERCHANT_USER,
+      ownerId: authPayload.merchant_user_id,
+      fcmToken: token,
+    });
 
     return res.status(200).json({
       success: true,
