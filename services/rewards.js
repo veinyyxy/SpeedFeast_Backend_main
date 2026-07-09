@@ -1037,6 +1037,8 @@ async function awardPointsForCompletedOrder(client, orderId) {
 
   return {
     awarded: true,
+    user_id: order.user_id,
+    order_id: order.order_id,
     points,
     transaction_id: transactionResult.rows[0].transaction_id,
   };

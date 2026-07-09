@@ -55,6 +55,7 @@ app.use('/api', require('./routes/rewards.js'));
 app.use('/api', require('./routes/payments.js'));
 app.use('/api', require('./routes/config.js'));
 app.use('/api', require('./routes/payment_methods.js'));
+app.use('/api/buyer', require('./routes/buyer_notifications.js'));
 app.use('/api/merchant', require('./routes/merchant_auth.js'));
 app.use('/api/merchant', require('./routes/merchant_orders.js'));
 app.use('/api/merchant', require('./routes/merchant_products.js'));

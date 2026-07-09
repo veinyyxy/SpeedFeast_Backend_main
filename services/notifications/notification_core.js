@@ -19,6 +19,7 @@ const RECIPIENT_TYPES = Object.freeze({
 const ACTION_TYPES = Object.freeze({
   OPEN_ORDER: 'open_order',
   OPEN_ORDERS: 'open_orders',
+  OPEN_REWARDS: 'open_rewards',
   OPEN_DELIVERY: 'open_delivery',
   OPEN_DELIVERY_OFFER: 'open_delivery_offer',
 });

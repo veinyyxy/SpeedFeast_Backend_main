@@ -11,6 +11,12 @@ const {
   recordNewPaidOrderNotification,
   sendMerchantNotificationInBackground,
 } = require('../services/merchant_notifications');
+const {
+  recordBuyerOrderStatusNotification,
+  recordBuyerPointsEarnedNotification,
+  recordBuyerRefundNotification,
+  sendBuyerNotificationsInBackground,
+} = require('../services/buyer_notifications');
 
 const router = express.Router();
 
@@ -95,6 +101,12 @@ function normalizeProviderRefundStatus(status) {
 function normalizeMoneyAmount(value) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
+}
+
+function queueNotificationId(queue, notification) {
+  if (notification?.queued && notification.notification_id) {
+    queue.push(notification.notification_id);
+  }
 }
 
 function normalizeAddress(row) {
@@ -816,6 +828,7 @@ router.post('/orders/payments/sync', async (req, res) => {
   let rewardsResult = null;
   let rewardRedemptionsResult = null;
   let merchantNotificationId = null;
+  const buyerNotificationIds = [];
 
   try {
     await client.query('BEGIN');
@@ -869,6 +882,29 @@ router.post('/orders/payments/sync', async (req, res) => {
       providerSync
     );
 
+    if (syncSummary.refunded_amount > 0 && syncedRefundCount > 0) {
+      const notification = await recordBuyerRefundNotification(client, {
+        order,
+        payment,
+        amount: syncSummary.refunded_amount,
+        totalRefundedAmount: syncSummary.refunded_amount,
+        currency: providerSync.currency || payment.currency || order.currency,
+        fullRefund: syncSummary.order_status === 'refunded',
+        status: syncSummary.order_status,
+        source: 'merchant_payment_sync',
+        payload: {
+          provider: payment.provider,
+          payment_id: payment.payment_id,
+          provider_payment_id:
+            providerSync.provider_payment_id || payment.provider_payment_id,
+          provider_session_id:
+            providerSync.provider_session_id || payment.provider_session_id,
+          refundable_amount: syncSummary.refundable_amount,
+        },
+      });
+      queueNotificationId(buyerNotificationIds, notification);
+    }
+
     if (
       syncSummary.payment_status === 'paid' &&
       syncSummary.order_status === 'paid'
@@ -908,6 +944,7 @@ router.post('/orders/payments/sync', async (req, res) => {
     if (merchantNotificationId) {
       sendMerchantNotificationInBackground(merchantNotificationId);
     }
+    sendBuyerNotificationsInBackground(buyerNotificationIds);
 
     const refreshedOrderResult = await pool.query(
       `
@@ -978,6 +1015,7 @@ router.post('/orders/refund', async (req, res) => {
   let responseBody = null;
   let rewardsResult = null;
   let rewardRedemptionsResult = null;
+  const buyerNotificationIds = [];
 
   try {
     await client.query('BEGIN');
@@ -1072,6 +1110,21 @@ router.post('/orders/refund', async (req, res) => {
         orderId,
         { source: 'merchant_refund' }
       );
+      const notification = await recordBuyerRefundNotification(client, {
+        order,
+        payment,
+        amount: refundedAmount,
+        totalRefundedAmount: refundedAmount,
+        currency: payment.currency || order.currency,
+        fullRefund: true,
+        status: 'refunded',
+        source: 'merchant_refund',
+        payload: {
+          already_refunded: true,
+          payment_id: payment.payment_id,
+        },
+      });
+      queueNotificationId(buyerNotificationIds, notification);
 
       await client.query('COMMIT');
       responseBody = {
@@ -1267,6 +1320,23 @@ router.post('/orders/refund', async (req, res) => {
             { source: 'merchant_refund' }
           );
         }
+        const notification = await recordBuyerRefundNotification(client, {
+          order,
+          payment,
+          refundId,
+          providerRefundId: providerRefund.provider_refund_id,
+          amount: actualRefundAmount,
+          totalRefundedAmount,
+          currency: providerRefund.currency || payment.currency || order.currency,
+          fullRefund: nextRefundOrderStatus === 'refunded',
+          status: nextRefundOrderStatus,
+          source: 'merchant_refund',
+          payload: {
+            refundable_amount: remainingRefundableAmount,
+            merchant_user_id: authPayload.merchant_user_id,
+          },
+        });
+        queueNotificationId(buyerNotificationIds, notification);
       } else {
         responseStatus = 202;
       }
@@ -1294,6 +1364,8 @@ router.post('/orders/refund', async (req, res) => {
           : refundableAmount,
       };
     }
+
+    sendBuyerNotificationsInBackground(buyerNotificationIds);
 
     const refreshedOrderResult = await pool.query(
       `
@@ -1344,12 +1416,14 @@ router.post('/orders/status/update', async (req, res) => {
   }
 
   const client = await pool.connect();
+  const buyerNotificationIds = [];
   try {
     await client.query('BEGIN');
 
     const currentResult = await client.query(
       `
-        SELECT order_id, order_status, fulfillment_type
+        SELECT order_id, user_id, order_status, fulfillment_type,
+               total_amount, currency
         FROM public."Order"
         WHERE order_id = $1
         FOR UPDATE
@@ -1426,7 +1500,37 @@ router.post('/orders/status/update', async (req, res) => {
         })
       : null;
 
+    if (currentStatus !== nextStatus) {
+      const notification = await recordBuyerOrderStatusNotification(
+        client,
+        currentOrder,
+        nextStatus,
+        {
+          previousStatus: currentStatus,
+          source: nextStatus === 'cancelled'
+            ? 'merchant_cancelled_order'
+            : 'merchant_order_status_update',
+          payload: {
+            merchant_user_id: authPayload.merchant_user_id,
+          },
+        }
+      );
+      queueNotificationId(buyerNotificationIds, notification);
+    }
+
+    if (rewardsResult?.awarded) {
+      const notification = await recordBuyerPointsEarnedNotification(client, {
+        userId: rewardsResult.user_id || currentOrder.user_id,
+        orderId: rewardsResult.order_id || orderId,
+        points: rewardsResult.points,
+        transactionId: rewardsResult.transaction_id,
+        source: 'order_completed',
+      });
+      queueNotificationId(buyerNotificationIds, notification);
+    }
+
     await client.query('COMMIT');
+    sendBuyerNotificationsInBackground(buyerNotificationIds);
 
     const orderResult = await pool.query(
       `
