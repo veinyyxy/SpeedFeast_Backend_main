@@ -20,6 +20,7 @@ const MERCHANT_CANCELLED_ORDER_EVENT = 'merchant_cancelled_order';
 const REFUND_SUCCEEDED_EVENT = 'refund_succeeded';
 const PARTIAL_REFUND_SUCCEEDED_EVENT = 'partial_refund_succeeded';
 const REWARD_POINTS_EARNED_EVENT = 'reward_points_earned';
+const IN_STORE_PAYMENT_COLLECTED_EVENT = 'in_store_payment_collected';
 
 const ACTION_OPEN_ORDER = ACTION_TYPES.OPEN_ORDER;
 const ACTION_OPEN_REWARDS = ACTION_TYPES.OPEN_REWARDS;
@@ -36,6 +37,7 @@ const BUYER_ANDROID_CHANNEL_MAP = Object.freeze({
   [MERCHANT_CANCELLED_ORDER_EVENT]: ANDROID_ORDER_STATUS_CHANNEL_ID,
   [REFUND_SUCCEEDED_EVENT]: ANDROID_ORDER_STATUS_CHANNEL_ID,
   [PARTIAL_REFUND_SUCCEEDED_EVENT]: ANDROID_ORDER_STATUS_CHANNEL_ID,
+  [IN_STORE_PAYMENT_COLLECTED_EVENT]: ANDROID_ORDER_STATUS_CHANNEL_ID,
   [REWARD_POINTS_EARNED_EVENT]: ANDROID_POINTS_UPDATES_CHANNEL_ID,
 });
 
@@ -232,6 +234,53 @@ async function recordBuyerRefundNotification(client, options = {}) {
   });
 }
 
+async function recordBuyerInStorePaymentCollectedNotification(client, options = {}) {
+  const order = normalizeObject(options.order);
+  const payment = normalizeObject(options.payment);
+  const orderId = normalizeText(
+    options.orderId || options.order_id || order.order_id || payment.order_id
+  );
+  const userId = normalizeText(
+    options.userId || options.user_id || order.user_id || payment.user_id
+  );
+  if (!orderId) return { queued: false, reason: 'missing_order_id' };
+  if (!userId) return { queued: false, reason: 'missing_user_id' };
+
+  const method = normalizeText(
+    options.paymentMethod || options.payment_method || payment.payment_method
+  ).toLowerCase();
+  const methodLabel = method === 'pos_card' ? 'POS card' : 'cash';
+  const currency = normalizeCurrency(
+    options.currency || payment.currency || order.currency
+  );
+  const amount = normalizeMoney(options.amount ?? payment.amount ?? order.total_amount);
+  const paymentId = normalizeText(options.paymentId || options.payment_id || payment.payment_id);
+
+  return recordBuyerNotification(client, {
+    userId,
+    eventType: IN_STORE_PAYMENT_COLLECTED_EVENT,
+    entityType: 'payment',
+    entityId: paymentId || orderId,
+    dedupeKey: `${IN_STORE_PAYMENT_COLLECTED_EVENT}:${paymentId || orderId}`,
+    title: 'Payment received',
+    body: `${formatMoney(currency, amount)} ${methodLabel} payment was recorded for order #${shortEntityId(orderId)}.`,
+    actionType: ACTION_OPEN_ORDER,
+    actionPayload: {
+      order_id: orderId,
+      payment_id: paymentId || null,
+      payment_method: method || null,
+      status: normalizeOrderStatus(order.order_status),
+      role: 'buyer',
+    },
+    payload: {
+      ...normalizeObject(options.payload),
+      source: options.source || 'merchant_in_store_payment_collection',
+      payment_channel: 'in_store',
+      payment_method: method || null,
+    },
+  });
+}
+
 async function recordBuyerPointsEarnedNotification(client, options = {}) {
   const points = normalizeInteger(options.points);
   const userId = normalizeText(options.userId || options.user_id);
@@ -295,6 +344,7 @@ module.exports = {
   ANDROID_ORDER_STATUS_CHANNEL_ID,
   ANDROID_POINTS_UPDATES_CHANNEL_ID,
   BUYER_ANDROID_CHANNEL_MAP,
+  IN_STORE_PAYMENT_COLLECTED_EVENT,
   MERCHANT_CANCELLED_ORDER_EVENT,
   ORDER_ACCEPTED_EVENT,
   ORDER_COMPLETED_EVENT,
@@ -306,6 +356,7 @@ module.exports = {
   REFUND_SUCCEEDED_EVENT,
   REWARD_POINTS_EARNED_EVENT,
   recordBuyerNotification,
+  recordBuyerInStorePaymentCollectedNotification,
   recordBuyerOrderStatusNotification,
   recordBuyerPointsEarnedNotification,
   recordBuyerRefundNotification,

@@ -7,6 +7,9 @@ const {
   readSystemConfigRows,
   resolveStoreProfileAssets,
 } = require('../services/system_config_service');
+const {
+  DEFAULT_IN_STORE_PAYMENT_CONFIG,
+} = require('../services/order_operations_config');
 
 const router = express.Router();
 
@@ -43,9 +46,31 @@ router.get('/config', async (req, res) => {
     });
     const rows = await resolveStoreProfileAssets(undefined, result.rows);
 
+    const configs = buildConfigMap(rows);
+    if (
+      appScope === 'order_client' &&
+      (!configKey || configKey === 'payment.in_store') &&
+      !configs['payment.in_store']
+    ) {
+      configs['payment.in_store'] = {
+        value: DEFAULT_IN_STORE_PAYMENT_CONFIG,
+        value_type: 'json',
+        scope: {
+          app_scope: appScope,
+          country_code: countryCode,
+          region_code: regionCode,
+          city,
+          merchant_id: merchantId,
+          environment,
+        },
+        version: 0,
+        description: 'Default in-store payment options',
+      };
+    }
+
     return res.status(200).json({
       success: true,
-      configs: buildConfigMap(rows),
+      configs,
     });
   } catch (err) {
     console.error('Error fetching system config:', err);

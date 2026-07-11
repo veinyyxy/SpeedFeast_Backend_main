@@ -32,6 +32,27 @@ const DEFAULT_PICKUP_ETA_CONFIG = Object.freeze({
   display: '15-20 min',
 });
 
+const IN_STORE_PAYMENT_CONFIG_KEY = 'payment.in_store';
+
+const DEFAULT_IN_STORE_PAYMENT_CONFIG = Object.freeze({
+  dine_in: {
+    enabled: true,
+    collection_timing: 'after_service',
+    methods: {
+      cash: true,
+      pos_card: true,
+    },
+  },
+  takeout: {
+    enabled: true,
+    collection_timing: 'at_pickup',
+    methods: {
+      cash: true,
+      pos_card: true,
+    },
+  },
+});
+
 const DEFAULT_ORDER_OPERATION_SCOPE = Object.freeze({
   appScope: 'order_client',
   countryCode: 'CA',
@@ -41,6 +62,7 @@ const DEFAULT_ORDER_OPERATION_SCOPE = Object.freeze({
 const ORDER_OPERATION_CONFIG_KEYS = Object.freeze([
   'operations.business_hours',
   'fulfillment.pickup_eta',
+  IN_STORE_PAYMENT_CONFIG_KEY,
 ]);
 
 const WEEKDAY_KEYS = Object.freeze([
@@ -57,6 +79,59 @@ function readJsonConfig(row, fallback) {
   const value = row?.config_value;
   if (value && typeof value === 'object' && !Array.isArray(value)) return value;
   return fallback;
+}
+
+function normalizeInStorePaymentOption(value, fallback) {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const methods =
+    source.methods && typeof source.methods === 'object' && !Array.isArray(source.methods)
+      ? source.methods
+      : {};
+  const timing = normalizeText(source.collection_timing || source.collectionTiming);
+  const normalizedTiming = [
+    'before_fulfillment',
+    'at_pickup',
+    'after_service',
+  ].includes(timing)
+    ? timing
+    : fallback.collection_timing;
+
+  const cash = methods.cash;
+  const posCard = methods.pos_card ?? methods.posCard;
+
+  return {
+    enabled:
+      typeof source.enabled === 'boolean' ? source.enabled : fallback.enabled,
+    collection_timing: normalizedTiming,
+    methods: {
+      cash: typeof cash === 'boolean' ? cash : fallback.methods.cash,
+      pos_card:
+        typeof posCard === 'boolean' ? posCard : fallback.methods.pos_card,
+    },
+  };
+}
+
+function normalizeInStorePaymentConfig(value) {
+  const source =
+    value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    dine_in: normalizeInStorePaymentOption(
+      source.dine_in ?? source.dineIn,
+      DEFAULT_IN_STORE_PAYMENT_CONFIG.dine_in
+    ),
+    takeout: normalizeInStorePaymentOption(
+      source.takeout,
+      DEFAULT_IN_STORE_PAYMENT_CONFIG.takeout
+    ),
+  };
+}
+
+function getInStorePaymentOption(config, fulfillmentType) {
+  const normalizedFulfillment = normalizeText(fulfillmentType).replace('-', '_');
+  if (!['dine_in', 'takeout'].includes(normalizedFulfillment)) return null;
+  const normalizedConfig = normalizeInStorePaymentConfig(config);
+  return normalizedConfig[normalizedFulfillment] || null;
 }
 
 async function getOrderOperationsConfig(
@@ -99,6 +174,12 @@ async function getOrderOperationsConfig(
         configs.get('fulfillment.pickup_eta'),
         DEFAULT_PICKUP_ETA_CONFIG
       ),
+      inStorePayment: normalizeInStorePaymentConfig(
+        readJsonConfig(
+          configs.get(IN_STORE_PAYMENT_CONFIG_KEY),
+          DEFAULT_IN_STORE_PAYMENT_CONFIG
+        )
+      ),
       scope: {
         app_scope: normalizedAppScope,
         country_code: normalizedCountryCode,
@@ -113,6 +194,7 @@ async function getOrderOperationsConfig(
     return {
       businessHours: DEFAULT_BUSINESS_HOURS_CONFIG,
       pickupEta: DEFAULT_PICKUP_ETA_CONFIG,
+      inStorePayment: DEFAULT_IN_STORE_PAYMENT_CONFIG,
       scope: {
         app_scope: normalizedAppScope,
         country_code: normalizedCountryCode,
@@ -267,7 +349,11 @@ function businessStateAt(config, date = new Date()) {
 
 module.exports = {
   DEFAULT_BUSINESS_HOURS_CONFIG,
+  DEFAULT_IN_STORE_PAYMENT_CONFIG,
   DEFAULT_PICKUP_ETA_CONFIG,
+  IN_STORE_PAYMENT_CONFIG_KEY,
   businessStateAt,
+  getInStorePaymentOption,
   getOrderOperationsConfig,
+  normalizeInStorePaymentConfig,
 };

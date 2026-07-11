@@ -11,6 +11,7 @@ const notificationRepository = require('./notifications/notification_repository'
 const notificationService = require('./notifications/notification_service');
 
 const NEW_PAID_ORDER_EVENT = 'new_paid_order';
+const NEW_IN_STORE_ORDER_EVENT = 'new_in_store_order';
 const CUSTOMER_CANCELLED_ORDER_EVENT = 'customer_cancelled_order';
 const ACTION_OPEN_ORDER = ACTION_TYPES.OPEN_ORDER;
 const ACTION_OPEN_ORDERS = ACTION_TYPES.OPEN_ORDERS;
@@ -20,6 +21,7 @@ const ANDROID_ORDER_CANCELLED_CHANNEL_ID = 'order_cancelled';
 
 const MERCHANT_ANDROID_CHANNEL_MAP = Object.freeze({
   [NEW_PAID_ORDER_EVENT]: ANDROID_NEW_ORDERS_CHANNEL_ID,
+  [NEW_IN_STORE_ORDER_EVENT]: ANDROID_NEW_ORDERS_CHANNEL_ID,
   [CUSTOMER_CANCELLED_ORDER_EVENT]: ANDROID_ORDER_CANCELLED_CHANNEL_ID,
 });
 
@@ -52,6 +54,20 @@ function buildNewPaidOrderContent(order, orderId) {
   return {
     title: 'New paid order',
     body: `Order #${shortEntityId(orderId)} - ${fulfillment} - ${currency} ${total.toFixed(2)}`,
+  };
+}
+
+function buildNewInStoreOrderContent(order, orderId) {
+  const currency = normalizeText(order?.currency) || 'CAD';
+  const total = normalizeMoney(order?.total_amount);
+  const fulfillment = humanizeFulfillment(order?.fulfillment_type);
+  const collectionLabel = order?.fulfillment_type === 'dine_in'
+    ? 'Pay at counter'
+    : 'Pay at store';
+
+  return {
+    title: 'New in-store payment order',
+    body: `Order #${shortEntityId(orderId)} - ${fulfillment} - ${collectionLabel} - ${currency} ${total.toFixed(2)}`,
   };
 }
 
@@ -128,6 +144,34 @@ async function recordNewPaidOrderNotification(client, orderId, payload = {}) {
   });
 }
 
+async function recordNewInStoreOrderNotification(client, orderId, payload = {}) {
+  const textOrderId = normalizeText(orderId);
+  if (!textOrderId) return { queued: false, reason: 'missing_order_id' };
+
+  const order = await fetchOrderNotificationContext(client, textOrderId);
+  if (!order) return { queued: false, reason: 'order_not_found' };
+
+  const content = buildNewInStoreOrderContent(order, textOrderId);
+  return recordMerchantNotification(client, {
+    eventType: NEW_IN_STORE_ORDER_EVENT,
+    orderId: textOrderId,
+    dedupeKey: `${NEW_IN_STORE_ORDER_EVENT}:${textOrderId}`,
+    title: content.title,
+    body: content.body,
+    actionType: ACTION_OPEN_ORDER,
+    actionPayload: {
+      order_id: textOrderId,
+      status: 'created',
+      payment_channel: 'in_store',
+    },
+    payload: {
+      ...normalizeObject(payload),
+      source: payload.source || 'in_store_order_created',
+      payment_channel: 'in_store',
+    },
+  });
+}
+
 async function recordCustomerCancelledOrderNotification(
   client,
   orderId,
@@ -179,11 +223,13 @@ function sendMerchantNotificationInBackground(notificationId) {
 }
 
 module.exports = {
+  NEW_IN_STORE_ORDER_EVENT,
   NEW_PAID_ORDER_EVENT,
   ACTION_OPEN_ORDER,
   ACTION_OPEN_ORDERS,
   recordMerchantNotification,
   recordCustomerCancelledOrderNotification,
+  recordNewInStoreOrderNotification,
   recordNewPaidOrderNotification,
   sendMerchantNotificationById,
   sendMerchantNotificationInBackground,

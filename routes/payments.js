@@ -68,11 +68,16 @@ async function fetchLatestPaymentByOrderIds(orderIds) {
         payment_id,
         order_id,
         provider,
+        payment_channel,
+        payment_method,
         provider_payment_id,
         provider_session_id,
         amount,
         currency,
         payment_status,
+        collection_timing,
+        collected_at,
+        collection_reference,
         checkout_url,
         failure_message,
         created_at,
@@ -251,6 +256,26 @@ router.post('/payments/create', async (req, res) => {
       });
     }
 
+    const inStorePaymentResult = await client.query(
+      `
+        SELECT payment_id
+        FROM public.payments
+        WHERE order_id = $1::uuid
+          AND payment_channel = 'in_store'
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [order.order_id]
+    );
+    if (inStorePaymentResult.rowCount > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'This order is set to pay at the store.',
+      });
+    }
+
     if (!canCreatePaymentForOrder(order.order_status)) {
       await client.query('ROLLBACK');
       return res.status(409).json({
@@ -273,11 +298,12 @@ router.post('/payments/create', async (req, res) => {
           order_id,
           user_id,
           provider,
+          payment_channel,
           amount,
           currency,
           payment_status
         )
-        VALUES ($1, $2, $3, $4, $5, 'pending')
+        VALUES ($1, $2, $3, 'online', $4, $5, 'pending')
         RETURNING *
       `,
       [
@@ -329,6 +355,7 @@ router.post('/payments/create', async (req, res) => {
       payment_id: savedPayment.payment_id,
       order_id: savedPayment.order_id,
       provider: savedPayment.provider,
+      payment_channel: savedPayment.payment_channel || 'online',
       provider_payment_id: savedPayment.provider_payment_id,
       provider_session_id: savedPayment.provider_session_id,
       payment_status: savedPayment.payment_status,

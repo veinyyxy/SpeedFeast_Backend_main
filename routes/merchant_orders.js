@@ -13,6 +13,7 @@ const {
 } = require('../services/merchant_notifications');
 const {
   recordBuyerOrderStatusNotification,
+  recordBuyerInStorePaymentCollectedNotification,
   recordBuyerPointsEarnedNotification,
   recordBuyerRefundNotification,
   sendBuyerNotificationsInBackground,
@@ -103,6 +104,54 @@ function normalizeMoneyAmount(value) {
   return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
 }
 
+function paymentChannel(payment) {
+  return normalizeText(payment?.payment_channel || payment?.paymentChannel)
+    ?.toLowerCase() || 'online';
+}
+
+function isInStorePayment(payment) {
+  return paymentChannel(payment) === 'in_store';
+}
+
+function isAwaitingInStoreCollection(payment) {
+  return (
+    isInStorePayment(payment) &&
+    normalizeText(payment?.payment_status)?.toLowerCase() ===
+      'awaiting_collection'
+  );
+}
+
+function eligibleStatusesForCollection(timing) {
+  switch (normalizeText(timing)?.toLowerCase()) {
+    case 'before_fulfillment':
+      return ['created', 'accepted', 'preparing', 'ready', 'completed'];
+    case 'at_pickup':
+      return ['ready', 'completed'];
+    case 'after_service':
+    default:
+      return ['completed'];
+  }
+}
+
+function collectionMethodLabel(method) {
+  return normalizeText(method)?.toLowerCase() === 'pos_card'
+    ? 'POS card'
+    : 'cash';
+}
+
+function inStorePaymentAllowsMethod(payment, method) {
+  const raw = payment?.raw_response;
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const methods =
+    source.available_methods &&
+    typeof source.available_methods === 'object' &&
+    !Array.isArray(source.available_methods)
+      ? source.available_methods
+      : null;
+  if (!methods) return method === 'cash' || method === 'pos_card';
+  return methods[method] === true;
+}
+
 function queueNotificationId(queue, notification) {
   if (notification?.queued && notification.notification_id) {
     queue.push(notification.notification_id);
@@ -173,14 +222,43 @@ function normalizePayment(row) {
   if (!row) return null;
   const amount = Number(row.amount || 0);
   const refundedAmount = Number(row.refunded_amount || 0);
+  const rawResponse =
+    row.raw_response &&
+    typeof row.raw_response === 'object' &&
+    !Array.isArray(row.raw_response)
+      ? row.raw_response
+      : {};
+  const configuredMethods =
+    rawResponse.available_methods &&
+    typeof rawResponse.available_methods === 'object' &&
+    !Array.isArray(rawResponse.available_methods)
+      ? rawResponse.available_methods
+      : null;
   return {
     payment_id: row.payment_id,
     provider: row.provider,
+    payment_channel: row.payment_channel || 'online',
+    paymentChannel: row.payment_channel || 'online',
+    payment_method: row.payment_method || null,
+    paymentMethod: row.payment_method || null,
     provider_payment_id: row.provider_payment_id,
     provider_session_id: row.provider_session_id,
     amount,
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     payment_status: row.payment_status || 'pending',
+    collection_timing: row.collection_timing || null,
+    collectionTiming: row.collection_timing || null,
+    collected_at: row.collected_at || null,
+    collectedAt: row.collected_at || null,
+    collected_by_merchant_user_id: row.collected_by_merchant_user_id || null,
+    collection_reference: row.collection_reference || null,
+    collectionReference: row.collection_reference || null,
+    in_store_methods: configuredMethods
+      ? {
+          cash: configuredMethods.cash === true,
+          pos_card: configuredMethods.pos_card === true,
+        }
+      : null,
     refunded_amount: refundedAmount,
     refundable_amount: Math.max(0, Number((amount - refundedAmount).toFixed(2))),
     refunds: Array.isArray(row.refunds) ? row.refunds : [],
@@ -264,6 +342,15 @@ function normalizeMerchantOrder(row, items, payment, review) {
     items: reviewedItems,
     payment,
     payment_status: payment?.payment_status || null,
+    payment_channel: payment?.payment_channel || null,
+    paymentChannel: payment?.payment_channel || null,
+    payment_method: payment?.payment_method || null,
+    paymentMethod: payment?.payment_method || null,
+    collection_timing: payment?.collection_timing || null,
+    collectionTiming: payment?.collection_timing || null,
+    collected_at: payment?.collected_at || null,
+    collectedAt: payment?.collected_at || null,
+    in_store_methods: payment?.in_store_methods || null,
     refunded_amount: payment?.refunded_amount || 0,
     refundedAmount: payment?.refunded_amount || 0,
     refundable_amount: payment?.refundable_amount || 0,
@@ -442,11 +529,18 @@ async function fetchLatestPayments(orderIds) {
           payment_id,
           order_id,
           provider,
+          payment_channel,
+          payment_method,
           provider_payment_id,
           provider_session_id,
           amount,
           currency,
           payment_status,
+          collection_timing,
+          collected_at,
+          collected_by_merchant_user_id,
+          collection_reference,
+          raw_response,
           checkout_url,
           failure_message,
           COALESCE(refund_summary.refunded_amount, 0)::numeric AS refunded_amount,
@@ -709,11 +803,17 @@ async function applySyncedPaymentState(client, order, payment, providerSync) {
   };
 }
 
-function nextStatusesFor(currentStatus, fulfillmentType) {
+function nextStatusesFor(currentStatus, fulfillmentType, payment = null) {
   const current = normalizeOrderStatus(currentStatus);
   const isDelivery = fulfillmentType === 'delivery';
 
-  if (current === 'created') return ['cancelled'];
+  if (current === 'created') {
+    const inStoreStatus = normalizeText(payment?.payment_status)?.toLowerCase();
+    return isInStorePayment(payment) &&
+        ['awaiting_collection', 'paid'].includes(inStoreStatus)
+      ? ['accepted', 'preparing', 'cancelled']
+      : ['cancelled'];
+  }
   if (current === 'paid') return ['accepted', 'preparing', 'cancelled', 'refunded'];
   if (current === 'accepted') return ['preparing', 'cancelled', 'refunded'];
   if (current === 'preparing') return ['ready', 'cancelled', 'refunded'];
@@ -812,6 +912,189 @@ router.get('/orders/detail', async (req, res) => {
   }
 });
 
+router.post('/orders/in-store-payment/collect', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  const orderId = normalizeText(req.body.order_id || req.body.orderId);
+  const paymentMethod = normalizeText(
+    req.body.payment_method || req.body.paymentMethod
+  )?.toLowerCase();
+  const collectionReference = normalizeText(
+    req.body.collection_reference || req.body.collectionReference
+  )?.slice(0, 180) || null;
+
+  if (!orderId || !['cash', 'pos_card'].includes(paymentMethod)) {
+    return res.status(400).json({
+      success: false,
+      error: 'order_id and payment_method (cash or pos_card) are required',
+    });
+  }
+
+  const client = await pool.connect();
+  const buyerNotificationIds = [];
+  let rewardsResult = null;
+
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `
+        SELECT order_id, user_id, order_status, total_amount, currency,
+               fulfillment_type
+        FROM public."Order"
+        WHERE order_id = $1::uuid
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+    const order = orderResult.rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    const paymentResult = await client.query(
+      `
+        SELECT *
+        FROM public.payments
+        WHERE order_id = $1::uuid
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+    const payment = paymentResult.rows[0];
+    if (!payment || !isInStorePayment(payment)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'This order is not configured for in-store payment.',
+      });
+    }
+    if (!isAwaitingInStoreCollection(payment)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'This in-store payment has already been handled.',
+      });
+    }
+    if (!inStorePaymentAllowsMethod(payment, paymentMethod)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: `${collectionMethodLabel(paymentMethod)} is not enabled for this order.`,
+      });
+    }
+
+    const currentStatus = normalizeOrderStatus(order.order_status);
+    const allowedStatuses = eligibleStatusesForCollection(
+      payment.collection_timing
+    );
+    if (!allowedStatuses.includes(currentStatus)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: `Payment collection is available when this order is ${allowedStatuses.join(' or ')}.`,
+        allowed_statuses: allowedStatuses,
+      });
+    }
+
+    const updatePaymentResult = await client.query(
+      `
+        UPDATE public.payments
+        SET payment_status = 'paid',
+            payment_method = $1::varchar(40),
+            collected_at = now(),
+            collected_by_merchant_user_id = $2::uuid,
+            collection_reference = $3::varchar(180),
+            raw_response = COALESCE(raw_response, '{}'::jsonb)
+              || jsonb_build_object(
+                'in_store_collection',
+                jsonb_build_object(
+                  'payment_method', $1::text,
+                  'collection_reference', $3::text,
+                  'collected_by_merchant_user_id', $2::uuid,
+                  'collected_at', now()
+                )
+              ),
+            updated_at = now()
+        WHERE payment_id = $4::uuid
+        RETURNING *
+      `,
+      [
+        paymentMethod,
+        authPayload.merchant_user_id,
+        collectionReference,
+        payment.payment_id,
+      ]
+    );
+    const collectedPayment = updatePaymentResult.rows[0];
+
+    if (['completed', 'delivered'].includes(currentStatus)) {
+      rewardsResult = await awardPointsForCompletedOrder(client, orderId);
+    }
+
+    const notification = await recordBuyerInStorePaymentCollectedNotification(
+      client,
+      {
+        order,
+        payment: collectedPayment,
+        paymentMethod,
+        amount: collectedPayment.amount,
+        currency: collectedPayment.currency || order.currency,
+        source: 'merchant_in_store_payment_collection',
+        payload: {
+          merchant_user_id: authPayload.merchant_user_id,
+          collection_timing: collectedPayment.collection_timing,
+        },
+      }
+    );
+    queueNotificationId(buyerNotificationIds, notification);
+
+    if (rewardsResult?.awarded) {
+      const pointsNotification = await recordBuyerPointsEarnedNotification(client, {
+        userId: rewardsResult.user_id || order.user_id,
+        orderId: rewardsResult.order_id || orderId,
+        points: rewardsResult.points,
+        transactionId: rewardsResult.transaction_id,
+        source: 'in_store_payment_collected',
+      });
+      queueNotificationId(buyerNotificationIds, pointsNotification);
+    }
+
+    await client.query('COMMIT');
+    sendBuyerNotificationsInBackground(buyerNotificationIds);
+
+    const refreshedOrderResult = await pool.query(
+      `
+        ${baseOrderSelect()}
+        WHERE o.order_id = $1::uuid
+      `,
+      [orderId]
+    );
+    const orders = await buildMerchantOrders(refreshedOrderResult.rows);
+
+    return res.status(200).json({
+      success: true,
+      payment: normalizePayment({
+        ...collectedPayment,
+        refunded_amount: 0,
+        refunds: [],
+      }),
+      rewards: rewardsResult,
+      order: orders[0] || null,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error collecting in-store payment:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/orders/payments/sync', async (req, res) => {
   const authPayload = authenticateMerchantRequest(req, res);
   if (!authPayload) return;
@@ -865,6 +1148,14 @@ router.post('/orders/payments/sync', async (req, res) => {
       return res.status(409).json({
         success: false,
         error: 'No payment was found for this order',
+      });
+    }
+
+    if (isInStorePayment(payment)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'In-store payments are recorded by the merchant and cannot be synced.',
       });
     }
 
@@ -996,6 +1287,9 @@ router.post('/orders/refund', async (req, res) => {
   const requestedRefundAmount = normalizeRefundAmount(
     req.body.amount ?? req.body.refund_amount ?? req.body.refundAmount
   );
+  const refundReference = normalizeText(
+    req.body.refund_reference || req.body.refundReference
+  )?.slice(0, 180) || null;
 
   if (!orderId) {
     return res.status(400).json({
@@ -1057,6 +1351,17 @@ router.post('/orders/refund', async (req, res) => {
       return res.status(409).json({
         success: false,
         error: 'No paid payment was found for this order',
+      });
+    }
+
+    if (
+      isInStorePayment(payment) &&
+      !['completed', 'delivered'].includes(normalizeOrderStatus(order.order_status))
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'In-store payments can be refunded after the order is completed.',
       });
     }
 
@@ -1178,41 +1483,56 @@ router.post('/orders/refund', async (req, res) => {
       );
 
       const refundId = refundInsertResult.rows[0].refund_id;
-      const provider = getPaymentProvider(payment.provider);
       let providerRefund;
 
-      try {
-        providerRefund = await provider.refundPayment({
-          payment,
+      if (isInStorePayment(payment)) {
+        providerRefund = {
+          provider_refund_id: refundReference,
+          refund_status: 'succeeded',
           amount: refundAmount,
-          reason: providerReason,
-          metadata: {
-            order_id: orderId,
-            payment_id: payment.payment_id,
-            refund_id: refundId,
+          currency: payment.currency || order.currency || 'CAD',
+          raw_response: {
+            source: 'merchant_in_store_refund',
+            payment_method: payment.payment_method || null,
+            refund_reference: refundReference,
             merchant_user_id: authPayload.merchant_user_id,
           },
-          idempotencyKey: `merchant-refund-${refundId}`,
-        });
-      } catch (err) {
-        await client.query(
-          `
-            UPDATE public.payment_refunds
-            SET refund_status = 'failed',
-                raw_response = $1::jsonb,
-                updated_at = now()
-            WHERE refund_id = $2::uuid
-          `,
-          [
-            JSON.stringify(err.stripeResponse || { message: err.message }),
-            refundId,
-          ]
-        );
-        await client.query('COMMIT');
-        return res.status(err.statusCode && err.statusCode < 500 ? 400 : 502).json({
-          success: false,
-          error: err.message || 'Refund failed',
-        });
+        };
+      } else {
+        const provider = getPaymentProvider(payment.provider);
+        try {
+          providerRefund = await provider.refundPayment({
+            payment,
+            amount: refundAmount,
+            reason: providerReason,
+            metadata: {
+              order_id: orderId,
+              payment_id: payment.payment_id,
+              refund_id: refundId,
+              merchant_user_id: authPayload.merchant_user_id,
+            },
+            idempotencyKey: `merchant-refund-${refundId}`,
+          });
+        } catch (err) {
+          await client.query(
+            `
+              UPDATE public.payment_refunds
+              SET refund_status = 'failed',
+                  raw_response = $1::jsonb,
+                  updated_at = now()
+              WHERE refund_id = $2::uuid
+            `,
+            [
+              JSON.stringify(err.stripeResponse || { message: err.message }),
+              refundId,
+            ]
+          );
+          await client.query('COMMIT');
+          return res.status(err.statusCode && err.statusCode < 500 ? 400 : 502).json({
+            success: false,
+            error: err.message || 'Refund failed',
+          });
+        }
       }
 
       const refundStatus = providerRefund.refund_status === 'cancelled'
@@ -1437,10 +1757,24 @@ router.post('/orders/status/update', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
+    const paymentResult = await client.query(
+      `
+        SELECT *
+        FROM public.payments
+        WHERE order_id = $1::uuid
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+    const payment = paymentResult.rows[0] || null;
+
     const currentStatus = normalizeOrderStatus(currentOrder.order_status);
     const allowedNextStatuses = nextStatusesFor(
       currentStatus,
-      currentOrder.fulfillment_type
+      currentOrder.fulfillment_type,
+      payment
     );
 
     if (currentStatus !== nextStatus && !allowedNextStatuses.includes(nextStatus)) {
@@ -1449,6 +1783,18 @@ router.post('/orders/status/update', async (req, res) => {
         success: false,
         error: `Cannot change order from ${currentStatus} to ${nextStatus}`,
         allowed_statuses: allowedNextStatuses,
+      });
+    }
+
+    if (
+      nextStatus === 'cancelled' &&
+      isInStorePayment(payment) &&
+      normalizeText(payment?.payment_status)?.toLowerCase() === 'paid'
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'Refund the collected in-store payment instead of cancelling it.',
       });
     }
 
@@ -1487,7 +1833,10 @@ router.post('/orders/status/update', async (req, res) => {
     );
 
     const rewardsResult = ['completed', 'delivered'].includes(nextStatus)
-      ? await awardPointsForCompletedOrder(client, orderId)
+      ? isInStorePayment(payment) &&
+              normalizeText(payment?.payment_status)?.toLowerCase() !== 'paid'
+          ? null
+          : await awardPointsForCompletedOrder(client, orderId)
       : nextStatus === 'cancelled'
       ? await reversePointsForOrder(client, orderId, {
           source: 'merchant_cancel',
@@ -1499,6 +1848,26 @@ router.post('/orders/status/update', async (req, res) => {
           source: 'merchant_cancel',
         })
       : null;
+
+    if (nextStatus === 'cancelled' && isAwaitingInStoreCollection(payment)) {
+      await client.query(
+        `
+          UPDATE public.payments
+          SET payment_status = 'cancelled',
+              raw_response = COALESCE(raw_response, '{}'::jsonb)
+                || jsonb_build_object(
+                  'in_store_cancellation',
+                  jsonb_build_object(
+                    'cancelled_at', now(),
+                    'cancelled_by_merchant_user_id', $1::uuid
+                  )
+                ),
+              updated_at = now()
+          WHERE payment_id = $2::uuid
+        `,
+        [authPayload.merchant_user_id, payment.payment_id]
+      );
+    }
 
     if (currentStatus !== nextStatus) {
       const notification = await recordBuyerOrderStatusNotification(
