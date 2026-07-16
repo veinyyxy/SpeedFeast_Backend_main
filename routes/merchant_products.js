@@ -184,6 +184,86 @@ function normalizeOptionGroup(group, index) {
   };
 }
 
+function normalizeOptionGroupUpdatePayload(body) {
+  const optionGroupId = normalizeText(
+    body.option_group_id || body.optionGroupId || body.id
+  );
+  if (!optionGroupId) {
+    throw new ValidationError('option_group_id is required');
+  }
+
+  const groupName = normalizeText(
+    body.group_name || body.groupName || body.title || body.name
+  );
+  if (!groupName) {
+    throw new ValidationError('Option group name is required');
+  }
+
+  const rawOptions =
+    body.option_product_ids ?? body.optionProductIds ?? body.options;
+  if (!Array.isArray(rawOptions)) {
+    throw new ValidationError('option_product_ids must be an array');
+  }
+
+  const optionProductIds = [];
+  for (const rawOption of rawOptions) {
+    const rawId =
+      rawOption && typeof rawOption === 'object' && !Array.isArray(rawOption)
+        ? rawOption.product_id || rawOption.productId || rawOption.id
+        : rawOption;
+    const productId = normalizeText(rawId);
+    if (productId && !optionProductIds.includes(productId)) {
+      optionProductIds.push(productId);
+    }
+  }
+  if (optionProductIds.length === 0) {
+    throw new ValidationError('Option group needs at least one product');
+  }
+
+  const selectionType =
+    normalizeText(body.selection_type || body.selectionType)?.toLowerCase() ===
+    'multiple'
+      ? 'multiple'
+      : 'single';
+  const isRequired = normalizeBoolean(
+    body.is_required ?? body.isRequired ?? body.required,
+    false
+  );
+  let minSelect = normalizeNonNegativeInteger(
+    body.min_select ?? body.minSelect,
+    isRequired ? 1 : 0
+  );
+  let maxSelect = normalizeNonNegativeInteger(
+    body.max_select ?? body.maxSelect,
+    selectionType === 'multiple' ? optionProductIds.length : 1
+  );
+
+  if (selectionType === 'single') {
+    minSelect = minSelect > 0 || isRequired ? 1 : 0;
+    maxSelect = 1;
+  }
+  if (maxSelect < 1) maxSelect = 1;
+  if (maxSelect < minSelect) {
+    throw new ValidationError(
+      'max_select must be greater than or equal to min_select'
+    );
+  }
+  if (maxSelect > optionProductIds.length) {
+    throw new ValidationError(
+      'max_select cannot exceed the number of products in the group'
+    );
+  }
+
+  return {
+    option_group_id: optionGroupId,
+    group_name: groupName,
+    selection_type: selectionType,
+    min_select: minSelect,
+    max_select: maxSelect,
+    option_product_ids: optionProductIds,
+  };
+}
+
 function normalizeProductOptions(value, groupName) {
   if (!Array.isArray(value)) {
     throw new ValidationError(`Options for "${groupName}" must be an array`);
@@ -226,6 +306,10 @@ function normalizeProductOption(option, groupName, index) {
       option.base_price ?? option.basePrice ?? option.extra_price ?? option.extraPrice ?? option.price,
       0
     ),
+    options_affect_price: normalizeBoolean(
+      option.options_affect_price ?? option.optionsAffectPrice,
+      true
+    ),
     status,
     visible_in_menu: normalizeBoolean(
       option.visible_in_menu ?? option.visibleInMenu,
@@ -260,6 +344,10 @@ function normalizeCreateProductPayload(body) {
     name,
     description: normalizeText(body.description),
     base_price: normalizeNonNegativeNumber(body.base_price ?? body.basePrice ?? body.price, 0),
+    options_affect_price: normalizeBoolean(
+      body.options_affect_price ?? body.optionsAffectPrice,
+      true
+    ),
     status,
     visible_in_menu: visibleInMenu,
     image_url: normalizeText(body.image_url || body.imageUrl),
@@ -301,6 +389,10 @@ function normalizeUpdateProductPayload(body) {
     name,
     description: normalizeText(body.description),
     base_price: normalizeNonNegativeNumber(body.base_price ?? body.basePrice ?? body.price, 0),
+    options_affect_price: normalizeBoolean(
+      body.options_affect_price ?? body.optionsAffectPrice,
+      true
+    ),
     status,
     visible_in_menu: visibleInMenu,
     image_url: normalizeText(body.image_url || body.imageUrl),
@@ -352,6 +444,7 @@ function buildOptionGroups(parentProductId, rowsByParent, visited = new Set()) {
       description: row.option_description,
       extra_price: Number(row.option_price) || 0,
       base_price: Number(row.option_price) || 0,
+      options_affect_price: row.option_options_affect_price !== false,
       status: row.option_status,
       image_url: row.option_image_url,
       sort_order: Number(row.option_sort_order) || 0,
@@ -388,6 +481,7 @@ async function fetchProductOptionRows() {
         op.name AS option_name,
         op.description AS option_description,
         op.base_price AS option_price,
+        op.options_affect_price AS option_options_affect_price,
         op.status AS option_status,
         ma.public_url AS option_image_url
       FROM public.product_option_group_links l
@@ -428,6 +522,7 @@ function normalizeProduct(row, optionRowsByParent) {
     product_name: row.name,
     description: row.description,
     base_price: Number(row.base_price || 0),
+    options_affect_price: row.options_affect_price !== false,
     cost_price: row.cost_price === null ? null : Number(row.cost_price || 0),
     weight: row.weight === null ? null : Number(row.weight || 0),
     dimensions: row.dimensions,
@@ -457,6 +552,7 @@ async function fetchMerchantProducts(productId = null) {
         p.name,
         p.description,
         p.base_price,
+        p.options_affect_price,
         p.cost_price,
         p.weight,
         p.dimensions,
@@ -542,10 +638,11 @@ async function insertProduct(client, product) {
         name,
         description,
         base_price,
+        options_affect_price,
         status,
         visible_in_menu
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING product_id
     `,
     [
@@ -553,6 +650,7 @@ async function insertProduct(client, product) {
       product.name,
       product.description,
       product.base_price.toFixed(2),
+      product.options_affect_price,
       product.status,
       product.visible_in_menu,
     ]
@@ -568,10 +666,11 @@ async function updateProductRecord(client, product) {
           name = $2,
           description = $3,
           base_price = $4,
-          status = $5,
-          visible_in_menu = $6,
+          options_affect_price = $5,
+          status = $6,
+          visible_in_menu = $7,
           updated_at = CURRENT_TIMESTAMP
-      WHERE product_id = $7::uuid
+      WHERE product_id = $8::uuid
       RETURNING product_id
     `,
     [
@@ -579,6 +678,7 @@ async function updateProductRecord(client, product) {
       product.name,
       product.description,
       product.base_price.toFixed(2),
+      product.options_affect_price,
       product.status,
       product.visible_in_menu,
       product.product_id,
@@ -599,10 +699,11 @@ async function insertOptionProduct(client, option, inheritedCategoryIds) {
         name,
         description,
         base_price,
+        options_affect_price,
         status,
         visible_in_menu
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING product_id
     `,
     [
@@ -610,6 +711,7 @@ async function insertOptionProduct(client, option, inheritedCategoryIds) {
       option.name,
       option.description,
       option.base_price.toFixed(2),
+      option.options_affect_price,
       option.status,
       option.visible_in_menu,
     ]
@@ -1039,12 +1141,14 @@ router.post('/categories/create', async (req, res) => {
   }
 });
 
-router.get('/option-groups', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
-  if (!authPayload) return;
+async function fetchMerchantOptionGroups(optionGroupId = null, db = pool) {
+  const params = optionGroupId ? [optionGroupId] : [];
+  const optionGroupFilter = optionGroupId
+    ? 'AND g.option_group_id = $1::uuid'
+    : '';
 
-  try {
-    const result = await pool.query(`
+  return db.query(
+    `
       SELECT
         g.option_group_id,
         g.group_name,
@@ -1053,13 +1157,21 @@ router.get('/option-groups', async (req, res) => {
         g.max_select,
         g.active,
         g.sort_order,
+        (
+          SELECT COUNT(*)::int
+          FROM public.product_option_group_links link_count
+          WHERE link_count.option_group_id = g.option_group_id
+            AND link_count.active = TRUE
+        ) AS linked_product_count,
         COALESCE(
           jsonb_agg(
             jsonb_build_object(
               'product_id', p.product_id,
               'name', p.name,
               'base_price', p.base_price,
-              'status', p.status
+              'options_affect_price', p.options_affect_price,
+              'status', p.status,
+              'sort_order', i.sort_order
             )
             ORDER BY i.sort_order, p.name
           ) FILTER (WHERE p.product_id IS NOT NULL),
@@ -1072,9 +1184,20 @@ router.get('/option-groups', async (req, res) => {
       LEFT JOIN public.products p
         ON p.product_id = i.option_product_id
       WHERE g.active = TRUE
+        ${optionGroupFilter}
       GROUP BY g.option_group_id
       ORDER BY g.sort_order, g.group_name
-    `);
+    `,
+    params
+  );
+}
+
+router.get('/option-groups', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  try {
+    const result = await fetchMerchantOptionGroups();
 
     return res.status(200).json({
       success: true,
@@ -1086,6 +1209,172 @@ router.get('/option-groups', async (req, res) => {
     }
     console.error('Error fetching merchant option groups:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+router.post('/option-groups/update', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  let payload;
+  try {
+    payload = normalizeOptionGroupUpdatePayload(req.body || {});
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+        details: err.details,
+      });
+    }
+    throw err;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const groupResult = await client.query(
+      `
+        SELECT option_group_id
+        FROM public.product_option_groups
+        WHERE option_group_id = $1::uuid
+          AND active = TRUE
+        FOR UPDATE
+      `,
+      [payload.option_group_id]
+    );
+    if (groupResult.rows.length === 0) {
+      throw new ValidationError('Option group not found');
+    }
+
+    const productsResult = await client.query(
+      `
+        SELECT product_id
+        FROM public.products
+        WHERE product_id = ANY($1::uuid[])
+      `,
+      [payload.option_product_ids]
+    );
+    const existingProductIds = new Set(
+      productsResult.rows.map((row) => row.product_id)
+    );
+    const missingProductIds = payload.option_product_ids.filter(
+      (productId) => !existingProductIds.has(productId)
+    );
+    if (missingProductIds.length > 0) {
+      throw new ValidationError('One or more option products were not found', {
+        missing_product_ids: missingProductIds,
+      });
+    }
+
+    const directCycleResult = await client.query(
+      `
+        SELECT DISTINCT parent_product_id
+        FROM public.product_option_group_links
+        WHERE option_group_id = $1::uuid
+          AND active = TRUE
+          AND parent_product_id = ANY($2::uuid[])
+      `,
+      [payload.option_group_id, payload.option_product_ids]
+    );
+    if (directCycleResult.rows.length > 0) {
+      throw new ValidationError(
+        'A group cannot contain a product that directly uses the same group',
+        {
+          conflicting_product_ids: directCycleResult.rows.map(
+            (row) => row.parent_product_id
+          ),
+        }
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE public.product_option_groups
+        SET group_name = $1,
+            selection_type = $2,
+            min_select = $3,
+            max_select = $4,
+            updated_at = now()
+        WHERE option_group_id = $5::uuid
+      `,
+      [
+        payload.group_name,
+        payload.selection_type,
+        payload.min_select,
+        payload.max_select,
+        payload.option_group_id,
+      ]
+    );
+
+    await client.query(
+      `
+        DELETE FROM public.product_option_group_items
+        WHERE option_group_id = $1::uuid
+      `,
+      [payload.option_group_id]
+    );
+    await client.query(
+      `
+        INSERT INTO public.product_option_group_items (
+          option_group_id,
+          option_product_id,
+          sort_order,
+          active
+        )
+        SELECT
+          $1::uuid,
+          selected.product_id,
+          (selected.ordinal * 10)::integer,
+          TRUE
+        FROM unnest($2::uuid[]) WITH ORDINALITY
+          AS selected(product_id, ordinal)
+      `,
+      [payload.option_group_id, payload.option_product_ids]
+    );
+
+    const updatedResult = await fetchMerchantOptionGroups(
+      payload.option_group_id,
+      client
+    );
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      option_group: updatedResult.rows[0] || null,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+
+    if (err instanceof ValidationError) {
+      const statusCode = err.message === 'Option group not found' ? 404 : 400;
+      return res.status(statusCode).json({
+        success: false,
+        error: err.message,
+        details: err.details,
+      });
+    }
+    if (err.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'An option group with this name already exists',
+      });
+    }
+    if (err.code === '22P02') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid option group or product ID',
+      });
+    }
+
+    console.error('Error updating merchant option group:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  } finally {
+    client.release();
   }
 });
 
@@ -1261,7 +1550,7 @@ router.post('/products/status/update', async (req, res) => {
             updated_at = CURRENT_TIMESTAMP
         WHERE product_id = $2
         RETURNING product_id, sku, name, description, base_price,
-                  cost_price, weight, dimensions, status,
+                  options_affect_price, cost_price, weight, dimensions, status,
                   created_at, updated_at
       `,
       [status, productId]

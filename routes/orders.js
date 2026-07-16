@@ -21,6 +21,10 @@ const {
   recordNewInStoreOrderNotification,
   sendMerchantNotificationInBackground,
 } = require('../services/merchant_notifications');
+const {
+  effectiveOptionPrice,
+  optionsAffectPrice,
+} = require('../services/product_option_pricing');
 
 const router = express.Router();
 
@@ -242,6 +246,7 @@ async function fetchOrderOptionRows(client) {
     const result = await client.query(`
       SELECT
         l.parent_product_id,
+        parent.options_affect_price AS parent_options_affect_price,
         g.option_group_id,
         g.group_name,
         g.selection_type,
@@ -254,6 +259,8 @@ async function fetchOrderOptionRows(client) {
         op.base_price AS option_price,
         op.status AS option_status
       FROM public.product_option_group_links l
+      JOIN public.products parent
+        ON parent.product_id = l.parent_product_id
       JOIN public.product_option_groups g
         ON g.option_group_id = l.option_group_id
        AND g.active = TRUE
@@ -303,6 +310,9 @@ function optionGroupsForParent(parentProductId, optionRowsByParent) {
         selection_type: row.selection_type === 'multiple' ? 'multiple' : 'single',
         min_select: Number.parseInt(row.min_select, 10) || 0,
         max_select: Number.parseInt(row.max_select, 10) || 1,
+        options_affect_price: optionsAffectPrice(
+          row.parent_options_affect_price
+        ),
         optionsById: new Map(),
       });
     }
@@ -380,7 +390,10 @@ function validateOptionGroupsForParent(
         continue;
       }
 
-      const optionPrice = Number(optionRow.option_price) || 0;
+      const optionPrice = effectiveOptionPrice(
+        optionRow.option_price,
+        group.options_affect_price
+      );
       unitPriceDelta += optionPrice;
       selectedOptionRows.push({
         option_group_id: group.option_group_id,

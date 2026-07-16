@@ -1,6 +1,10 @@
 const express = require('express');
 const { query } = require('../db/pgsql');
 const {verifySignature} = require('../secutiry/verify_signature')
+const {
+  effectiveOptionPrice,
+  optionsAffectPrice,
+} = require('../services/product_option_pricing');
 
 const router = express.Router();
 
@@ -10,6 +14,7 @@ async function fetchListData() {
         p.product_id,
         p.name AS product_name,
         p.base_price,
+        p.options_affect_price,
         p.status,
         p.visible_in_menu,
         c.name AS category_name,
@@ -51,6 +56,7 @@ async function fetchProductOptionRows() {
     const result = await query(`
       SELECT
         l.parent_product_id,
+        parent.options_affect_price AS parent_options_affect_price,
         g.option_group_id,
         g.group_name,
         g.selection_type,
@@ -65,6 +71,8 @@ async function fetchProductOptionRows() {
         op.status AS option_status,
         ma.public_url AS option_image_url
       FROM public.product_option_group_links l
+      JOIN public.products parent
+        ON parent.product_id = l.parent_product_id
       JOIN public.product_option_groups g
         ON g.option_group_id = l.option_group_id
        AND g.active = TRUE
@@ -125,6 +133,9 @@ function buildOptionGroups(parentProductId, rowsByParent, visited = new Set()) {
         min_select: Number(row.min_select) || 0,
         max_select: Number(row.max_select) || 1,
         selection_type: row.selection_type === 'multiple' ? 'multiple' : 'single',
+        options_affect_price: optionsAffectPrice(
+          row.parent_options_affect_price
+        ),
         sort_order: Number(row.group_sort_order) || 0,
         options: [],
       });
@@ -135,7 +146,10 @@ function buildOptionGroups(parentProductId, rowsByParent, visited = new Set()) {
       id: row.option_product_id,
       title: row.option_name,
       subtitle: row.option_description,
-      extra_price: Number(row.option_price) || 0,
+      extra_price: effectiveOptionPrice(
+        row.option_price,
+        row.parent_options_affect_price
+      ),
       image_url: row.option_image_url,
       sort_order: Number(row.option_sort_order) || 0,
       child_groups: buildOptionGroups(
