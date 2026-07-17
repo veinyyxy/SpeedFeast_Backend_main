@@ -63,6 +63,7 @@ app.use('/api/merchant', require('./routes/merchant_rewards.js'));
 app.use('/api/merchant', require('./routes/merchant_assets.js'));
 app.use('/api/merchant', require('./routes/merchant_settings.js'));
 app.use('/api/merchant', require('./routes/merchant_notifications.js'));
+app.use('/api/merchant', require('./routes/merchant_print_jobs.js'));
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   next(createError(404));

@@ -25,6 +25,10 @@ const {
   effectiveOptionPrice,
   optionsAffectPrice,
 } = require('../services/product_option_pricing');
+const { autoStartOrder } = require('../services/order_automation');
+const {
+  sendBuyerNotificationsInBackground,
+} = require('../services/buyer_notifications');
 
 const router = express.Router();
 
@@ -1217,6 +1221,7 @@ router.post('/orders/create', async (req, res) => {
   const client = await pool.connect();
   let inStorePayment = null;
   let merchantNotificationId = null;
+  let automationResult = null;
 
   try {
     await client.query('BEGIN');
@@ -1576,6 +1581,11 @@ router.post('/orders/create', async (req, res) => {
     }
 
     if (inStorePayment) {
+      automationResult = await autoStartOrder(client, order.order_id, {
+        source: 'in_store_order_created',
+        payment_id: inStorePayment.payment_id,
+        payment_channel: 'in_store',
+      });
       const notification = await recordNewInStoreOrderNotification(
         client,
         order.order_id,
@@ -1595,11 +1605,18 @@ router.post('/orders/create', async (req, res) => {
     if (merchantNotificationId) {
       sendMerchantNotificationInBackground(merchantNotificationId);
     }
+    sendBuyerNotificationsInBackground(
+      automationResult?.buyer_notification_id
+        ? [automationResult.buyer_notification_id]
+        : []
+    );
 
     return res.status(200).json({
       success: true,
       message: 'Order created successfully',
-      order,
+      order: automationResult?.started
+        ? { ...order, ...automationResult.order }
+        : order,
       items: insertedItems,
       payment: inStorePayment
         ? normalizePayment({

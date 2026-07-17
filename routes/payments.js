@@ -11,9 +11,9 @@ const {
   sendMerchantNotificationInBackground,
 } = require('../services/merchant_notifications');
 const {
-  recordBuyerRefundNotification,
-  sendBuyerNotificationInBackground,
+  sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
+const { autoStartOrder } = require('../services/order_automation');
 const {
   restoreOrderRewardRedemptions,
   reversePointsForOrder,
@@ -149,6 +149,7 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
 
   const nextOrderStatus = paymentStatusToOrderStatus(update.payment_status);
   let merchantNotificationId = null;
+  const buyerNotificationIds = [];
   if (nextOrderStatus) {
     if (nextOrderStatus === 'paid') {
       await client.query(
@@ -161,6 +162,15 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
         `,
         [nextOrderStatus, payment.order_id]
       );
+      const automation = await autoStartOrder(client, payment.order_id, {
+        source: 'payment_webhook',
+        payment_id: payment.payment_id,
+        provider: providerName,
+      });
+      if (automation.buyer_notification_id) {
+        buyerNotificationIds.push(automation.buyer_notification_id);
+      }
+      payment.auto_start = automation;
       const notification = await recordNewPaidOrderNotification(
         client,
         payment.order_id,
@@ -200,6 +210,7 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
   }
 
   payment.merchant_notification_id = merchantNotificationId;
+  payment.buyer_notification_ids = buyerNotificationIds;
   return payment;
 }
 
@@ -481,6 +492,9 @@ router.post('/payments/webhook/stripe', async (req, res) => {
     if (merchantNotificationId) {
       sendMerchantNotificationInBackground(merchantNotificationId);
     }
+    sendBuyerNotificationsInBackground(
+      payment?.buyer_notification_ids || []
+    );
     return res.status(200).json({ received: true });
   } catch (err) {
     await client.query('ROLLBACK');

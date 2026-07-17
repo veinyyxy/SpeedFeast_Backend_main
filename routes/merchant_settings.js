@@ -17,6 +17,17 @@ const {
   resolveStoreProfileAssets,
   upsertSystemConfig,
 } = require('../services/system_config_service');
+const {
+  ORDER_AUTOMATION_SCOPE,
+  getOrderAutomationConfig,
+  normalizeOrderAutomationConfig,
+  saveOrderAutomationConfig,
+} = require('../services/order_automation');
+const {
+  MAX_PREPARATION_MINUTES,
+  MIN_PREPARATION_MINUTES,
+  normalizePreparationMinutes,
+} = require('../services/order_preparation_timing');
 
 const router = express.Router();
 
@@ -815,6 +826,62 @@ router.post('/settings/buyer-config', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error updating merchant buyer config:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/settings/order-automation', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  try {
+    const settings = await getOrderAutomationConfig(pool);
+    return res.status(200).json({
+      success: true,
+      scope: {
+        app_scope: ORDER_AUTOMATION_SCOPE.appScope,
+        country_code: ORDER_AUTOMATION_SCOPE.countryCode,
+        region_code: ORDER_AUTOMATION_SCOPE.regionCode,
+        environment: ORDER_AUTOMATION_SCOPE.environment,
+      },
+      settings,
+    });
+  } catch (err) {
+    console.error('Error fetching merchant order automation settings:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+router.post('/settings/order-automation', async (req, res) => {
+  const authPayload = authenticateMerchantRequest(req, res);
+  if (!authPayload) return;
+
+  const source = req.body.settings || req.body.config || req.body || {};
+  const preparationValue =
+    source.preparation_minutes ?? source.preparationMinutes;
+  const preparationMinutes = normalizePreparationMinutes(preparationValue);
+  if (preparationMinutes === null) {
+    return res.status(400).json({
+      success: false,
+      error: `preparation_minutes must be a whole number from ${MIN_PREPARATION_MINUTES} to ${MAX_PREPARATION_MINUTES}`,
+    });
+  }
+
+  const settings = normalizeOrderAutomationConfig({
+    ...source,
+    preparation_minutes: preparationMinutes,
+  });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const savedSettings = await saveOrderAutomationConfig(client, settings);
+    await client.query('COMMIT');
+    return res.status(200).json({ success: true, settings: savedSettings });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating merchant order automation settings:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   } finally {
     client.release();

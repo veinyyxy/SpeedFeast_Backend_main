@@ -23,6 +23,7 @@ const {
   MIN_PREPARATION_MINUTES,
   normalizePreparationMinutes,
 } = require('../services/order_preparation_timing');
+const { autoStartOrder } = require('../services/order_automation');
 
 const router = express.Router();
 
@@ -1215,6 +1216,14 @@ router.post('/orders/payments/sync', async (req, res) => {
       syncSummary.payment_status === 'paid' &&
       syncSummary.order_status === 'paid'
     ) {
+      const automation = await autoStartOrder(client, orderId, {
+        source: 'merchant_payment_sync',
+        payment_id: payment.payment_id,
+        provider: payment.provider,
+      });
+      if (automation.buyer_notification_id) {
+        buyerNotificationIds.push(automation.buyer_notification_id);
+      }
       const notification = await recordNewPaidOrderNotification(
         client,
         orderId,
@@ -1228,6 +1237,14 @@ router.post('/orders/payments/sync', async (req, res) => {
       );
       if (notification.queued) {
         merchantNotificationId = notification.notification_id;
+      }
+      syncSummary.auto_started = automation.started;
+      syncSummary.auto_start_reason = automation.reason || null;
+      if (automation.started) {
+        syncSummary.order_status = automation.order.order_status;
+        syncSummary.preparation_minutes =
+          automation.order.preparation_minutes;
+        syncSummary.due_at = automation.order.due_at;
       }
     }
 
