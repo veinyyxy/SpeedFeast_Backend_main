@@ -836,6 +836,14 @@ function normalizeRecentOrder(row, items, payment, review) {
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     fulfillment_type: row.fulfillment_type,
     fulfillment_detail: fulfillmentDetail,
+    preparation_minutes: row.preparation_minutes == null
+      ? null
+      : Number.parseInt(row.preparation_minutes, 10),
+    preparationMinutes: row.preparation_minutes == null
+      ? null
+      : Number.parseInt(row.preparation_minutes, 10),
+    due_at: row.due_at || null,
+    dueAt: row.due_at || null,
     shipping_address: normalizeAddress(row),
     item_count: items.reduce((sum, item) => sum + item.quantity, 0),
     items,
@@ -901,6 +909,8 @@ router.get('/orders/get_list', async (req, res) => {
           o.shipping_address_id,
           o.fulfillment_type,
           o.fulfillment_detail,
+          o.preparation_minutes,
+          o.due_at,
           o.created_at,
           o.updated_at,
           a.address_id,

@@ -18,6 +18,11 @@ const {
   recordBuyerRefundNotification,
   sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
+const {
+  MAX_PREPARATION_MINUTES,
+  MIN_PREPARATION_MINUTES,
+  normalizePreparationMinutes,
+} = require('../services/order_preparation_timing');
 
 const router = express.Router();
 
@@ -337,6 +342,14 @@ function normalizeMerchantOrder(row, items, payment, review) {
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     fulfillment_type: row.fulfillment_type,
     fulfillment_detail: fulfillmentDetail,
+    preparation_minutes: row.preparation_minutes == null
+      ? null
+      : Number.parseInt(row.preparation_minutes, 10),
+    preparationMinutes: row.preparation_minutes == null
+      ? null
+      : Number.parseInt(row.preparation_minutes, 10),
+    due_at: row.due_at || null,
+    dueAt: row.due_at || null,
     shipping_address: normalizeAddress(row),
     item_count: itemCount,
     items: reviewedItems,
@@ -594,6 +607,8 @@ function baseOrderSelect() {
       o.shipping_address_id,
       o.fulfillment_type,
       o.fulfillment_detail,
+      o.preparation_minutes,
+      o.due_at,
       o.created_at,
       o.updated_at,
       u.username AS customer_username,
@@ -1718,6 +1733,15 @@ router.post('/orders/status/update', async (req, res) => {
   const orderId = normalizeText(req.body.order_id || req.body.orderId);
   const nextStatus = normalizeOrderStatus(req.body.status || req.body.order_status);
   const note = normalizeText(req.body.note);
+  const preparationMinutesValue =
+    req.body.preparation_minutes ?? req.body.preparationMinutes;
+  const hasPreparationMinutes =
+    preparationMinutesValue !== undefined &&
+    preparationMinutesValue !== null &&
+    preparationMinutesValue !== '';
+  const preparationMinutes = normalizePreparationMinutes(
+    preparationMinutesValue
+  );
 
   if (!orderId || !nextStatus) {
     return res.status(400).json({
@@ -1727,6 +1751,12 @@ router.post('/orders/status/update', async (req, res) => {
   }
   if (!ORDER_STATUSES.has(nextStatus)) {
     return res.status(400).json({ success: false, error: 'Invalid status' });
+  }
+  if (hasPreparationMinutes && preparationMinutes === null) {
+    return res.status(400).json({
+      success: false,
+      error: `preparation_minutes must be a whole number from ${MIN_PREPARATION_MINUTES} to ${MAX_PREPARATION_MINUTES}`,
+    });
   }
   if (nextStatus === 'refunded' || nextStatus === 'partially_refunded') {
     return res.status(400).json({
@@ -1743,7 +1773,8 @@ router.post('/orders/status/update', async (req, res) => {
     const currentResult = await client.query(
       `
         SELECT order_id, user_id, order_status, fulfillment_type,
-               total_amount, currency
+               total_amount, currency, created_at,
+               preparation_minutes, due_at
         FROM public."Order"
         WHERE order_id = $1
         FOR UPDATE
@@ -1787,6 +1818,18 @@ router.post('/orders/status/update', async (req, res) => {
     }
 
     if (
+      nextStatus === 'preparing' &&
+      currentStatus !== 'preparing' &&
+      preparationMinutes === null
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        error: 'preparation_minutes is required when starting preparation',
+      });
+    }
+
+    if (
       nextStatus === 'cancelled' &&
       isInStorePayment(payment) &&
       normalizeText(payment?.payment_status)?.toLowerCase() === 'paid'
@@ -1803,6 +1846,16 @@ router.post('/orders/status/update', async (req, res) => {
         UPDATE public."Order"
         SET order_status = $1::text,
             updated_at = now(),
+            preparation_minutes = CASE
+              WHEN $1::text = 'preparing' AND $5::integer IS NOT NULL
+                THEN $5::integer
+              ELSE preparation_minutes
+            END,
+            due_at = CASE
+              WHEN $1::text = 'preparing' AND $5::integer IS NOT NULL
+                THEN created_at + ($5::integer * interval '1 minute')
+              ELSE due_at
+            END,
             fulfillment_detail = jsonb_set(
               COALESCE(fulfillment_detail, '{}'::jsonb),
               '{merchant_events}',
@@ -1816,11 +1869,18 @@ router.post('/orders/status/update', async (req, res) => {
                   'changed_at', now(),
                   'changed_by', $3::uuid,
                   'note', $4::text
-                )
+                ) || CASE
+                  WHEN $1::text = 'preparing' AND $5::integer IS NOT NULL
+                    THEN jsonb_build_object(
+                      'preparation_minutes', $5::integer,
+                      'due_at', created_at + ($5::integer * interval '1 minute')
+                    )
+                  ELSE '{}'::jsonb
+                END
               ),
               true
             )
-        WHERE order_id = $5
+        WHERE order_id = $6::uuid
         RETURNING order_id
       `,
       [
@@ -1828,6 +1888,7 @@ router.post('/orders/status/update', async (req, res) => {
         currentStatus,
         authPayload.merchant_user_id,
         note,
+        preparationMinutes,
         orderId,
       ]
     );
