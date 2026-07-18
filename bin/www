@@ -21,6 +21,11 @@ app.set('port', port);
 
 var server = http.createServer(app);
 
+// Keep polling connections alive beyond the merchant app's 15-second cycle.
+server.keepAliveTimeout = 65 * 1000;
+server.keepAliveTimeoutBuffer = 1000;
+server.headersTimeout = 66 * 1000;
+
 /**
  * Listen on provided port, on all network interfaces.
  */
