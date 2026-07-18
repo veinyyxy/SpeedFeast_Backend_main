@@ -1,7 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const { authorizeMerchantRequest } = require('../secutiry/merchant_auth');
+const { PERMISSIONS } = require('../services/merchant_authorization');
 
 const router = express.Router();
 
@@ -1024,7 +1025,7 @@ async function createOptionGroupsForParent(
 }
 
 router.get('/categories', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.PRODUCTS_VIEW);
   if (!authPayload) return;
 
   try {
@@ -1048,7 +1049,10 @@ router.get('/categories', async (req, res) => {
 });
 
 router.post('/categories/create', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.PRODUCTS_VIEW,
+    PERMISSIONS.PRODUCTS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   const name = normalizeText(req.body.name || req.body.category_name);
@@ -1193,7 +1197,7 @@ async function fetchMerchantOptionGroups(optionGroupId = null, db = pool) {
 }
 
 router.get('/option-groups', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.PRODUCTS_VIEW);
   if (!authPayload) return;
 
   try {
@@ -1213,7 +1217,10 @@ router.get('/option-groups', async (req, res) => {
 });
 
 router.post('/option-groups/update', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.PRODUCTS_VIEW,
+    PERMISSIONS.PRODUCTS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   let payload;
@@ -1379,7 +1386,7 @@ router.post('/option-groups/update', async (req, res) => {
 });
 
 router.get('/products', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.PRODUCTS_VIEW);
   if (!authPayload) return;
 
   try {
@@ -1395,7 +1402,10 @@ router.get('/products', async (req, res) => {
 });
 
 router.post('/products/create', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.PRODUCTS_VIEW,
+    PERMISSIONS.PRODUCTS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   let payload;
@@ -1461,7 +1471,10 @@ router.post('/products/create', async (req, res) => {
 });
 
 router.post('/products/update', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.PRODUCTS_VIEW,
+    PERMISSIONS.PRODUCTS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   let payload;
@@ -1526,7 +1539,11 @@ router.post('/products/update', async (req, res) => {
 });
 
 router.post('/products/status/update', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [PERMISSIONS.PRODUCTS_VIEW, PERMISSIONS.PRODUCTS_AVAILABILITY_MANAGE]
+  );
   if (!authPayload) return;
 
   const productId = normalizeText(req.body.product_id || req.body.productId);
@@ -1573,7 +1590,11 @@ router.post('/products/status/update', async (req, res) => {
 });
 
 router.post('/products/menu-visibility/update', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [PERMISSIONS.PRODUCTS_VIEW, PERMISSIONS.PRODUCTS_AVAILABILITY_MANAGE]
+  );
   if (!authPayload) return;
 
   const productId = normalizeText(req.body.product_id || req.body.productId);

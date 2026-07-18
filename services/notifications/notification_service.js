@@ -6,6 +6,9 @@ const {
   normalizeText,
 } = require('./notification_core');
 const repository = require('./notification_repository');
+const {
+  filterMerchantUserIdsByPermission,
+} = require('../merchant_authorization');
 
 const DEFAULT_ANDROID_CHANNEL_MAP = Object.freeze({
   new_paid_order: 'new_orders',
@@ -117,10 +120,27 @@ async function sendNotificationById(notificationId, options = {}) {
     return { sent: false, reason: 'fcm_not_configured' };
   }
 
-  const tokens = await repository.fetchActiveDeviceTokensForNotification(
+  let tokens = await repository.fetchActiveDeviceTokensForNotification(
     pool,
     notification
   );
+  if (options.requiredMerchantPermission) {
+    const merchantOwnerIds = tokens
+      .filter((token) => token.owner_type === 'merchant_user')
+      .map((token) => token.owner_id);
+    const allowedMerchantUserIds = new Set(
+      await filterMerchantUserIdsByPermission(
+        pool,
+        merchantOwnerIds,
+        options.requiredMerchantPermission
+      )
+    );
+    tokens = tokens.filter(
+      (token) =>
+        token.owner_type !== 'merchant_user' ||
+        allowedMerchantUserIds.has(token.owner_id)
+    );
+  }
   if (tokens.length === 0) {
     await repository.markNotification(pool, notificationId, 'skipped', {
       error_message: 'No active device tokens.',

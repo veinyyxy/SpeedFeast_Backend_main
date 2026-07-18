@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const { authorizeMerchantRequest } = require('../secutiry/merchant_auth');
+const { PERMISSIONS } = require('../services/merchant_authorization');
 const {
   awardPointsForCompletedOrder,
   restoreOrderRewardRedemptions,
@@ -845,7 +846,11 @@ function nextStatusesFor(currentStatus, fulfillmentType, payment = null) {
 }
 
 router.get('/orders', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    PERMISSIONS.ORDERS_VIEW
+  );
   if (!authPayload) return;
 
   const status = normalizeOrderStatus(req.query.status);
@@ -899,7 +904,11 @@ router.get('/orders', async (req, res) => {
 });
 
 router.get('/orders/detail', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    PERMISSIONS.ORDERS_VIEW
+  );
   if (!authPayload) return;
 
   const orderId = normalizeText(req.query.order_id || req.query.orderId);
@@ -929,7 +938,11 @@ router.get('/orders/detail', async (req, res) => {
 });
 
 router.post('/orders/in-store-payment/collect', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [PERMISSIONS.ORDERS_VIEW, PERMISSIONS.ORDERS_PAYMENT_COLLECT]
+  );
   if (!authPayload) return;
 
   const orderId = normalizeText(req.body.order_id || req.body.orderId);
@@ -1112,7 +1125,11 @@ router.post('/orders/in-store-payment/collect', async (req, res) => {
 });
 
 router.post('/orders/payments/sync', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [PERMISSIONS.ORDERS_VIEW, PERMISSIONS.ORDERS_PAYMENT_SYNC]
+  );
   if (!authPayload) return;
 
   const orderId = normalizeText(req.body.order_id || req.body.orderId);
@@ -1310,7 +1327,11 @@ router.post('/orders/payments/sync', async (req, res) => {
 });
 
 router.post('/orders/refund', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [PERMISSIONS.ORDERS_VIEW, PERMISSIONS.ORDERS_REFUND]
+  );
   if (!authPayload) return;
 
   const orderId = normalizeText(req.body.order_id || req.body.orderId);
@@ -1744,7 +1765,11 @@ router.post('/orders/refund', async (req, res) => {
 });
 
 router.post('/orders/status/update', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [PERMISSIONS.ORDERS_VIEW, PERMISSIONS.ORDERS_STATUS_UPDATE]
+  );
   if (!authPayload) return;
 
   const orderId = normalizeText(req.body.order_id || req.body.orderId);

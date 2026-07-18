@@ -9,6 +9,7 @@ const {
 } = require('./notifications/notification_core');
 const notificationRepository = require('./notifications/notification_repository');
 const notificationService = require('./notifications/notification_service');
+const { PERMISSIONS } = require('./merchant_authorization');
 
 const NEW_PAID_ORDER_EVENT = 'new_paid_order';
 const NEW_IN_STORE_ORDER_EVENT = 'new_in_store_order';
@@ -206,6 +207,7 @@ async function recordCustomerCancelledOrderNotification(
 
 async function sendMerchantNotificationById(notificationId) {
   return notificationService.sendNotificationById(notificationId, {
+    requiredMerchantPermission: PERMISSIONS.ORDERS_VIEW,
     androidChannelMap: MERCHANT_ANDROID_CHANNEL_MAP,
     defaultAndroidChannelId: ANDROID_NEW_ORDERS_CHANNEL_ID,
     fallbackTitle: 'SpeedFeast Merchant',

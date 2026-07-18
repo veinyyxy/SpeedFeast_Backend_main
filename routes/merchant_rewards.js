@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const { authorizeMerchantRequest } = require('../secutiry/merchant_auth');
+const { PERMISSIONS } = require('../services/merchant_authorization');
 const {
   REWARD_CONFIG_SCOPE,
   REWARD_EARN_RATE_CONFIG_KEY,
@@ -239,7 +240,7 @@ async function fetchRewardItems(rewardId = null) {
 }
 
 router.get('/rewards', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.REWARDS_VIEW);
   if (!authPayload) return;
 
   try {
@@ -258,7 +259,7 @@ router.get('/rewards', async (req, res) => {
 });
 
 router.get('/rewards/settings', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.REWARDS_VIEW);
   if (!authPayload) return;
 
   try {
@@ -279,7 +280,10 @@ router.get('/rewards/settings', async (req, res) => {
 });
 
 router.post('/rewards/settings', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.REWARDS_VIEW,
+    PERMISSIONS.REWARDS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   const body = req.body || {};
@@ -340,7 +344,10 @@ router.post('/rewards/settings', async (req, res) => {
 });
 
 router.post('/rewards/create', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.REWARDS_VIEW,
+    PERMISSIONS.REWARDS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   let payload;
@@ -404,7 +411,10 @@ router.post('/rewards/create', async (req, res) => {
 });
 
 router.post('/rewards/update', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.REWARDS_VIEW,
+    PERMISSIONS.REWARDS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   let payload;
@@ -483,7 +493,10 @@ router.post('/rewards/update', async (req, res) => {
 });
 
 router.post('/rewards/status', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.REWARDS_VIEW,
+    PERMISSIONS.REWARDS_MANAGE,
+  ]);
   if (!authPayload) return;
 
   const rewardId = normalizeRewardId(req.body || {});

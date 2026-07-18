@@ -46,11 +46,30 @@ async function main() {
           display_name = EXCLUDED.display_name,
           role = EXCLUDED.role,
           active = TRUE,
+          auth_version = merchant_users.auth_version + 1,
+          must_change_password = FALSE,
           updated_at = now()
-      RETURNING merchant_user_id, username, display_name, role, active
+      RETURNING merchant_user_id, username, display_name, role, active,
+                auth_version, must_change_password
     `,
     [username, passwordHash, displayName, role]
   );
+
+  const notificationTable = await pool.query(
+    `SELECT to_regclass('public.notification_device_tokens') AS table_name`
+  );
+  if (notificationTable.rows[0]?.table_name) {
+    await pool.query(
+      `
+        UPDATE public.notification_device_tokens
+        SET active = FALSE,
+            updated_at = now()
+        WHERE owner_type = 'merchant_user'
+          AND owner_id = $1::uuid
+      `,
+      [result.rows[0].merchant_user_id]
+    );
+  }
 
   console.log(JSON.stringify({
     success: true,
@@ -66,4 +85,3 @@ main()
   .finally(async () => {
     await pool.end();
   });
-

@@ -5,7 +5,8 @@ const express = require('express');
 const multer = require('multer');
 
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantUploadRequest } = require('../secutiry/merchant_auth');
+const { authorizeMerchantUploadRequest } = require('../secutiry/merchant_auth');
+const { PERMISSIONS } = require('../services/merchant_authorization');
 
 const router = express.Router();
 
@@ -138,8 +139,13 @@ function handleUpload(req, res, next) {
   });
 }
 
-router.post('/assets/images/upload', (req, res, next) => {
-  const authPayload = authenticateMerchantUploadRequest(req, res);
+router.post('/assets/images/upload', async (req, res, next) => {
+  const authPayload = await authorizeMerchantUploadRequest(
+    req,
+    res,
+    [PERMISSIONS.PRODUCTS_MANAGE, PERMISSIONS.SETTINGS_STORE_MANAGE],
+    { permissionMode: 'any' }
+  );
   if (!authPayload) return;
   req.merchantAuthPayload = authPayload;
   next();

@@ -1,6 +1,10 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const {
+  authenticateMerchantRequest,
+  authorizeMerchantRequest,
+} = require('../secutiry/merchant_auth');
+const { PERMISSIONS } = require('../services/merchant_authorization');
 const {
   ACTION_OPEN_ORDERS,
   recordMerchantNotification,
@@ -109,7 +113,7 @@ function normalizeNotification(row) {
 }
 
 router.get('/notifications', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const limit = normalizeLimit(req.query.limit);
@@ -195,7 +199,7 @@ router.get('/notifications', async (req, res) => {
 });
 
 router.get('/notifications/unread-count', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const ownerType = OWNER_TYPES.MERCHANT_USER;
@@ -237,7 +241,7 @@ router.get('/notifications/unread-count', async (req, res) => {
 });
 
 router.post('/notifications/device-token', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res);
   if (!authPayload) return;
 
   const token = normalizeText(
@@ -278,7 +282,7 @@ router.post('/notifications/device-token', async (req, res) => {
 });
 
 router.post('/notifications/read-all', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const ownerType = OWNER_TYPES.MERCHANT_USER;
@@ -323,7 +327,7 @@ router.post('/notifications/read-all', async (req, res) => {
 });
 
 router.post('/notifications/delete-read', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const ownerType = OWNER_TYPES.MERCHANT_USER;
@@ -372,7 +376,7 @@ router.post('/notifications/delete-read', async (req, res) => {
 });
 
 router.post('/notifications/test', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const client = await pool.connect();
@@ -419,7 +423,7 @@ router.post('/notifications/test', async (req, res) => {
 });
 
 router.post('/notifications/:notification_id/delete', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const ownerType = OWNER_TYPES.MERCHANT_USER;
@@ -478,7 +482,7 @@ router.post('/notifications/:notification_id/delete', async (req, res) => {
 });
 
 router.post('/notifications/:notification_id/read', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, PERMISSIONS.ORDERS_VIEW);
   if (!authPayload) return;
 
   const ownerType = OWNER_TYPES.MERCHANT_USER;

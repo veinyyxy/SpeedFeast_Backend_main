@@ -1,6 +1,10 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const { authorizeMerchantRequest } = require('../secutiry/merchant_auth');
+const {
+  PERMISSIONS,
+  hasMerchantPermission,
+} = require('../services/merchant_authorization');
 const {
   DEFAULT_ORDER_PRICING_CONFIG,
   normalizeCurrency,
@@ -714,7 +718,17 @@ async function upsertConfig(client, key, value, valueType, description) {
 }
 
 router.get('/settings/buyer-config', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [
+      PERMISSIONS.SETTINGS_STORE_MANAGE,
+      PERMISSIONS.SETTINGS_PRICING_MANAGE,
+      PERMISSIONS.SETTINGS_OPERATIONS_MANAGE,
+      PERMISSIONS.ORDERS_PRINT,
+    ],
+    { permissionMode: 'any' }
+  );
   if (!authPayload) return;
 
   try {
@@ -738,7 +752,16 @@ router.get('/settings/buyer-config', async (req, res) => {
 });
 
 router.post('/settings/buyer-config', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    [
+      PERMISSIONS.SETTINGS_STORE_MANAGE,
+      PERMISSIONS.SETTINGS_PRICING_MANAGE,
+      PERMISSIONS.SETTINGS_OPERATIONS_MANAGE,
+    ],
+    { permissionMode: 'any' }
+  );
   if (!authPayload) return;
 
   let payload;
@@ -758,7 +781,10 @@ router.post('/settings/buyer-config', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    if (payload.store.profile) {
+    if (
+      payload.store.profile &&
+      hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_STORE_MANAGE)
+    ) {
       await upsertConfig(
         client,
         'store.profile',
@@ -767,55 +793,63 @@ router.post('/settings/buyer-config', async (req, res) => {
         'Store profile for order client'
       );
     }
-    await upsertConfig(
-      client,
-      'pricing.currency',
-      payload.pricing.currency,
-      'string',
-      'Order currency for Manitoba, Canada'
-    );
-    await upsertConfig(
-      client,
-      'pricing.delivery_fee',
-      payload.pricing.delivery_fee,
-      'number',
-      'Delivery fee for Manitoba, Canada'
-    );
-    await upsertConfig(
-      client,
-      'pricing.delivery_service_fee',
-      payload.pricing.delivery_service_fee,
-      'number',
-      'Delivery service fee for Manitoba, Canada'
-    );
-    await upsertConfig(
-      client,
-      'pricing.tax',
-      payload.pricing.tax,
-      'json',
-      'Tax rate for Manitoba, Canada'
-    );
-    await upsertConfig(
-      client,
-      'operations.business_hours',
-      payload.operations.business_hours,
-      'json',
-      'Business hours for Manitoba order client'
-    );
-    await upsertConfig(
-      client,
-      'fulfillment.pickup_eta',
-      payload.fulfillment.pickup_eta,
-      'json',
-      'Pickup ETA for Manitoba order client'
-    );
-    await upsertConfig(
-      client,
-      'payment.in_store',
-      payload.payment.in_store,
-      'json',
-      'In-store payment options for dine-in and takeout orders'
-    );
+    if (
+      hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_PRICING_MANAGE)
+    ) {
+      await upsertConfig(
+        client,
+        'pricing.currency',
+        payload.pricing.currency,
+        'string',
+        'Order currency for Manitoba, Canada'
+      );
+      await upsertConfig(
+        client,
+        'pricing.delivery_fee',
+        payload.pricing.delivery_fee,
+        'number',
+        'Delivery fee for Manitoba, Canada'
+      );
+      await upsertConfig(
+        client,
+        'pricing.delivery_service_fee',
+        payload.pricing.delivery_service_fee,
+        'number',
+        'Delivery service fee for Manitoba, Canada'
+      );
+      await upsertConfig(
+        client,
+        'pricing.tax',
+        payload.pricing.tax,
+        'json',
+        'Tax rate for Manitoba, Canada'
+      );
+    }
+    if (
+      hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_OPERATIONS_MANAGE)
+    ) {
+      await upsertConfig(
+        client,
+        'operations.business_hours',
+        payload.operations.business_hours,
+        'json',
+        'Business hours for Manitoba order client'
+      );
+      await upsertConfig(
+        client,
+        'fulfillment.pickup_eta',
+        payload.fulfillment.pickup_eta,
+        'json',
+        'Pickup ETA for Manitoba order client'
+      );
+      await upsertConfig(
+        client,
+        'payment.in_store',
+        payload.payment.in_store,
+        'json',
+        'In-store payment options for dine-in and takeout orders'
+      );
+    }
     await client.query('COMMIT');
 
     const config = await fetchBuyerConfig();
@@ -833,7 +867,11 @@ router.post('/settings/buyer-config', async (req, res) => {
 });
 
 router.get('/settings/order-automation', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    PERMISSIONS.SETTINGS_AUTOMATION_MANAGE
+  );
   if (!authPayload) return;
 
   try {
@@ -855,7 +893,11 @@ router.get('/settings/order-automation', async (req, res) => {
 });
 
 router.post('/settings/order-automation', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(
+    req,
+    res,
+    PERMISSIONS.SETTINGS_AUTOMATION_MANAGE
+  );
   if (!authPayload) return;
 
   const source = req.body.settings || req.body.config || req.body || {};

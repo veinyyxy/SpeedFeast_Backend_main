@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db/pgsql');
-const { authenticateMerchantRequest } = require('../secutiry/merchant_auth');
+const { authorizeMerchantRequest } = require('../secutiry/merchant_auth');
+const { PERMISSIONS } = require('../services/merchant_authorization');
 const {
   claimNextOrderReceipt,
   completePrintJob,
@@ -21,7 +22,10 @@ function isUuid(value) {
 }
 
 router.post('/print-jobs/claim', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.ORDERS_VIEW,
+    PERMISSIONS.ORDERS_PRINT,
+  ]);
   if (!authPayload) return;
 
   const deviceId = normalizeText(req.body.device_id || req.body.deviceId);
@@ -48,7 +52,10 @@ router.post('/print-jobs/claim', async (req, res) => {
 });
 
 router.post('/print-jobs/:printJobId/result', async (req, res) => {
-  const authPayload = authenticateMerchantRequest(req, res);
+  const authPayload = await authorizeMerchantRequest(req, res, [
+    PERMISSIONS.ORDERS_VIEW,
+    PERMISSIONS.ORDERS_PRINT,
+  ]);
   if (!authPayload) return;
 
   const printJobId = normalizeText(req.params.printJobId);
