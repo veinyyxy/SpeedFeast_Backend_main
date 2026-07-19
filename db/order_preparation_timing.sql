@@ -20,4 +20,4 @@ COMMENT ON COLUMN public."Order".preparation_minutes
   IS 'Merchant-selected preparation duration in whole minutes when preparation starts.';
 
 COMMENT ON COLUMN public."Order".due_at
-  IS 'Preparation deadline calculated as order created_at plus preparation_minutes.';
+  IS 'Fulfillment due time. Scheduled orders use the buyer-requested time; ASAP orders use created_at plus preparation_minutes.';

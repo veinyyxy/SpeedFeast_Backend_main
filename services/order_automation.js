@@ -168,7 +168,12 @@ async function autoStartOrder(client, orderId, options = {}) {
       UPDATE public."Order"
       SET order_status = 'preparing',
           preparation_minutes = $3::integer,
-          due_at = created_at + ($3::integer * interval '1 minute'),
+          due_at = CASE
+            WHEN COALESCE(fulfillment_detail->>'is_scheduled', 'false') = 'true'
+              OR COALESCE(fulfillment_detail->>'fulfillment_timing', '') = 'scheduled'
+              THEN due_at
+            ELSE created_at + ($3::integer * interval '1 minute')
+          END,
           updated_at = now(),
           fulfillment_detail = jsonb_set(
             jsonb_set(
@@ -194,7 +199,12 @@ async function autoStartOrder(client, orderId, options = {}) {
                   'changed_by_type', 'automation',
                   'source', $4::text,
                   'preparation_minutes', $3::integer,
-                  'due_at', created_at + ($3::integer * interval '1 minute')
+                  'due_at', CASE
+                    WHEN COALESCE(fulfillment_detail->>'is_scheduled', 'false') = 'true'
+                      OR COALESCE(fulfillment_detail->>'fulfillment_timing', '') = 'scheduled'
+                      THEN due_at
+                    ELSE created_at + ($3::integer * interval '1 minute')
+                  END
                 )
               ),
               true

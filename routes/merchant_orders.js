@@ -323,6 +323,10 @@ function applyItemReviewRatings(items, review) {
 function normalizeMerchantOrder(row, items, payment, review) {
   const fulfillmentDetail = row.fulfillment_detail || {};
   const pricing = fulfillmentDetail.pricing || {};
+  const isScheduled =
+    fulfillmentDetail.is_scheduled === true ||
+    fulfillmentDetail.fulfillment_timing === 'scheduled';
+  const fulfillmentTiming = isScheduled ? 'scheduled' : 'asap';
   const status = row.order_status || 'created';
   const reviewedItems = applyItemReviewRatings(items, review);
   const itemCount = reviewedItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -344,6 +348,16 @@ function normalizeMerchantOrder(row, items, payment, review) {
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     fulfillment_type: row.fulfillment_type,
     fulfillment_detail: fulfillmentDetail,
+    fulfillment_timing: fulfillmentTiming,
+    fulfillmentTiming,
+    is_scheduled: isScheduled,
+    isScheduled,
+    scheduled_for: isScheduled
+      ? fulfillmentDetail.scheduled_for || row.due_at || null
+      : null,
+    scheduledFor: isScheduled
+      ? fulfillmentDetail.scheduled_for || row.due_at || null
+      : null,
     preparation_minutes: row.preparation_minutes == null
       ? null
       : Number.parseInt(row.preparation_minutes, 10),
@@ -1895,6 +1909,8 @@ router.post('/orders/status/update', async (req, res) => {
             END,
             due_at = CASE
               WHEN $1::text = 'preparing' AND $5::integer IS NOT NULL
+                AND COALESCE(fulfillment_detail->>'is_scheduled', 'false') <> 'true'
+                AND COALESCE(fulfillment_detail->>'fulfillment_timing', '') <> 'scheduled'
                 THEN created_at + ($5::integer * interval '1 minute')
               ELSE due_at
             END,
@@ -1915,7 +1931,12 @@ router.post('/orders/status/update', async (req, res) => {
                   WHEN $1::text = 'preparing' AND $5::integer IS NOT NULL
                     THEN jsonb_build_object(
                       'preparation_minutes', $5::integer,
-                      'due_at', created_at + ($5::integer * interval '1 minute')
+                      'due_at', CASE
+                        WHEN COALESCE(fulfillment_detail->>'is_scheduled', 'false') = 'true'
+                          OR COALESCE(fulfillment_detail->>'fulfillment_timing', '') = 'scheduled'
+                          THEN due_at
+                        ELSE created_at + ($5::integer * interval '1 minute')
+                      END
                     )
                   ELSE '{}'::jsonb
                 END

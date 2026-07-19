@@ -27,6 +27,9 @@ const {
 } = require('../services/product_option_pricing');
 const { autoStartOrder } = require('../services/order_automation');
 const {
+  normalizeOrderFulfillmentTiming,
+} = require('../services/order_fulfillment_timing');
+const {
   sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
 
@@ -827,6 +830,10 @@ async function fetchRecentOrderItemReviewRatings(orderItemIds) {
 function normalizeRecentOrder(row, items, payment, review) {
   const fulfillmentDetail = row.fulfillment_detail || {};
   const pricing = fulfillmentDetail.pricing || {};
+  const isScheduled =
+    fulfillmentDetail.is_scheduled === true ||
+    fulfillmentDetail.fulfillment_timing === 'scheduled';
+  const fulfillmentTiming = isScheduled ? 'scheduled' : 'asap';
   const status = row.order_status || 'created';
   const isFinished = ['delivered', 'completed', 'cancelled', 'refunded'].includes(status);
 
@@ -840,6 +847,16 @@ function normalizeRecentOrder(row, items, payment, review) {
     currency: row.currency ? row.currency.toString().trim() : 'CAD',
     fulfillment_type: row.fulfillment_type,
     fulfillment_detail: fulfillmentDetail,
+    fulfillment_timing: fulfillmentTiming,
+    fulfillmentTiming,
+    is_scheduled: isScheduled,
+    isScheduled,
+    scheduled_for: isScheduled
+      ? fulfillmentDetail.scheduled_for || row.due_at || null
+      : null,
+    scheduledFor: isScheduled
+      ? fulfillmentDetail.scheduled_for || row.due_at || null
+      : null,
     preparation_minutes: row.preparation_minutes == null
       ? null
       : Number.parseInt(row.preparation_minutes, 10),
@@ -1187,6 +1204,7 @@ router.post('/orders/create', async (req, res) => {
   );
   const rewardRedemptionId =
     req.body.reward_redemption_id || req.body.rewardRedemptionId || null;
+  const fulfillmentTiming = normalizeOrderFulfillmentTiming(req.body);
 
   if (!fulfillmentType || items.length === 0) {
     return res.status(400).json({
@@ -1215,6 +1233,27 @@ router.post('/orders/create', async (req, res) => {
     return res.status(400).json({
       success: false,
       error: 'Unsupported payment mode',
+    });
+  }
+  if (!fulfillmentTiming.valid) {
+    return res.status(400).json({
+      success: false,
+      error: fulfillmentTiming.error,
+    });
+  }
+  if (fulfillmentTiming.isScheduled && fulfillmentType !== 'delivery') {
+    return res.status(400).json({
+      success: false,
+      error: 'Scheduled fulfillment is currently supported for delivery orders only.',
+    });
+  }
+  if (
+    fulfillmentTiming.scheduledFor &&
+    fulfillmentTiming.scheduledFor.getTime() <= Date.now()
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: 'scheduled_for must be in the future',
     });
   }
 
@@ -1262,12 +1301,17 @@ router.post('/orders/create', async (req, res) => {
         });
       }
     }
-    const businessState = businessStateAt(operationsConfig.businessHours);
+    const businessState = businessStateAt(
+      operationsConfig.businessHours,
+      fulfillmentTiming.scheduledFor || new Date()
+    );
     if (!businessState.isOpen) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
-        error: `Restaurant is currently closed. ${businessState.label}.`,
+        error: fulfillmentTiming.isScheduled
+          ? `Scheduled delivery time is outside business hours. ${businessState.label}.`
+          : `Restaurant is currently closed. ${businessState.label}.`,
         business_status: businessState,
       });
     }
@@ -1418,6 +1462,9 @@ router.post('/orders/create', async (req, res) => {
       table_number: dineInTable?.table_number || null,
       pickup_location: req.body.pickup_location || null,
       delivery_note: req.body.delivery_note || null,
+      fulfillment_timing: fulfillmentTiming.mode,
+      is_scheduled: fulfillmentTiming.isScheduled,
+      scheduled_for: fulfillmentTiming.scheduledFor?.toISOString() || null,
       order_note: normalizeOrderNote(req.body.order_note || req.body.orderNote) || null,
       pricing: totals,
       pricing_config_scope: pricingConfig.scope || null,
@@ -1445,12 +1492,13 @@ router.post('/orders/create', async (req, res) => {
           currency,
           shipping_address_id,
           fulfillment_type,
-          fulfillment_detail
+          fulfillment_detail,
+          due_at
         )
-        VALUES ($1, 'created', $2, $3, $4, $5, $6::jsonb)
+        VALUES ($1, 'created', $2, $3, $4, $5, $6::jsonb, $7::timestamptz)
         RETURNING order_id, user_id, order_status, total_amount, currency,
                   shipping_address_id, fulfillment_type, fulfillment_detail,
-                  created_at, updated_at
+                  due_at, created_at, updated_at
       `,
       [
         userId,
@@ -1459,6 +1507,7 @@ router.post('/orders/create', async (req, res) => {
         shippingAddressId,
         fulfillmentType,
         JSON.stringify(fulfillmentDetail),
+        fulfillmentTiming.scheduledFor,
       ]
     );
 
