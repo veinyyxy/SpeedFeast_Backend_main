@@ -58,6 +58,7 @@ app.use('/api', require('./routes/payment_methods.js'));
 app.use('/api/buyer', require('./routes/buyer_notifications.js'));
 app.use('/api/merchant', require('./routes/merchant_auth.js'));
 app.use('/api/merchant', require('./routes/merchant_users.js'));
+app.use('/api/merchant', require('./routes/merchant_dining_tables.js'));
 app.use('/api/merchant', require('./routes/merchant_orders.js'));
 app.use('/api/merchant', require('./routes/merchant_products.js'));
 app.use('/api/merchant', require('./routes/merchant_rewards.js'));

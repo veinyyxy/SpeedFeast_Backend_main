@@ -30,6 +30,9 @@ const {
   normalizeOrderFulfillmentTiming,
 } = require('../services/order_fulfillment_timing');
 const {
+  resolveActiveDiningTableRequest,
+} = require('../services/dine_in_tables');
+const {
   sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
 
@@ -163,25 +166,6 @@ function orderPricingScopeFromRequest(body) {
   };
 }
 
-function extractTableToken(value) {
-  const raw = normalizeText(value);
-  if (!raw) return '';
-
-  try {
-    const parsed = new URL(raw);
-    return (
-      normalizeText(parsed.searchParams.get('table_token')) ||
-      normalizeText(parsed.searchParams.get('tableToken')) ||
-      normalizeText(parsed.searchParams.get('token')) ||
-      normalizeText(parsed.pathname.split('/').filter(Boolean).pop())
-    );
-  } catch (_) {
-    const match = raw.match(/(?:table_token|tableToken|token)=([^&\s]+)/);
-    if (match) return decodeURIComponent(match[1]).trim();
-    return raw;
-  }
-}
-
 function toMoney(value) {
   return Number.parseFloat(Number(value).toFixed(2));
 }
@@ -200,52 +184,6 @@ function normalizeLimit(value) {
 
 function canCancelOrderStatus(status) {
   return ['created', 'paid'].includes((status || '').toString().toLowerCase());
-}
-
-async function resolveDineInTable(client, body) {
-  const tableId = normalizeText(body.dine_in_table_id || body.table_id || body.tableId);
-  const tableToken = extractTableToken(
-    body.table_token ||
-      body.tableToken ||
-      body.qr_code ||
-      body.qrCode ||
-      body.table_code ||
-      body.tableCode
-  );
-  const tableNumber = normalizeText(body.table_number || body.tableNumber);
-
-  if (!tableId && !tableToken && !tableNumber) {
-    return null;
-  }
-
-  const conditions = [];
-  const params = [];
-
-  if (tableId) {
-    params.push(tableId);
-    conditions.push(`table_id = $${params.length}`);
-  }
-  if (tableToken) {
-    params.push(tableToken);
-    conditions.push(`table_token = $${params.length}`);
-  }
-  if (tableNumber) {
-    params.push(tableNumber);
-    conditions.push(`table_number = $${params.length}`);
-  }
-
-  const result = await client.query(
-    `
-      SELECT table_id, store_id, table_number, table_token, is_active
-      FROM public.dining_tables
-      WHERE is_active = true
-        AND (${conditions.join(' OR ')})
-      LIMIT 1
-    `,
-    params
-  );
-
-  return result.rows[0] || null;
 }
 
 async function fetchOrderOptionRows(client) {
@@ -1216,17 +1154,12 @@ router.post('/orders/create', async (req, res) => {
 
   if (
     fulfillmentType === 'dine_in' &&
-    !req.body.table_number &&
-    !req.body.tableNumber &&
-    !req.body.dine_in_table_id &&
-    !req.body.table_id &&
-    !req.body.tableId &&
     !req.body.table_token &&
     !req.body.tableToken
   ) {
     return res.status(400).json({
       success: false,
-      error: 'Missing table information for dine-in order',
+      error: 'A verified table code is required for a dine-in order',
     });
   }
   if (!paymentMode) {
@@ -1341,7 +1274,7 @@ router.post('/orders/create', async (req, res) => {
 
     let dineInTable = null;
     if (fulfillmentType === 'dine_in') {
-      dineInTable = await resolveDineInTable(client, req.body);
+      dineInTable = await resolveActiveDiningTableRequest(client, req.body);
       if (!dineInTable) {
         await client.query('ROLLBACK');
         return res.status(400).json({

@@ -89,6 +89,8 @@ VALUES
   ('settings.operations.manage', 'Settings', 'Manage operations', 'Edit business hours, pickup timing, and in-store payment options.', 330),
   ('settings.automation.manage', 'Settings', 'Manage order automation', 'Edit automatic order start and preparation settings.', 340),
   ('printers.manage', 'Settings', 'Manage printers', 'Discover, connect, configure, and test receipt printers.', 350),
+  ('tables.view', 'Tables', 'View dine-in tables', 'View table numbers, status, and QR codes.', 360),
+  ('tables.manage', 'Tables', 'Manage dine-in tables', 'Create, edit, enable, disable, and rotate table QR codes.', 370),
   ('users.view', 'Users', 'View users', 'View merchant users and their effective permissions.', 410),
   ('users.manage', 'Users', 'Manage users', 'Create, edit, deactivate, reset passwords, and assign permissions.', 420)
 ON CONFLICT (permission_key) DO UPDATE
@@ -122,6 +124,8 @@ VALUES
   ('manager', 'settings.operations.manage'),
   ('manager', 'settings.automation.manage'),
   ('manager', 'printers.manage'),
+  ('manager', 'tables.view'),
+  ('manager', 'tables.manage'),
   ('manager', 'users.view'),
   ('staff', 'orders.view'),
   ('staff', 'orders.status.update'),

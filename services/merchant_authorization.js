@@ -15,6 +15,8 @@ const ALL_PERMISSIONS = Object.freeze([
   'settings.operations.manage',
   'settings.automation.manage',
   'printers.manage',
+  'tables.view',
+  'tables.manage',
   'users.view',
   'users.manage',
 ]);
@@ -36,6 +38,8 @@ const PERMISSIONS = Object.freeze({
   SETTINGS_OPERATIONS_MANAGE: 'settings.operations.manage',
   SETTINGS_AUTOMATION_MANAGE: 'settings.automation.manage',
   PRINTERS_MANAGE: 'printers.manage',
+  TABLES_VIEW: 'tables.view',
+  TABLES_MANAGE: 'tables.manage',
   USERS_VIEW: 'users.view',
   USERS_MANAGE: 'users.manage',
 });
