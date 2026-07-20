@@ -1,0 +1,72 @@
+name: Backend Release
+
+on:
+  push:
+    tags:
+      - "backend-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test:sms
+
+      - name: Determine release version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=backend-manual-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release archive
+        shell: bash
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=.github \
+            --exclude=.env \
+            --exclude=node_modules \
+            --exclude='*firebase-adminsdk*.json' \
+            -czf "speedfeast-backend-${{ steps.version.outputs.name }}.tar.gz" .
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: speedfeast-backend-${{ steps.version.outputs.name }}
+          path: speedfeast-backend-${{ steps.version.outputs.name }}.tar.gz
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ steps.version.outputs.name }}"
+          "speedfeast-backend-${{ steps.version.outputs.name }}.tar.gz"
+          --generate-notes
+          --title "${{ steps.version.outputs.name }}"
