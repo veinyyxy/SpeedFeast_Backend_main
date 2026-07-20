@@ -83,15 +83,8 @@ router.get('/verification/send_verification', async (req, res) => {
         console.log(`Debug mode: Email to ${target} with code ${code}`);
       }
     } else if (type === 'phone') {
-      if(debugMode != true) {
-        var resresSender = await smsSender.sendInformation(target, code, 
-          `Your verification code is: ${code}, valid for ${CODE_EXPIRE_MINUTES} minutes.`);
-        console.log("smsSender.sendInformation result is : " + resresSender);
-      } else {
-        
-        //res.status(200).json({ success: true, message: 'Debug mode: Verification code not sent' });
-        console.log(`Debug mode: SMS to ${target} with code ${code}`);
-      }
+      await smsSender.sendInformation(target, code,
+        `Your verification code is: ${code}, valid for ${CODE_EXPIRE_MINUTES} minutes.`);
     }
   } catch (err) {
     return res.status(500).json({ success: false, error: `${err.message}` });
