@@ -1,17 +1,7 @@
-const env = process.env.NODE_ENV || 'dev';
+const { buildPostgresConfig } = require('../services/runtime_config');
 
-let pgsql_config
-
-if(env === 'dev'){
-    pgsql_config = {
-        user: 'postgres',
-        host: 'localhost',
-        database: 'SpeedFeastMain',
-        password: '1234qwer',
-        port: 5432
-    }
-};
+const pgsql_config = buildPostgresConfig(process.env);
 
 module.exports = {
-    pgsql_config
+  pgsql_config,
 };

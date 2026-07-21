@@ -4,15 +4,18 @@ const PaymentProvider = require('./payment_provider');
 class StripePaymentProvider extends PaymentProvider {
   constructor() {
     super('stripe');
+    const isProduction = ['prod', 'production'].includes(
+      String(process.env.NODE_ENV || '').trim().toLowerCase()
+    );
     this.secretKey = process.env.STRIPE_SECRET_KEY || '';
     this.webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
     this.publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
     this.successUrl =
       process.env.STRIPE_SUCCESS_URL ||
-      'http://localhost:3000/payment-success?session_id={CHECKOUT_SESSION_ID}';
+      (isProduction ? '' : 'http://localhost:3000/payment-success?session_id={CHECKOUT_SESSION_ID}');
     this.cancelUrl =
       process.env.STRIPE_CANCEL_URL ||
-      'http://localhost:3000/payment-cancel?session_id={CHECKOUT_SESSION_ID}';
+      (isProduction ? '' : 'http://localhost:3000/payment-cancel?session_id={CHECKOUT_SESSION_ID}');
   }
 
   ensureConfigured() {
@@ -90,6 +93,15 @@ class StripePaymentProvider extends PaymentProvider {
     return this.createCheckoutSession({ order, payment });
   }
 
+  ensureCheckoutConfigured() {
+    this.ensureConfigured();
+    if (!this.successUrl || !this.cancelUrl) {
+      throw new Error(
+        'Stripe Checkout requires STRIPE_SUCCESS_URL and STRIPE_CANCEL_URL.'
+      );
+    }
+  }
+
   resolvePaymentFlow({ platform } = {}) {
     const normalizedPlatform = platform
       ? platform.toString().trim().toLowerCase()
@@ -100,6 +112,7 @@ class StripePaymentProvider extends PaymentProvider {
   }
 
   async createCheckoutSession({ order, payment }) {
+    this.ensureCheckoutConfigured();
     const amountInCents = Math.round(Number(order.total_amount) * 100);
     if (!Number.isInteger(amountInCents) || amountInCents <= 0) {
       throw new Error('Order amount is invalid for Stripe payment.');
@@ -341,7 +354,7 @@ class StripePaymentProvider extends PaymentProvider {
   }
 
   verifyWebhookSignature(rawBody, signatureHeader) {
-    if (!this.webhookSecret) return true;
+    if (!this.webhookSecret) return false;
     if (!signatureHeader) return false;
 
     const parts = signatureHeader.split(',').reduce((acc, part) => {
@@ -354,6 +367,12 @@ class StripePaymentProvider extends PaymentProvider {
     const timestamp = parts.t;
     const expectedSignature = parts.v1;
     if (!timestamp || !expectedSignature) return false;
+
+    const parsedTimestamp = Number(timestamp);
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isInteger(parsedTimestamp) || Math.abs(now - parsedTimestamp) > 300) {
+      return false;
+    }
 
     const signedPayload = `${timestamp}.${rawBody}`;
     const calculated = crypto

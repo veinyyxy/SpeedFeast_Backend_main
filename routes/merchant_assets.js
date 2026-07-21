@@ -6,6 +6,11 @@ const multer = require('multer');
 
 const { pool } = require('../db/pgsql');
 const { authorizeMerchantUploadRequest } = require('../secutiry/merchant_auth');
+const {
+  createImageStorage,
+  detectImageMime,
+  extensionForMime,
+} = require('../services/image_storage');
 const { PERMISSIONS } = require('../services/merchant_authorization');
 
 const router = express.Router();
@@ -13,6 +18,7 @@ const router = express.Router();
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_ROOT = path.join(__dirname, '..', 'images');
 const PRODUCT_IMAGE_ROOT = path.join(IMAGE_ROOT, 'products');
+const imageStorage = createImageStorage();
 const MIME_BY_EXTENSION = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
@@ -43,48 +49,12 @@ function resolveImageExtension(filename, mimeType) {
   return EXTENSION_BY_MIME.get((mimeType || '').toLowerCase()) || null;
 }
 
-function detectImageMime(filePath) {
-  const buffer = fs.readFileSync(filePath, { encoding: null, flag: 'r' });
-  if (
-    buffer.length >= 3 &&
-    buffer[0] === 0xff &&
-    buffer[1] === 0xd8 &&
-    buffer[2] === 0xff
-  ) {
-    return 'image/jpeg';
-  }
-
-  if (
-    buffer.length >= 8 &&
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47 &&
-    buffer[4] === 0x0d &&
-    buffer[5] === 0x0a &&
-    buffer[6] === 0x1a &&
-    buffer[7] === 0x0a
-  ) {
-    return 'image/png';
-  }
-
-  if (
-    buffer.length >= 12 &&
-    buffer.toString('ascii', 0, 4) === 'RIFF' &&
-    buffer.toString('ascii', 8, 12) === 'WEBP'
-  ) {
-    return 'image/webp';
-  }
-
-  return null;
-}
-
 function removeUploadedFile(filePath) {
   if (!filePath) return;
   fs.rm(filePath, { force: true }, () => {});
 }
 
-const storage = multer.diskStorage({
+const localStorage = multer.diskStorage({
   destination(req, file, callback) {
     const { year, month } = imageDateParts();
     req.productImageObjectPrefix = path.posix.join('products', year, month);
@@ -101,6 +71,10 @@ const storage = multer.diskStorage({
     callback(null, `${crypto.randomUUID()}${extension}`);
   },
 });
+
+const storage = imageStorage.provider === 's3'
+  ? multer.memoryStorage()
+  : localStorage;
 
 const upload = multer({
   storage,
@@ -139,6 +113,124 @@ function handleUpload(req, res, next) {
   });
 }
 
+class UnsupportedImageError extends Error {}
+
+async function removeStoredImage(storageClient, objectKey, localFilePath) {
+  if (storageClient.provider === 's3' && objectKey) {
+    try {
+      await storageClient.remove(objectKey);
+    } catch (err) {
+      console.error('Error removing uploaded S3 image:', err);
+    }
+    return;
+  }
+  removeUploadedFile(localFilePath);
+}
+
+async function storeMerchantImageAsset({
+  file,
+  productImageObjectPrefix,
+  merchantAuthPayload,
+  storageClient = imageStorage,
+  dbPool = pool,
+}) {
+  let currentFilePath = file.path || null;
+  let objectKey = null;
+  let uploadedToS3 = false;
+
+  try {
+    const imageBuffer = file.buffer || fs.readFileSync(file.path, {
+      encoding: null,
+      flag: 'r',
+    });
+    const detectedMime = detectImageMime(imageBuffer);
+    if (!detectedMime) {
+      throw new UnsupportedImageError('Uploaded file is not a supported image');
+    }
+
+    const detectedExtension = extensionForMime(detectedMime);
+    let filename = file.filename || `${crypto.randomUUID()}${detectedExtension}`;
+    if (path.extname(filename).toLowerCase() !== detectedExtension) {
+      filename = `${path.parse(filename).name}${detectedExtension}`;
+      if (storageClient.provider === 'local') {
+        const renamedPath = path.join(path.dirname(file.path), filename);
+        fs.renameSync(file.path, renamedPath);
+        currentFilePath = renamedPath;
+      }
+    }
+
+    objectKey = path.posix.join(productImageObjectPrefix, filename);
+    const publicUrl = storageClient.publicUrl(objectKey);
+
+    if (storageClient.provider === 's3') {
+      await storageClient.upload({
+        objectKey,
+        buffer: imageBuffer,
+        contentType: detectedMime,
+        metadata: { source: 'merchant-upload' },
+      });
+      uploadedToS3 = true;
+    }
+
+    const metadata = {
+      source: 'merchant_upload',
+      merchant_user_id: merchantAuthPayload.merchant_user_id,
+    };
+    if (currentFilePath) metadata.uploaded_path = currentFilePath;
+
+    const result = await dbPool.query(
+      `
+        INSERT INTO public.media_assets (
+          asset_type,
+          storage_provider,
+          bucket,
+          object_key,
+          public_url,
+          variants,
+          mime_type,
+          size_bytes,
+          original_filename,
+          status,
+          metadata
+        )
+        VALUES (
+          'image',
+          $1,
+          $2,
+          $3,
+          $4,
+          jsonb_build_object('original', $4::text),
+          $5,
+          $6,
+          $7,
+          'ready',
+          $8::jsonb
+        )
+        RETURNING asset_id, public_url, object_key, mime_type, size_bytes
+      `,
+      [
+        storageClient.provider,
+        storageClient.bucket,
+        objectKey,
+        publicUrl,
+        detectedMime,
+        file.size,
+        normalizeOriginalFilename(file.originalname),
+        JSON.stringify(metadata),
+      ]
+    );
+
+    return result.rows[0];
+  } catch (err) {
+    await removeStoredImage(
+      storageClient,
+      uploadedToS3 ? objectKey : null,
+      currentFilePath
+    );
+    throw err;
+  }
+}
+
 router.post('/assets/images/upload', async (req, res, next) => {
   const authPayload = await authorizeMerchantUploadRequest(
     req,
@@ -158,71 +250,15 @@ router.post('/assets/images/upload', async (req, res, next) => {
     });
   }
 
-  let currentFilePath = file.path;
   try {
-    const detectedMime = detectImageMime(file.path);
-    if (!detectedMime) {
-      removeUploadedFile(file.path);
-      return res.status(400).json({
-        success: false,
-        error: 'Uploaded file is not a supported image',
-      });
-    }
-
-    const detectedExtension = EXTENSION_BY_MIME.get(detectedMime);
-    let filename = file.filename;
-    if (detectedExtension && path.extname(filename).toLowerCase() !== detectedExtension) {
-      filename = `${path.parse(filename).name}${detectedExtension}`;
-      const renamedPath = path.join(path.dirname(file.path), filename);
-      fs.renameSync(file.path, renamedPath);
-      currentFilePath = renamedPath;
-    }
-
-    const objectKey = path.posix.join(req.productImageObjectPrefix, filename);
-    const publicUrl = `/images/${objectKey}`;
-    const result = await pool.query(
-      `
-        INSERT INTO public.media_assets (
-          asset_type,
-          storage_provider,
-          object_key,
-          public_url,
-          variants,
-          mime_type,
-          size_bytes,
-          original_filename,
-          status,
-          metadata
-        )
-        VALUES (
-          'image',
-          'local',
-          $1,
-          $2,
-          jsonb_build_object('original', $2::text),
-          $3,
-          $4,
-          $5,
-          'ready',
-          $6::jsonb
-        )
-        RETURNING asset_id, public_url, object_key, mime_type, size_bytes
-      `,
-      [
-        objectKey,
-        publicUrl,
-        detectedMime,
-        file.size,
-        normalizeOriginalFilename(file.originalname),
-        JSON.stringify({
-          source: 'merchant_upload',
-          merchant_user_id: req.merchantAuthPayload.merchant_user_id,
-          uploaded_path: currentFilePath,
-        }),
-      ]
-    );
-
-    const asset = result.rows[0];
+    const { year, month } = imageDateParts();
+    const productImageObjectPrefix = req.productImageObjectPrefix ||
+      path.posix.join('products', year, month);
+    const asset = await storeMerchantImageAsset({
+      file,
+      productImageObjectPrefix,
+      merchantAuthPayload: req.merchantAuthPayload,
+    });
     return res.status(201).json({
       success: true,
       asset,
@@ -230,7 +266,12 @@ router.post('/assets/images/upload', async (req, res, next) => {
       image_url: asset.public_url,
     });
   } catch (err) {
-    removeUploadedFile(currentFilePath);
+    if (err instanceof UnsupportedImageError) {
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+      });
+    }
     console.error('Error uploading merchant image:', err);
     return res.status(500).json({
       success: false,
@@ -240,3 +281,7 @@ router.post('/assets/images/upload', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports._test = {
+  UnsupportedImageError,
+  storeMerchantImageAsset,
+};

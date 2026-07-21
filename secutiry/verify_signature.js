@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { createHmac } = require('crypto');
+const { createHmac, timingSafeEqual } = require('crypto');
 const qs = require('qs'); // 用于解析和生成查询字符串
 // 共享的秘密密钥，客户端和服务端必须一致
 const SECRET_KEY = process.env.HMAC_SECRET_KEY //'your-shared-secret-key';
@@ -18,6 +18,26 @@ function generateSignature(data) {
 
     // 3. 以 Base64 格式返回散列值
     return hmac.digest('base64');
+}
+
+function hasRequiredSignatureHeaders(clientID, timestamp, nonce, clientSig) {
+    return [clientID, timestamp, nonce, clientSig].every(
+        (value) => typeof value === 'string' && value.length > 0
+    );
+}
+
+function isFreshTimestamp(timestamp) {
+    const parsedTimestamp = Number(timestamp);
+    if (!Number.isInteger(parsedTimestamp)) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return Math.abs(now - parsedTimestamp) <= 300;
+}
+
+function signaturesMatch(clientSig, serverSig) {
+    const clientBuffer = Buffer.from(clientSig, 'utf8');
+    const serverBuffer = Buffer.from(serverSig, 'utf8');
+    return clientBuffer.length === serverBuffer.length &&
+        timingSafeEqual(clientBuffer, serverBuffer);
 }
 
 function verifySignature(req) {
@@ -40,16 +60,14 @@ function verifySignature(req) {
     const sortedQueryString = qs.stringify(sortedObj, { encode: false });
 
     const clientSig = req.headers['x-signature'];
+    if (!SECRET_KEY || !hasRequiredSignatureHeaders(clientID, timestamp, nonce, clientSig)) {
+        return false;
+    }
     const data = `${clientID}-${timestamp}-${nonce}-${sortedQueryString}`
     const serverSig = generateSignature(data);
-    
-    console.log('Client Sig:', clientSig);
-    console.log('Server Sig:', serverSig);
-    console.log('Data:', data);
-    // 检查时间戳是否在允许的范围内（例如5分钟内）
-    const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - parseInt(timestamp)) > 300) return false; // 超过5分钟
-        return clientSig === serverSig;
+
+    if (!isFreshTimestamp(timestamp)) return false;
+    return signaturesMatch(clientSig, serverSig);
 }
 
 function verifySignature2(req) {
@@ -74,16 +92,14 @@ function verifySignature2(req) {
     */
 
     const clientSig = req.headers['x-signature'];
+    if (!SECRET_KEY || !hasRequiredSignatureHeaders(clientID, timestamp, nonce, clientSig)) {
+        return false;
+    }
     const data = `${clientID}-${timestamp}-${nonce}-${req.body ? JSON.stringify(req.body) : ''}`
     const serverSig = generateSignature(data);
-    
-    console.log('Client Sig:', clientSig);
-    console.log('Server Sig:', serverSig);
-    console.log('Data:', data);
-    // 检查时间戳是否在允许的范围内（例如5分钟内）
-    const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - parseInt(timestamp)) > 300) return false; // 超过5分钟
-        return clientSig === serverSig;
+
+    if (!isFreshTimestamp(timestamp)) return false;
+    return signaturesMatch(clientSig, serverSig);
 }
 
 function verifySignaturePayload(req, payload = '') {
@@ -91,16 +107,14 @@ function verifySignaturePayload(req, payload = '') {
     const timestamp = req.headers['x-timestamp'];
     const nonce = req.headers['x-nonce'];
     const clientSig = req.headers['x-signature'];
+    if (!SECRET_KEY || !hasRequiredSignatureHeaders(clientID, timestamp, nonce, clientSig)) {
+        return false;
+    }
     const data = `${clientID}-${timestamp}-${nonce}-${payload || ''}`
     const serverSig = generateSignature(data);
 
-    console.log('Client Sig:', clientSig);
-    console.log('Server Sig:', serverSig);
-    console.log('Data:', data);
-
-    const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - parseInt(timestamp)) > 300) return false;
-    return clientSig === serverSig;
+    if (!isFreshTimestamp(timestamp)) return false;
+    return signaturesMatch(clientSig, serverSig);
 }
 
 function generateJWT(payload, expiresIn = process.env.JWT_EXPIRES_IN) {
@@ -135,4 +149,16 @@ function isTokenExpired(token) {
   }
 }
 
-module.exports = { verifySignature, generateJWT, verifySignature2, verifySignaturePayload, verifyJWT, isTokenExpired };
+module.exports = {
+  verifySignature,
+  generateJWT,
+  verifySignature2,
+  verifySignaturePayload,
+  verifyJWT,
+  isTokenExpired,
+  _test: {
+    hasRequiredSignatureHeaders,
+    isFreshTimestamp,
+    signaturesMatch,
+  },
+};

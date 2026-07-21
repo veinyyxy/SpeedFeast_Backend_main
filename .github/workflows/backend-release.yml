@@ -12,14 +12,14 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -27,11 +27,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
-
-      - name: Test
-        run: npm run test:sms
+      - name: Check and test
+        run: npm run check
 
       - name: Determine release version
         id: version
@@ -43,30 +40,45 @@ jobs:
             echo "name=backend-manual-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create release archive
+      # Registry publishing is intentionally deferred until ECR/ECS exists.
+      - name: Build Docker image (no registry push)
         shell: bash
         run: |
-          tar \
-            --exclude=.git \
-            --exclude=.github \
-            --exclude=.env \
-            --exclude=node_modules \
-            --exclude='*firebase-adminsdk*.json' \
-            -czf "speedfeast-backend-${{ steps.version.outputs.name }}.tar.gz" .
+          docker build \
+            --label "org.opencontainers.image.created=$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${{ steps.version.outputs.name }}" \
+            --tag "speedfeast-backend:${{ steps.version.outputs.name }}" \
+            .
+
+      - name: Export Docker image
+        shell: bash
+        run: |
+          docker image inspect "speedfeast-backend:${{ steps.version.outputs.name }}"
+          docker save "speedfeast-backend:${{ steps.version.outputs.name }}" \
+            | gzip > "speedfeast-backend-image-${{ steps.version.outputs.name }}.tar.gz"
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: speedfeast-backend-${{ steps.version.outputs.name }}
-          path: speedfeast-backend-${{ steps.version.outputs.name }}.tar.gz
+          name: speedfeast-backend-image-${{ steps.version.outputs.name }}
+          path: speedfeast-backend-image-${{ steps.version.outputs.name }}.tar.gz
           if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${{ steps.version.outputs.name }}"
-          "speedfeast-backend-${{ steps.version.outputs.name }}.tar.gz"
-          --generate-notes
-          --title "${{ steps.version.outputs.name }}"
+        run: |
+          release_name="${{ steps.version.outputs.name }}"
+          archive="speedfeast-backend-image-${release_name}.tar.gz"
+          if gh release view "$release_name" >/dev/null 2>&1; then
+            gh release upload "$release_name" "$archive" --clobber
+          else
+            gh release create "$release_name" "$archive" \
+              --generate-notes \
+              --title "$release_name"
+          fi
