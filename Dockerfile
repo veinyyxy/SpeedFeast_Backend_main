@@ -21,11 +21,24 @@ COPY public/verification ./public/verification
 RUN npm run build
 
 
+FROM node:24-bookworm-slim AS rds-certificates
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && curl --fail --silent --show-error --location \
+        https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+        --output /aws-rds-global-bundle.pem \
+    && grep -q "BEGIN CERTIFICATE" /aws-rds-global-bundle.pem \
+    && chmod 0444 /aws-rds-global-bundle.pem \
+    && rm -rf /var/lib/apt/lists/*
+
+
 FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 
 WORKDIR /app
 
@@ -39,6 +52,7 @@ COPY --chown=node:node secutiry ./secutiry
 COPY --chown=node:node services ./services
 COPY --chown=node:node views ./views
 COPY --from=build --chown=node:node /app/public/out ./public/out
+COPY --from=rds-certificates /aws-rds-global-bundle.pem /usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 
 # Keep the legacy static/upload path writable without baking uploaded files
 # into the immutable image.

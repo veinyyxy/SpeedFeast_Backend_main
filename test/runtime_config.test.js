@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 
 const {
   buildCorsOptions,
@@ -126,6 +127,16 @@ test('PostgreSQL config supports standard PG variables, SSL and pool tuning', ()
   assert.deepEqual(config.ssl, { rejectUnauthorized: true });
   assert.equal(config.max, 20);
   assert.equal(config.statement_timeout, 15000);
+});
+
+test('PostgreSQL verify-full loads the configured root certificate', () => {
+  const config = buildPostgresConfig({
+    PGSSLMODE: 'verify-full',
+    PGSSLROOTCERT: __filename,
+  });
+
+  assert.equal(config.ssl.rejectUnauthorized, true);
+  assert.equal(config.ssl.ca, fs.readFileSync(__filename, 'utf8'));
 });
 
 test('PostgreSQL config rejects invalid numeric settings', () => {

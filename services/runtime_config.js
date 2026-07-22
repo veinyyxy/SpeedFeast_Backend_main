@@ -1,3 +1,5 @@
+const fs = require('node:fs');
+
 const PRODUCTION_ENVS = new Set(['prod', 'production']);
 
 function isProductionEnvironment(env = process.env) {
@@ -98,9 +100,16 @@ function buildSslConfig(env) {
   }
 
   if (['verify-ca', 'verify-full'].includes(sslMode)) {
-    return {
+    const ssl = {
       rejectUnauthorized: readBoolean(env.PGSSL_REJECT_UNAUTHORIZED, true),
     };
+
+    const rootCertificatePath = String(env.PGSSLROOTCERT || '').trim();
+    if (rootCertificatePath) {
+      ssl.ca = fs.readFileSync(rootCertificatePath, 'utf8');
+    }
+
+    return ssl;
   }
 
   if (sslMode) {
