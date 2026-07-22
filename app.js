@@ -46,7 +46,14 @@ app.use(helmet({
 app.use(logger(isProduction ? 'combined' : 'dev'));
 app.use(cookieParser());
 app.use('/api/payments/webhook/stripe', express.raw({ type: 'application/json' }));
-app.use(express.json());
+app.use(express.json({
+  verify(req, _res, buffer) {
+    // Request signatures must be checked against the exact JSON bytes sent by
+    // the client. Parsing and serializing again can change valid JSON such as
+    // `12.0` to `12`, which produces a different HMAC.
+    req.rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 

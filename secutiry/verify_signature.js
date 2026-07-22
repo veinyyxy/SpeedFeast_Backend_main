@@ -40,6 +40,19 @@ function signaturesMatch(clientSig, serverSig) {
         timingSafeEqual(clientBuffer, serverBuffer);
 }
 
+function getRequestBodyPayload(req) {
+    if (Buffer.isBuffer(req.rawBody)) {
+        return req.rawBody.toString('utf8');
+    }
+    if (typeof req.rawBody === 'string') {
+        return req.rawBody;
+    }
+    if (req.body === undefined || req.body === null) {
+        return '';
+    }
+    return JSON.stringify(req.body);
+}
+
 function verifySignature(req) {
     const clientID = req.headers['x-client-id'];
     const timestamp = req.headers['x-timestamp'];
@@ -74,28 +87,12 @@ function verifySignature2(req) {
     const clientID = req.headers['x-client-id'];
     const timestamp = req.headers['x-timestamp'];
     const nonce = req.headers['x-nonce'];
-    const queryString = req.originalUrl.split('?')[1] || '';
-    
-    /*
-    // 1. 解析为对象
-    const paramsObj = qs.parse(queryString);
-
-    // 2. 按 key 排序
-    const sortedKeys = Object.keys(paramsObj).sort();
-    const sortedObj = {};
-    sortedKeys.forEach(key => {
-    sortedObj[key] = paramsObj[key];
-    });
-
-    // 3. 重新生成排序后的字符串并且不对字符串进行编码
-    const sortedQueryString = qs.stringify(sortedObj, { encode: false });
-    */
 
     const clientSig = req.headers['x-signature'];
     if (!SECRET_KEY || !hasRequiredSignatureHeaders(clientID, timestamp, nonce, clientSig)) {
         return false;
     }
-    const data = `${clientID}-${timestamp}-${nonce}-${req.body ? JSON.stringify(req.body) : ''}`
+    const data = `${clientID}-${timestamp}-${nonce}-${getRequestBodyPayload(req)}`
     const serverSig = generateSignature(data);
 
     if (!isFreshTimestamp(timestamp)) return false;
@@ -160,5 +157,6 @@ module.exports = {
     hasRequiredSignatureHeaders,
     isFreshTimestamp,
     signaturesMatch,
+    getRequestBodyPayload,
   },
 };
