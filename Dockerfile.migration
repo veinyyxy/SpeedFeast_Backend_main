@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7
+
+# Match the destination RDS major version. PostgreSQL 18 pg_restore can read
+# the custom-format dump produced by the local PostgreSQL 15 pg_dump client.
+FROM postgres:18.4-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        awscli \
+        ca-certificates \
+        curl \
+        python3 \
+    && curl --fail --silent --show-error --location \
+        https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+        --output /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
+    && grep -q "BEGIN CERTIFICATE" /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
+    && chmod 0444 /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --chmod=0555 scripts/run-rds-migration.sh /usr/local/bin/run-rds-migration
+
+ENV PGPORT=5432 \
+    PGSSLMODE=verify-full \
+    PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
+
+USER postgres
+
+ENTRYPOINT ["/usr/local/bin/run-rds-migration"]
