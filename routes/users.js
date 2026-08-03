@@ -194,6 +194,16 @@ router.post('/users/register', async (req, res) => {
     const result = await query(insertSql, [username, password_hash, email, cell_phone]);
     const user = result.rows[0];
 
+    await query(
+      `
+        INSERT INTO public.store_customers (store_id, user_id)
+        VALUES ($1::uuid, $2::uuid)
+        ON CONFLICT (store_id, user_id)
+        DO UPDATE SET active = TRUE, updated_at = now()
+      `,
+      [req.storeContext.storeId, user.user_id]
+    );
+
     const tokenExpiresIn = process.env.JWT_EXPIRES_IN;
     if (!tokenExpiresIn) {
       return res.status(500).json({ success: false, error: 'JWT_EXPIRES_IN is not configured' });

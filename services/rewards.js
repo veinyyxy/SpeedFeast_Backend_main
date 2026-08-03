@@ -57,7 +57,7 @@ function normalizeEarnRateConfig(value) {
   };
 }
 
-async function getRewardEarnRate(db = pool) {
+async function getRewardEarnRate(db = pool, storeId = null) {
   try {
     const result = await readSystemConfigRows(db, {
       appScope: REWARD_CONFIG_SCOPE.appScope,
@@ -65,7 +65,7 @@ async function getRewardEarnRate(db = pool) {
       countryCode: REWARD_CONFIG_SCOPE.countryCode,
       regionCode: REWARD_CONFIG_SCOPE.regionCode,
       city: null,
-      merchantId: null,
+      storeId,
       configKeys: [REWARD_EARN_RATE_CONFIG_KEY],
       environmentFallback: 'dev',
     });
@@ -98,6 +98,7 @@ function serviceError(message, statusCode = 400, code = 'rewards_error') {
 
 function normalizeAccount(row) {
   return {
+    store_id: row.store_id,
     user_id: row.user_id,
     available_points: normalizeInt(row.available_points),
     pending_points: normalizeInt(row.pending_points),
@@ -208,31 +209,36 @@ function normalizeTransaction(row) {
 }
 
 async function ensureLoyaltyAccount(client, userId, options = {}) {
+  const storeId = options.storeId;
+  if (!storeId) {
+    throw serviceError('store_id is required', 500, 'missing_store_context');
+  }
   await client.query(
     `
-      INSERT INTO public.loyalty_accounts (user_id)
-      VALUES ($1)
-      ON CONFLICT (user_id) DO NOTHING
+      INSERT INTO public.loyalty_accounts (store_id, user_id)
+      VALUES ($1::uuid, $2::uuid)
+      ON CONFLICT (store_id, user_id) DO NOTHING
     `,
-    [userId]
+    [storeId, userId]
   );
 
   const lockClause = options.lock ? 'FOR UPDATE' : '';
   const result = await client.query(
     `
-      SELECT user_id, available_points, pending_points,
+      SELECT store_id, user_id, available_points, pending_points,
              lifetime_earned_points, lifetime_redeemed_points
       FROM public.loyalty_accounts
-      WHERE user_id = $1
+      WHERE store_id = $1::uuid
+        AND user_id = $2::uuid
       ${lockClause}
     `,
-    [userId]
+    [storeId, userId]
   );
 
   return result.rows[0] ? normalizeAccount(result.rows[0]) : null;
 }
 
-async function listActiveRewardItems(client) {
+async function listActiveRewardItems(client, storeId) {
   const result = await client.query(
     `
       SELECT
@@ -248,12 +254,15 @@ async function listActiveRewardItems(client) {
         'CAD'::text AS currency,
         ri.expires_in_days,
         p.name AS product_name,
-        p.base_price AS product_base_price,
-        p.status AS product_status,
+        COALESCE(sp.price_override, p.base_price) AS product_base_price,
+        COALESCE(sp.status, p.status) AS product_status,
         COALESCE(product_image.public_url, ri.image_path) AS product_image_path
       FROM public.reward_items ri
       LEFT JOIN public.products p
         ON p.product_id = ri.product_id
+      LEFT JOIN public.store_products sp
+        ON sp.store_id = ri.store_id
+       AND sp.product_id = ri.product_id
       LEFT JOIN LATERAL (
         SELECT ma.public_url
         FROM public.product_images image
@@ -266,13 +275,20 @@ async function listActiveRewardItems(client) {
                  image.image_id ASC
         LIMIT 1
       ) product_image ON TRUE
-      WHERE ri.active = true
+      WHERE ri.store_id = $1::uuid
+        AND ri.active = true
         AND (
           ri.reward_type <> 'product'
-          OR (ri.product_id IS NOT NULL AND p.status = 'active')
+          OR (
+            ri.product_id IS NOT NULL
+            AND COALESCE(sp.status, p.status) = 'active'
+            AND COALESCE(sp.visible_in_menu, TRUE) = TRUE
+            AND COALESCE(sp.sold_out, FALSE) = FALSE
+          )
         )
       ORDER BY ri.points_cost ASC, ri.sort_order ASC, ri.title ASC
-    `
+    `,
+    [storeId]
   );
 
   return result.rows.map(normalizeRewardItem);
@@ -294,13 +310,13 @@ function nextRewardPoints(availablePoints, rewards) {
   return allCosts.length > 0 ? allCosts[allCosts.length - 1] : 300;
 }
 
-async function getRewardsSummary(userId) {
+async function getRewardsSummary(userId, storeId) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const account = await ensureLoyaltyAccount(client, userId);
-    const rewards = await listActiveRewardItems(client);
-    const earnRate = await getRewardEarnRate(client);
+    const account = await ensureLoyaltyAccount(client, userId, { storeId });
+    const rewards = await listActiveRewardItems(client, storeId);
+    const earnRate = await getRewardEarnRate(client, storeId);
     await client.query('COMMIT');
 
     const availablePoints = account?.available_points || 0;
@@ -325,7 +341,7 @@ async function getRewardsSummary(userId) {
   }
 }
 
-async function getRewardsTransactions(userId, options = {}) {
+async function getRewardsTransactions(userId, storeId, options = {}) {
   const limit = Math.min(
     Math.max(Number.parseInt(options.limit, 10) || 50, 1),
     100
@@ -335,8 +351,8 @@ async function getRewardsTransactions(userId, options = {}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const account = await ensureLoyaltyAccount(client, userId);
-    const rewardItems = await listActiveRewardItems(client);
+    const account = await ensureLoyaltyAccount(client, userId, { storeId });
+    const rewardItems = await listActiveRewardItems(client, storeId);
 
     const transactionsResult = await client.query(
       `
@@ -356,20 +372,22 @@ async function getRewardsTransactions(userId, options = {}) {
         FROM public.loyalty_transactions lt
         LEFT JOIN public."Order" o
           ON o.order_id = lt.order_id
-        WHERE lt.user_id = $1
+        WHERE lt.store_id = $1::uuid
+          AND lt.user_id = $2::uuid
         ORDER BY lt.created_at DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $3 OFFSET $4
       `,
-      [userId, limit, offset]
+      [storeId, userId, limit, offset]
     );
 
     const countResult = await client.query(
       `
         SELECT COUNT(*)::int AS total
         FROM public.loyalty_transactions
-        WHERE user_id = $1
+        WHERE store_id = $1::uuid
+          AND user_id = $2::uuid
       `,
-      [userId]
+      [storeId, userId]
     );
 
     await client.query('COMMIT');
@@ -395,10 +413,14 @@ async function getRewardsTransactions(userId, options = {}) {
   }
 }
 
-async function getRewardRedemptions(userId, options = {}) {
+async function getRewardRedemptions(userId, storeId, options = {}) {
   const status = (options.status || '').toString().trim().toLowerCase();
-  const params = [userId];
-  const whereParts = ['rr.user_id = $1'];
+  const params = [storeId, userId];
+  const whereParts = [
+    'rr.store_id = $1::uuid',
+    'rr.user_id = $2::uuid',
+    'ri.store_id = rr.store_id',
+  ];
 
   if (status === 'active') {
     whereParts.push(`rr.status = 'active'`);
@@ -476,7 +498,7 @@ async function getRewardRedemptions(userId, options = {}) {
   return result.rows.map(normalizeRedemption);
 }
 
-async function redeemReward(userId, rewardId) {
+async function redeemReward(userId, rewardId, storeId) {
   const normalizedRewardId = (rewardId || '').toString().trim();
   if (!normalizedRewardId) {
     throw serviceError('reward_id is required', 400, 'missing_reward_id');
@@ -500,12 +522,15 @@ async function redeemReward(userId, rewardId) {
           ri.discount_amount,
           ri.expires_in_days,
           p.name AS product_name,
-          p.base_price AS product_base_price,
-          p.status AS product_status,
+          COALESCE(sp.price_override, p.base_price) AS product_base_price,
+          COALESCE(sp.status, p.status) AS product_status,
           COALESCE(product_image.public_url, ri.image_path) AS product_image_path
         FROM public.reward_items ri
         LEFT JOIN public.products p
           ON p.product_id = ri.product_id
+        LEFT JOIN public.store_products sp
+          ON sp.store_id = ri.store_id
+         AND sp.product_id = ri.product_id
         LEFT JOIN LATERAL (
           SELECT ma.public_url
           FROM public.product_images image
@@ -519,10 +544,11 @@ async function redeemReward(userId, rewardId) {
           LIMIT 1
         ) product_image ON TRUE
         WHERE ri.reward_id = $1::uuid
+          AND ri.store_id = $2::uuid
           AND ri.active = true
         FOR UPDATE OF ri
       `,
-      [normalizedRewardId]
+      [normalizedRewardId, storeId]
     );
 
     const reward = rewardResult.rows[0];
@@ -548,7 +574,10 @@ async function redeemReward(userId, rewardId) {
       }
     }
 
-    const account = await ensureLoyaltyAccount(client, userId, { lock: true });
+    const account = await ensureLoyaltyAccount(client, userId, {
+      lock: true,
+      storeId,
+    });
     if (!account || account.available_points < pointsCost) {
       throw serviceError('Not enough points.', 409, 'not_enough_points');
     }
@@ -565,6 +594,7 @@ async function redeemReward(userId, rewardId) {
     const transactionResult = await client.query(
       `
         INSERT INTO public.loyalty_transactions (
+          store_id,
           user_id,
           order_id,
           transaction_type,
@@ -574,19 +604,20 @@ async function redeemReward(userId, rewardId) {
           metadata
         )
         VALUES (
-          $1,
+          $1::uuid,
+          $2::uuid,
           NULL,
           'redeem',
           'available',
-          $2,
           $3,
+          $4,
           jsonb_build_object(
-            'reward_id', $4::uuid,
-            'reward_title', $5::text,
-            'discount_amount', $6::numeric,
-            'reward_type', $7::text,
-            'product_id', $8::uuid,
-            'product_name', $9::text,
+            'reward_id', $5::uuid,
+            'reward_title', $6::text,
+            'discount_amount', $7::numeric,
+            'reward_type', $8::text,
+            'product_id', $9::uuid,
+            'product_name', $10::text,
             'currency', 'CAD',
             'source', 'reward_redemption'
           )
@@ -595,6 +626,7 @@ async function redeemReward(userId, rewardId) {
                   description, metadata, created_at
       `,
       [
+        storeId,
         userId,
         -pointsCost,
         `Redeemed ${reward.title}`,
@@ -610,19 +642,21 @@ async function redeemReward(userId, rewardId) {
     const updatedAccountResult = await client.query(
       `
         UPDATE public.loyalty_accounts
-        SET available_points = available_points - $2,
-            lifetime_redeemed_points = lifetime_redeemed_points + $2,
+        SET available_points = available_points - $3,
+            lifetime_redeemed_points = lifetime_redeemed_points + $3,
             updated_at = now()
-        WHERE user_id = $1
-        RETURNING user_id, available_points, pending_points,
+        WHERE store_id = $1::uuid
+          AND user_id = $2::uuid
+        RETURNING store_id, user_id, available_points, pending_points,
                   lifetime_earned_points, lifetime_redeemed_points
       `,
-      [userId, pointsCost]
+      [storeId, userId, pointsCost]
     );
 
     const redemptionResult = await client.query(
       `
         INSERT INTO public.reward_redemptions (
+          store_id,
           user_id,
           reward_id,
           transaction_id,
@@ -638,19 +672,20 @@ async function redeemReward(userId, rewardId) {
           expires_at
         )
         VALUES (
-          $1,
-          $2,
+          $1::uuid,
+          $2::uuid,
           $3,
           $4,
           $5,
-          'CAD',
           $6,
+          'CAD',
           $7,
           $8,
           $9,
           $10,
+          $11,
           'active',
-          now() + ($11::int * interval '1 day')
+          now() + ($12::int * interval '1 day')
         )
         RETURNING redemption_id, user_id, reward_id, transaction_id,
                   points_cost, discount_amount, currency, reward_type AS redemption_reward_type,
@@ -663,6 +698,7 @@ async function redeemReward(userId, rewardId) {
                   created_at, updated_at
       `,
       [
+        storeId,
         userId,
         reward.reward_id,
         transactionResult.rows[0].transaction_id,
@@ -677,7 +713,7 @@ async function redeemReward(userId, rewardId) {
       ]
     );
 
-    const rewardItems = await listActiveRewardItems(client);
+    const rewardItems = await listActiveRewardItems(client, storeId);
     await client.query('COMMIT');
 
     const updatedAccount = normalizeAccount(updatedAccountResult.rows[0]);
@@ -719,7 +755,8 @@ async function prepareRewardRedemptionForOrder(
   client,
   userId,
   redemptionId,
-  discountBaseAmount
+  discountBaseAmount,
+  storeId
 ) {
   const normalizedRedemptionId = (redemptionId || '').toString().trim();
   if (!normalizedRedemptionId) return null;
@@ -751,17 +788,22 @@ async function prepareRewardRedemptionForOrder(
         ri.points_cost AS reward_points_cost,
         ri.discount_amount AS reward_discount_amount,
         ri.active AS reward_active,
-        p.status AS current_product_status
+        COALESCE(sp.status, p.status) AS current_product_status
       FROM public.reward_redemptions rr
       INNER JOIN public.reward_items ri
         ON ri.reward_id = rr.reward_id
       LEFT JOIN public.products p
         ON p.product_id = COALESCE(rr.product_id, ri.product_id)
+      LEFT JOIN public.store_products sp
+        ON sp.store_id = rr.store_id
+       AND sp.product_id = COALESCE(rr.product_id, ri.product_id)
       WHERE rr.redemption_id = $1::uuid
         AND rr.user_id = $2::uuid
+        AND rr.store_id = $3::uuid
+        AND ri.store_id = rr.store_id
       FOR UPDATE OF rr
     `,
-    [normalizedRedemptionId, userId]
+    [normalizedRedemptionId, userId, storeId]
   );
 
   const redemption = redemptionResult.rows[0];
@@ -820,7 +862,12 @@ async function prepareRewardRedemptionForOrder(
   };
 }
 
-async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
+async function markRewardRedemptionUsedForOrder(
+  client,
+  redemption,
+  orderId,
+  storeId
+) {
   if (!redemption || !redemption.redemption_id) return null;
 
   const updateResult = await client.query(
@@ -830,6 +877,7 @@ async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
           used_order_id = $2::uuid,
           updated_at = now()
       WHERE redemption_id = $1::uuid
+        AND store_id = $3::uuid
         AND status = 'active'
         AND used_order_id IS NULL
       RETURNING redemption_id, user_id, reward_id, transaction_id,
@@ -843,7 +891,7 @@ async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
                 status AS effective_status, expires_at, used_order_id,
                 created_at, updated_at
     `,
-    [redemption.redemption_id, orderId]
+    [redemption.redemption_id, orderId, storeId]
   );
 
   const updatedRedemption = updateResult.rows[0];
@@ -854,6 +902,7 @@ async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
   await client.query(
     `
       INSERT INTO public.order_reward_redemptions (
+        store_id,
         order_id,
         redemption_id,
         reward_id,
@@ -863,10 +912,11 @@ async function markRewardRedemptionUsedForOrder(client, redemption, orderId) {
         currency,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'applied')
+      VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, 'applied')
       ON CONFLICT DO NOTHING
     `,
     [
+      storeId,
       orderId,
       updatedRedemption.redemption_id,
       updatedRedemption.reward_id,
@@ -899,7 +949,8 @@ async function restoreOrderRewardRedemptions(client, orderId, options = {}) {
     `
       SELECT
         order_reward_redemption_id,
-        redemption_id
+        redemption_id,
+        store_id
       FROM public.order_reward_redemptions
       WHERE order_id = $1::uuid
         AND status = 'applied'
@@ -913,6 +964,7 @@ async function restoreOrderRewardRedemptions(client, orderId, options = {}) {
   }
 
   const redemptionIds = result.rows.map((row) => row.redemption_id);
+  const storeId = result.rows[0].store_id;
 
   await client.query(
     `
@@ -921,9 +973,10 @@ async function restoreOrderRewardRedemptions(client, orderId, options = {}) {
           used_order_id = NULL,
           updated_at = now()
       WHERE redemption_id = ANY($1::uuid[])
+        AND store_id = $2::uuid
         AND status = 'used'
     `,
-    [redemptionIds]
+    [redemptionIds, storeId]
   );
 
   await client.query(
@@ -932,9 +985,10 @@ async function restoreOrderRewardRedemptions(client, orderId, options = {}) {
       SET status = 'restored',
           updated_at = now()
       WHERE order_id = $1::uuid
+        AND store_id = $2::uuid
         AND status = 'applied'
     `,
-    [orderId]
+    [orderId, storeId]
   );
 
   return {
@@ -948,7 +1002,7 @@ async function restoreOrderRewardRedemptions(client, orderId, options = {}) {
 async function awardPointsForCompletedOrder(client, orderId) {
   const orderResult = await client.query(
     `
-      SELECT order_id, user_id, order_status, total_amount, currency
+      SELECT order_id, store_id, user_id, order_status, total_amount, currency
       FROM public."Order"
       WHERE order_id = $1
       FOR UPDATE
@@ -973,17 +1027,20 @@ async function awardPointsForCompletedOrder(client, orderId) {
     return { awarded: false, reason: 'unsupported_currency' };
   }
 
-  const earnRate = await getRewardEarnRate(client);
+  const earnRate = await getRewardEarnRate(client, order.store_id);
   const points = calculateEarnPoints(order.total_amount, earnRate.points_per_cad);
   if (points <= 0) {
     return { awarded: false, reason: 'zero_points' };
   }
 
-  await ensureLoyaltyAccount(client, order.user_id);
+  await ensureLoyaltyAccount(client, order.user_id, {
+    storeId: order.store_id,
+  });
 
   const transactionResult = await client.query(
     `
       INSERT INTO public.loyalty_transactions (
+        store_id,
         user_id,
         order_id,
         transaction_type,
@@ -993,15 +1050,16 @@ async function awardPointsForCompletedOrder(client, orderId) {
         metadata
       )
       VALUES (
-        $1,
-        $2,
+        $1::uuid,
+        $2::uuid,
+        $3,
         'earn',
         'available',
-        $3,
         $4,
+        $5,
         jsonb_build_object(
-          'currency', $5::text,
-          'points_per_cad', $6::numeric,
+          'currency', $6::text,
+          'points_per_cad', $7::numeric,
           'source', 'order_completed'
         )
       )
@@ -1011,6 +1069,7 @@ async function awardPointsForCompletedOrder(client, orderId) {
       RETURNING transaction_id
     `,
     [
+      order.store_id,
       order.user_id,
       order.order_id,
       points,
@@ -1027,12 +1086,13 @@ async function awardPointsForCompletedOrder(client, orderId) {
   await client.query(
     `
       UPDATE public.loyalty_accounts
-      SET available_points = available_points + $2,
-          lifetime_earned_points = lifetime_earned_points + $2,
+      SET available_points = available_points + $3,
+          lifetime_earned_points = lifetime_earned_points + $3,
           updated_at = now()
-      WHERE user_id = $1
+      WHERE store_id = $1::uuid
+        AND user_id = $2::uuid
     `,
-    [order.user_id, points]
+    [order.store_id, order.user_id, points]
   );
 
   return {
@@ -1070,7 +1130,7 @@ async function reversePointsForOrder(client, orderId, options = {}) {
 
   const earnResult = await client.query(
     `
-      SELECT transaction_id, user_id, order_id, points, transaction_status
+      SELECT transaction_id, store_id, user_id, order_id, points, transaction_status
       FROM public.loyalty_transactions
       WHERE order_id = $1
         AND transaction_type = 'earn'
@@ -1092,16 +1152,18 @@ async function reversePointsForOrder(client, orderId, options = {}) {
     return { reversed: false, reason: 'zero_points' };
   }
 
-  await ensureLoyaltyAccount(client, earnTransaction.user_id);
+  const storeId = earnTransaction.store_id;
+  await ensureLoyaltyAccount(client, earnTransaction.user_id, { storeId });
 
   const accountResult = await client.query(
     `
       SELECT available_points
       FROM public.loyalty_accounts
-      WHERE user_id = $1
+      WHERE store_id = $1::uuid
+        AND user_id = $2::uuid
       FOR UPDATE
     `,
-    [earnTransaction.user_id]
+    [storeId, earnTransaction.user_id]
   );
 
   const availableBefore = normalizeInt(accountResult.rows[0]?.available_points);
@@ -1111,6 +1173,7 @@ async function reversePointsForOrder(client, orderId, options = {}) {
   const reversalResult = await client.query(
     `
       INSERT INTO public.loyalty_transactions (
+        store_id,
         user_id,
         order_id,
         transaction_type,
@@ -1120,20 +1183,21 @@ async function reversePointsForOrder(client, orderId, options = {}) {
         metadata
       )
       VALUES (
-        $1,
-        $2,
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
         'refund',
         'available',
-        $3,
         $4,
+        $5,
         jsonb_build_object(
-          'source', $5::text,
-          'reason', $6::text,
-          'original_transaction_id', $7::uuid,
-          'points_to_reverse', $8::int,
-          'deducted_points', $9::int,
-          'available_before', $10::int,
-          'unrecovered_points', $11::int
+          'source', $6::text,
+          'reason', $7::text,
+          'original_transaction_id', $8::uuid,
+          'points_to_reverse', $9::int,
+          'deducted_points', $10::int,
+          'available_before', $11::int,
+          'unrecovered_points', $12::int
         )
       )
       ON CONFLICT (order_id, transaction_type)
@@ -1142,6 +1206,7 @@ async function reversePointsForOrder(client, orderId, options = {}) {
       RETURNING transaction_id
     `,
     [
+      storeId,
       earnTransaction.user_id,
       orderId,
       -pointsToReverse,
@@ -1165,11 +1230,12 @@ async function reversePointsForOrder(client, orderId, options = {}) {
   await client.query(
     `
       UPDATE public.loyalty_accounts
-      SET available_points = GREATEST(available_points - $2, 0),
+      SET available_points = GREATEST(available_points - $3, 0),
           updated_at = now()
-      WHERE user_id = $1
+      WHERE store_id = $1::uuid
+        AND user_id = $2::uuid
     `,
-    [earnTransaction.user_id, pointsToReverse]
+    [storeId, earnTransaction.user_id, pointsToReverse]
   );
 
   await client.query(
@@ -1189,6 +1255,9 @@ async function reversePointsForOrder(client, orderId, options = {}) {
 
   return {
     reversed: true,
+    user_id: earnTransaction.user_id,
+    order_id: earnTransaction.order_id,
+    store_id: storeId,
     points: pointsToReverse,
     deducted_points: deductedPoints,
     unrecovered_points: unrecoveredPoints,

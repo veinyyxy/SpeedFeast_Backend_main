@@ -6,6 +6,7 @@ const {
   PERMISSIONS,
   resolveMerchantAuthorization,
 } = require('../services/merchant_authorization');
+const { listActiveStores } = require('../services/store_context');
 
 const router = express.Router();
 const VALID_ROLES = new Set(['owner', 'manager', 'staff']);
@@ -20,7 +21,7 @@ function normalizeRole(value) {
   return normalizeText(value).toLowerCase();
 }
 
-function normalizeUser(row, permissions = [], overrides = []) {
+function normalizeUser(row, permissions = [], overrides = [], stores = []) {
   return {
     merchant_user_id: row.merchant_user_id,
     username: row.username,
@@ -34,7 +35,67 @@ function normalizeUser(row, permissions = [], overrides = []) {
     updated_at: row.updated_at,
     permissions,
     permission_overrides: overrides,
+    store_ids: stores.map((store) => store.store_id),
+    stores,
   };
+}
+
+function requestedStoreIds(body = {}) {
+  const raw = body.store_ids ?? body.storeIds;
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map(normalizeText).filter(Boolean))];
+}
+
+async function validateStoreAssignments(db, authPayload, storeIds) {
+  const uniqueIds = [...new Set(storeIds.map(normalizeText).filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    const error = new Error('At least one store assignment is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (
+    authPayload.merchant_user?.role !== 'owner' &&
+    uniqueIds.some((storeId) => storeId !== authPayload.store_id)
+  ) {
+    const error = new Error('Only an owner can assign users to other stores');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const result = await db.query(
+    `
+      SELECT store_id
+      FROM public.stores
+      WHERE store_id = ANY($1::uuid[])
+        AND status = 'active'
+    `,
+    [uniqueIds]
+  );
+  if (result.rowCount !== uniqueIds.length) {
+    const error = new Error('One or more store assignments are invalid');
+    error.statusCode = 400;
+    throw error;
+  }
+  return uniqueIds;
+}
+
+async function replaceStoreAssignments(db, merchantUserId, storeIds) {
+  await db.query(
+    `DELETE FROM public.merchant_user_stores WHERE merchant_user_id = $1::uuid`,
+    [merchantUserId]
+  );
+  if (storeIds.length === 0) return;
+  await db.query(
+    `
+      INSERT INTO public.merchant_user_stores (
+        merchant_user_id, store_id, active
+      )
+      SELECT $1::uuid, store_id, TRUE
+      FROM unnest($2::uuid[]) AS store_id
+    `,
+    [merchantUserId, storeIds]
+  );
 }
 
 async function fetchUserDetails(db, merchantUserId) {
@@ -51,7 +112,7 @@ async function fetchUserDetails(db, merchantUserId) {
   );
   const user = userResult.rows[0];
   if (!user) return null;
-  const [authorization, overridesResult] = await Promise.all([
+  const [authorization, overridesResult, stores, assignmentsResult] = await Promise.all([
     resolveMerchantAuthorization(db, merchantUserId),
     db.query(
       `
@@ -62,11 +123,33 @@ async function fetchUserDetails(db, merchantUserId) {
       `,
       [merchantUserId]
     ),
+    listActiveStores(db, { bypassCache: true }),
+    user.role === 'owner'
+      ? Promise.resolve(null)
+      : db.query(
+          `
+            SELECT s.store_id
+            FROM public.merchant_user_stores mus
+            INNER JOIN public.stores s ON s.store_id = mus.store_id
+            WHERE mus.merchant_user_id = $1::uuid
+              AND mus.active = TRUE
+              AND s.status = 'active'
+          `,
+          [merchantUserId]
+        ),
   ]);
+  const accessibleStores = user.role === 'owner'
+    ? stores
+    : stores.filter((store) =>
+        assignmentsResult.rows.some(
+          (assignment) => assignment.store_id === store.store_id
+        )
+      );
   return normalizeUser(
     user,
     authorization?.permissions || [],
-    overridesResult.rows
+    overridesResult.rows,
+    accessibleStores
   );
 }
 
@@ -103,11 +186,12 @@ async function deactivateMerchantDeviceTokens(db, merchantUserId) {
 
 async function recordAudit(
   db,
-  { actorId, targetId, action, beforeValue, afterValue, metadata = {} }
+  { actorId, targetId, storeId, action, beforeValue, afterValue, metadata = {} }
 ) {
   await db.query(
     `
       INSERT INTO public.merchant_user_audit_logs (
+        store_id,
         actor_merchant_user_id,
         target_merchant_user_id,
         action,
@@ -115,9 +199,10 @@ async function recordAudit(
         after_value,
         metadata
       )
-      VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6::jsonb)
+      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::jsonb, $6::jsonb, $7::jsonb)
     `,
     [
+      storeId,
       actorId,
       targetId,
       action,
@@ -185,10 +270,19 @@ router.get('/users', async (req, res) => {
       `
         SELECT merchant_user_id
         FROM public.merchant_users
+        WHERE role = 'owner'
+           OR EXISTS (
+             SELECT 1
+             FROM public.merchant_user_stores mus
+             WHERE mus.merchant_user_id = merchant_users.merchant_user_id
+               AND mus.store_id = $1::uuid
+               AND mus.active = TRUE
+           )
         ORDER BY active DESC,
                  CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END,
                  COALESCE(display_name, username), username
-      `
+      `,
+      [authPayload.store_id]
     );
     const users = await Promise.all(
       result.rows.map((row) =>
@@ -241,6 +335,13 @@ router.post('/users/create', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const storeIds = role === 'owner'
+      ? []
+      : await validateStoreAssignments(
+          client,
+          authPayload,
+          requestedStoreIds(req.body) || [authPayload.store_id]
+        );
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await client.query(
       `
@@ -260,11 +361,13 @@ router.post('/users/create', async (req, res) => {
       [username, passwordHash, displayName || username, role]
     );
     const user = result.rows[0];
+    await replaceStoreAssignments(client, user.merchant_user_id, storeIds);
     await recordAudit(client, {
       actorId: authPayload.merchant_user_id,
       targetId: user.merchant_user_id,
+      storeId: authPayload.store_id,
       action: 'user_created',
-      afterValue: normalizeUser(user),
+      afterValue: { ...normalizeUser(user), store_ids: storeIds },
     });
     await client.query('COMMIT');
     return res.status(201).json({
@@ -275,6 +378,9 @@ router.post('/users/create', async (req, res) => {
     await client.query('ROLLBACK');
     if (err.code === '23505') {
       return res.status(409).json({ success: false, error: 'Username already exists' });
+    }
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, error: err.message });
     }
     console.error('Error creating merchant user:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
@@ -327,6 +433,27 @@ router.post('/users/update', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Merchant user not found' });
     }
+    const existingStoresResult = await client.query(
+      `
+        SELECT store_id
+        FROM public.merchant_user_stores
+        WHERE merchant_user_id = $1::uuid
+          AND active = TRUE
+        ORDER BY store_id
+      `,
+      [merchantUserId]
+    );
+    const existingStoreIds = existingStoresResult.rows.map(
+      (row) => row.store_id
+    );
+    if (
+      !canManageOwner(authPayload) &&
+      target.role !== 'owner' &&
+      !existingStoreIds.includes(authPayload.store_id)
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Merchant user not found' });
+    }
     if (
       (target.role === 'owner' || role === 'owner') &&
       !canManageOwner(authPayload)
@@ -352,7 +479,23 @@ router.post('/users/update', async (req, res) => {
       }
     }
 
-    const securityChanged = target.role !== role || target.active !== active;
+    // Managers can edit staff details in the active store, but only owners can
+    // replace the account's complete cross-store assignment set.
+    const requestedIds = canManageOwner(authPayload)
+      ? requestedStoreIds(req.body)
+      : null;
+    const storeIds = role === 'owner'
+      ? []
+      : requestedIds !== null
+        ? await validateStoreAssignments(client, authPayload, requestedIds)
+        : target.role === 'owner' || existingStoreIds.length === 0
+          ? [authPayload.store_id]
+          : existingStoreIds;
+    const assignmentsChanged =
+      JSON.stringify([...existingStoreIds].sort()) !==
+      JSON.stringify([...storeIds].sort());
+    const securityChanged =
+      target.role !== role || target.active !== active || assignmentsChanged;
     const updatedResult = await client.query(
       `
         UPDATE public.merchant_users
@@ -369,15 +512,17 @@ router.post('/users/update', async (req, res) => {
       [merchantUserId, displayName, role, active, securityChanged]
     );
     const updated = updatedResult.rows[0];
+    await replaceStoreAssignments(client, merchantUserId, storeIds);
     if (securityChanged) {
       await deactivateMerchantDeviceTokens(client, merchantUserId);
     }
     await recordAudit(client, {
       actorId: authPayload.merchant_user_id,
       targetId: merchantUserId,
+      storeId: authPayload.store_id,
       action: 'user_updated',
-      beforeValue: normalizeUser(target),
-      afterValue: normalizeUser(updated),
+      beforeValue: { ...normalizeUser(target), store_ids: existingStoreIds },
+      afterValue: { ...normalizeUser(updated), store_ids: storeIds },
     });
     await client.query('COMMIT');
     return res.status(200).json({
@@ -386,6 +531,9 @@ router.post('/users/update', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, error: err.message });
+    }
     console.error('Error updating merchant user:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   } finally {
@@ -442,6 +590,22 @@ router.post('/users/permissions/update', async (req, res) => {
     if (!target) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Merchant user not found' });
+    }
+    if (!canManageOwner(authPayload) && target.role !== 'owner') {
+      const accessResult = await client.query(
+        `
+          SELECT 1
+          FROM public.merchant_user_stores
+          WHERE merchant_user_id = $1::uuid
+            AND store_id = $2::uuid
+            AND active = TRUE
+        `,
+        [merchantUserId, authPayload.store_id]
+      );
+      if (accessResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, error: 'Merchant user not found' });
+      }
     }
     if (target.role === 'owner') {
       await client.query('ROLLBACK');
@@ -508,6 +672,7 @@ router.post('/users/permissions/update', async (req, res) => {
     await recordAudit(client, {
       actorId: authPayload.merchant_user_id,
       targetId: merchantUserId,
+      storeId: authPayload.store_id,
       action: 'permissions_updated',
       beforeValue: beforeResult.rows,
       afterValue: overrides,
@@ -569,6 +734,22 @@ router.post('/users/password/reset', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Merchant user not found' });
     }
+    if (!canManageOwner(authPayload) && target.role !== 'owner') {
+      const accessResult = await client.query(
+        `
+          SELECT 1
+          FROM public.merchant_user_stores
+          WHERE merchant_user_id = $1::uuid
+            AND store_id = $2::uuid
+            AND active = TRUE
+        `,
+        [merchantUserId, authPayload.store_id]
+      );
+      if (accessResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, error: 'Merchant user not found' });
+      }
+    }
     if (target.role === 'owner' && !canManageOwner(authPayload)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ success: false, error: 'Only an owner can reset an owner password' });
@@ -590,6 +771,7 @@ router.post('/users/password/reset', async (req, res) => {
     await recordAudit(client, {
       actorId: authPayload.merchant_user_id,
       targetId: merchantUserId,
+      storeId: authPayload.store_id,
       action: 'password_reset',
       metadata: { must_change_password: true },
     });

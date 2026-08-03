@@ -20,6 +20,7 @@ const MERCHANT_CANCELLED_ORDER_EVENT = 'merchant_cancelled_order';
 const REFUND_SUCCEEDED_EVENT = 'refund_succeeded';
 const PARTIAL_REFUND_SUCCEEDED_EVENT = 'partial_refund_succeeded';
 const REWARD_POINTS_EARNED_EVENT = 'reward_points_earned';
+const REWARD_POINTS_REVERSED_EVENT = 'reward_points_reversed';
 const IN_STORE_PAYMENT_COLLECTED_EVENT = 'in_store_payment_collected';
 
 const ACTION_OPEN_ORDER = ACTION_TYPES.OPEN_ORDER;
@@ -39,6 +40,7 @@ const BUYER_ANDROID_CHANNEL_MAP = Object.freeze({
   [PARTIAL_REFUND_SUCCEEDED_EVENT]: ANDROID_ORDER_STATUS_CHANNEL_ID,
   [IN_STORE_PAYMENT_COLLECTED_EVENT]: ANDROID_ORDER_STATUS_CHANNEL_ID,
   [REWARD_POINTS_EARNED_EVENT]: ANDROID_POINTS_UPDATES_CHANNEL_ID,
+  [REWARD_POINTS_REVERSED_EVENT]: ANDROID_POINTS_UPDATES_CHANNEL_ID,
 });
 
 const ORDER_STATUS_EVENT_TYPES = Object.freeze({
@@ -92,6 +94,7 @@ async function recordBuyerNotification(client, options = {}) {
     options.userId || options.user_id || options.recipientId || options.recipient_id
   );
   const eventType = normalizeText(options.eventType || options.event_type);
+  const storeId = normalizeText(options.storeId || options.store_id) || null;
   if (!userId) return { queued: false, reason: 'missing_user_id' };
   if (!eventType) return { queued: false, reason: 'missing_event_type' };
 
@@ -118,6 +121,7 @@ async function recordBuyerNotification(client, options = {}) {
       options.actionPayload || options.action_payload
     ),
     payload: normalizeObject(options.payload),
+    storeId,
   });
 }
 
@@ -138,6 +142,7 @@ async function recordBuyerOrderStatusNotification(
   const content = orderStatusContent(orderId, status);
   return recordBuyerNotification(client, {
     userId,
+    storeId: options.storeId || options.store_id || order?.store_id,
     eventType,
     entityType: 'order',
     entityId: orderId,
@@ -204,6 +209,7 @@ async function recordBuyerRefundNotification(client, options = {}) {
 
   return recordBuyerNotification(client, {
     userId,
+    storeId: options.storeId || options.store_id || order.store_id || payment.store_id,
     eventType,
     entityType: 'order',
     entityId: orderId,
@@ -258,6 +264,7 @@ async function recordBuyerInStorePaymentCollectedNotification(client, options = 
 
   return recordBuyerNotification(client, {
     userId,
+    storeId: options.storeId || options.store_id || order.store_id || payment.store_id,
     eventType: IN_STORE_PAYMENT_COLLECTED_EVENT,
     entityType: 'payment',
     entityId: paymentId || orderId,
@@ -285,6 +292,7 @@ async function recordBuyerPointsEarnedNotification(client, options = {}) {
   const points = normalizeInteger(options.points);
   const userId = normalizeText(options.userId || options.user_id);
   const orderId = normalizeText(options.orderId || options.order_id);
+  let storeId = normalizeText(options.storeId || options.store_id);
   const transactionId = normalizeText(
     options.transactionId || options.transaction_id
   );
@@ -292,8 +300,24 @@ async function recordBuyerPointsEarnedNotification(client, options = {}) {
   if (!orderId) return { queued: false, reason: 'missing_order_id' };
   if (points <= 0) return { queued: false, reason: 'zero_points' };
 
+  if (!storeId) {
+    const orderResult = await client.query(
+      `
+        SELECT store_id
+        FROM public."Order"
+        WHERE order_id = $1::uuid
+          AND user_id = $2::uuid
+        LIMIT 1
+      `,
+      [orderId, userId]
+    );
+    storeId = normalizeText(orderResult.rows[0]?.store_id);
+  }
+  if (!storeId) return { queued: false, reason: 'missing_store_id' };
+
   return recordBuyerNotification(client, {
     userId,
+    storeId,
     eventType: REWARD_POINTS_EARNED_EVENT,
     entityType: 'reward',
     entityId: transactionId || orderId,
@@ -310,6 +334,95 @@ async function recordBuyerPointsEarnedNotification(client, options = {}) {
     payload: {
       ...normalizeObject(options.payload),
       source: options.source || 'order_completed',
+    },
+  });
+}
+
+async function recordBuyerPointsReversedNotification(client, options = {}) {
+  const reversedPoints = Math.abs(normalizeInteger(options.points));
+  const deductedPoints = Math.min(
+    reversedPoints,
+    Math.max(
+      0,
+      normalizeInteger(
+        options.deductedPoints ?? options.deducted_points ?? reversedPoints
+      )
+    )
+  );
+  const unrecoveredPoints = Math.max(
+    0,
+    normalizeInteger(
+      options.unrecoveredPoints ??
+        options.unrecovered_points ??
+        reversedPoints - deductedPoints
+    )
+  );
+  let userId = normalizeText(options.userId || options.user_id);
+  const orderId = normalizeText(options.orderId || options.order_id);
+  let storeId = normalizeText(options.storeId || options.store_id);
+  const transactionId = normalizeText(
+    options.transactionId || options.transaction_id
+  );
+  if (!orderId) return { queued: false, reason: 'missing_order_id' };
+  if (reversedPoints <= 0) return { queued: false, reason: 'zero_points' };
+
+  if (!userId || !storeId) {
+    const orderResult = await client.query(
+      `
+        SELECT user_id, store_id
+        FROM public."Order"
+        WHERE order_id = $1::uuid
+          AND ($2::uuid IS NULL OR user_id = $2::uuid)
+        LIMIT 1
+      `,
+      [orderId, userId || null]
+    );
+    userId = userId || normalizeText(orderResult.rows[0]?.user_id);
+    storeId = storeId || normalizeText(orderResult.rows[0]?.store_id);
+  }
+  if (!userId) return { queued: false, reason: 'missing_user_id' };
+  if (!storeId) return { queued: false, reason: 'missing_store_id' };
+
+  let title = 'Points deducted';
+  let body = `${deductedPoints} points were removed from your balance for order #${shortEntityId(
+    orderId
+  )}.`;
+  if (deductedPoints < reversedPoints) {
+    title = deductedPoints > 0 ? 'Points adjusted' : 'Points reversed';
+    body = `${reversedPoints} earned points were reversed for order #${shortEntityId(
+      orderId
+    )}; ${
+      deductedPoints > 0
+        ? `${deductedPoints} points were removed from your available balance.`
+        : 'your available balance was unchanged.'
+    }`;
+  }
+
+  return recordBuyerNotification(client, {
+    userId,
+    storeId,
+    eventType: REWARD_POINTS_REVERSED_EVENT,
+    entityType: 'reward',
+    entityId: transactionId || orderId,
+    dedupeKey: `${REWARD_POINTS_REVERSED_EVENT}:${transactionId || orderId}`,
+    title,
+    body,
+    actionType: ACTION_OPEN_REWARDS,
+    actionPayload: {
+      order_id: orderId,
+      transaction_id: transactionId || null,
+      points: -reversedPoints,
+      reversed_points: reversedPoints,
+      deducted_points: deductedPoints,
+      unrecovered_points: unrecoveredPoints,
+      role: 'buyer',
+    },
+    payload: {
+      ...normalizeObject(options.payload),
+      source: options.source || 'order_reversal',
+      reversed_points: reversedPoints,
+      deducted_points: deductedPoints,
+      unrecovered_points: unrecoveredPoints,
     },
   });
 }
@@ -355,10 +468,12 @@ module.exports = {
   PARTIAL_REFUND_SUCCEEDED_EVENT,
   REFUND_SUCCEEDED_EVENT,
   REWARD_POINTS_EARNED_EVENT,
+  REWARD_POINTS_REVERSED_EVENT,
   recordBuyerNotification,
   recordBuyerInStorePaymentCollectedNotification,
   recordBuyerOrderStatusNotification,
   recordBuyerPointsEarnedNotification,
+  recordBuyerPointsReversedNotification,
   recordBuyerRefundNotification,
   sendBuyerNotificationById,
   sendBuyerNotificationInBackground,

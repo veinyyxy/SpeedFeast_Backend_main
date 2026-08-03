@@ -89,7 +89,11 @@ async function findDiningTableByToken(db, token, { activeOnly = true } = {}) {
   return result.rows[0] || null;
 }
 
-async function resolveActiveDiningTableRequest(db, body = {}) {
+async function resolveActiveDiningTableRequest(
+  db,
+  body = {},
+  { storeId: requiredStoreId = null } = {}
+) {
   const tableToken = extractTableToken(
     body.table_token ||
       body.tableToken ||
@@ -112,6 +116,12 @@ async function resolveActiveDiningTableRequest(db, body = {}) {
   if (tableId && table.table_id !== tableId) return null;
   if (tableNumber && table.table_number !== tableNumber) return null;
   if (storeId && normalizeText(table.store_id) !== storeId) return null;
+  if (
+    requiredStoreId &&
+    normalizeText(table.store_id) !== normalizeText(requiredStoreId)
+  ) {
+    return null;
+  }
   return table;
 }
 

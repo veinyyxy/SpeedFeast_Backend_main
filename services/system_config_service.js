@@ -68,7 +68,7 @@ function normalizeConfigScope({
   countryCode = null,
   regionCode = null,
   city = null,
-  merchantId = null,
+  storeId = null,
   environmentFallback = 'prod',
 } = {}) {
   return {
@@ -77,7 +77,7 @@ function normalizeConfigScope({
     countryCode: normalizeCountryCode(countryCode),
     regionCode: normalizeRegionCode(regionCode),
     city: normalizeText(city) || null,
-    merchantId: normalizeText(merchantId) || null,
+    storeId: normalizeText(storeId) || null,
   };
 }
 
@@ -101,7 +101,7 @@ function buildConfigMap(rows) {
           country_code: row.country_code,
           region_code: row.region_code,
           city: row.city,
-          merchant_id: row.merchant_id,
+          store_id: row.store_id,
           environment: row.environment,
         },
         version: row.version,
@@ -116,6 +116,21 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+}
+
+function requireStoreId(storeId) {
+  const normalized = normalizeText(storeId);
+  if (!normalized) {
+    const error = new Error('Store context is required for system config');
+    error.code = 'STORE_CONTEXT_REQUIRED';
+    throw error;
+  }
+  if (!isUuid(normalized)) {
+    const error = new Error('Store context is invalid');
+    error.code = 'INVALID_STORE_CONTEXT';
+    throw error;
+  }
+  return normalized;
 }
 
 async function resolveStoreProfileAssets(db = pool, rows = []) {
@@ -186,7 +201,7 @@ async function readSystemConfigRows(
     countryCode = null,
     regionCode = null,
     city = null,
-    merchantId = null,
+    storeId = null,
     configKeys = null,
     environmentFallback = 'prod',
   } = {}
@@ -197,7 +212,7 @@ async function readSystemConfigRows(
     countryCode,
     regionCode,
     city,
-    merchantId,
+    storeId,
     environmentFallback,
   });
 
@@ -206,6 +221,7 @@ async function readSystemConfigRows(
     error.code = 'INVALID_APP_SCOPE';
     throw error;
   }
+  scope.storeId = requireStoreId(scope.storeId);
 
   const keys = Array.isArray(configKeys)
     ? configKeys.filter((key) => normalizeText(key))
@@ -223,14 +239,13 @@ async function readSystemConfigRows(
         country_code,
         region_code,
         city,
-        merchant_id,
+        store_id,
         environment,
         value_type,
         version,
         description,
         updated_at,
         (
-          CASE WHEN merchant_id IS NOT NULL AND merchant_id = $6::uuid THEN 32 ELSE 0 END +
           CASE WHEN city IS NOT NULL AND city = $5 THEN 16 ELSE 0 END +
           CASE WHEN region_code IS NOT NULL AND region_code = $4 THEN 8 ELSE 0 END +
           CASE WHEN country_code IS NOT NULL AND country_code = $3 THEN 4 ELSE 0 END +
@@ -244,7 +259,7 @@ async function readSystemConfigRows(
         AND ($3::char(2) IS NULL OR country_code IS NULL OR country_code = $3)
         AND ($4::text IS NULL OR region_code IS NULL OR region_code = $4)
         AND ($5::text IS NULL OR city IS NULL OR city = $5)
-        AND ($6::uuid IS NULL OR merchant_id IS NULL OR merchant_id = $6)
+        AND store_id = $6::uuid
         AND ($7::text[] IS NULL OR config_key = ANY($7::text[]))
       ORDER BY config_key, specificity DESC, version DESC, updated_at DESC
     `,
@@ -254,7 +269,7 @@ async function readSystemConfigRows(
       scope.countryCode,
       scope.regionCode,
       scope.city,
-      scope.merchantId,
+      scope.storeId,
       keys,
     ]
   );
@@ -266,7 +281,7 @@ async function readSystemConfigRows(
       country_code: scope.countryCode,
       region_code: scope.regionCode,
       city: scope.city,
-      merchant_id: scope.merchantId,
+      store_id: scope.storeId,
       environment: scope.environment,
     },
   };
@@ -284,7 +299,7 @@ async function upsertSystemConfig(
     countryCode = 'CA',
     regionCode = 'MB',
     city = null,
-    merchantId = null,
+    storeId = null,
     environmentFallback = 'prod',
   }
 ) {
@@ -294,7 +309,7 @@ async function upsertSystemConfig(
     countryCode,
     regionCode,
     city,
-    merchantId,
+    storeId,
     environmentFallback,
   });
 
@@ -303,6 +318,7 @@ async function upsertSystemConfig(
     error.code = 'INVALID_APP_SCOPE';
     throw error;
   }
+  scope.storeId = requireStoreId(scope.storeId);
 
   const updateResult = await client.query(
     `
@@ -319,7 +335,7 @@ async function upsertSystemConfig(
         AND ($7::char(2) IS NULL AND country_code IS NULL OR country_code = $7)
         AND ($8::text IS NULL AND region_code IS NULL OR region_code = $8)
         AND ($9::text IS NULL AND city IS NULL OR city = $9)
-        AND ($10::uuid IS NULL AND merchant_id IS NULL OR merchant_id = $10)
+        AND store_id = $10::uuid
       RETURNING config_id
     `,
     [
@@ -332,7 +348,7 @@ async function upsertSystemConfig(
       scope.countryCode,
       scope.regionCode,
       scope.city,
-      scope.merchantId,
+      scope.storeId,
     ]
   );
   if (updateResult.rowCount > 0) return;
@@ -346,7 +362,7 @@ async function upsertSystemConfig(
         country_code,
         region_code,
         city,
-        merchant_id,
+        store_id,
         environment,
         value_type,
         active,
@@ -362,7 +378,7 @@ async function upsertSystemConfig(
       scope.countryCode,
       scope.regionCode,
       scope.city,
-      scope.merchantId,
+      scope.storeId,
       scope.environment,
       valueType,
       description,
@@ -370,10 +386,59 @@ async function upsertSystemConfig(
   );
 }
 
+async function copyActiveSystemConfig(
+  client,
+  { sourceStoreId, targetStoreId }
+) {
+  const sourceId = requireStoreId(sourceStoreId);
+  const targetId = requireStoreId(targetStoreId);
+  if (sourceId === targetId) return 0;
+
+  const result = await client.query(
+    `
+      INSERT INTO public.system_config (
+        config_key,
+        config_value,
+        app_scope,
+        country_code,
+        region_code,
+        city,
+        store_id,
+        environment,
+        value_type,
+        active,
+        version,
+        description
+      )
+      SELECT
+        config_key,
+        config_value,
+        app_scope,
+        country_code,
+        region_code,
+        city,
+        $2::uuid,
+        environment,
+        value_type,
+        active,
+        version,
+        description
+      FROM public.system_config
+      WHERE store_id = $1::uuid
+        AND active = TRUE
+      ON CONFLICT DO NOTHING
+      RETURNING config_id
+    `,
+    [sourceId, targetId]
+  );
+  return result.rowCount;
+}
+
 module.exports = {
   APP_SCOPES,
   VALID_ENVIRONMENTS,
   buildConfigMap,
+  copyActiveSystemConfig,
   firstConfigRows,
   normalizeAppScope,
   normalizeConfigScope,
@@ -382,6 +447,7 @@ module.exports = {
   normalizeRegionCode,
   normalizeText,
   readSystemConfigRows,
+  requireStoreId,
   resolveStoreProfileAssets,
   upsertSystemConfig,
 };

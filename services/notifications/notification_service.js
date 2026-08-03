@@ -23,6 +23,7 @@ const DEFAULT_ANDROID_CHANNEL_MAP = Object.freeze({
   refund_succeeded: 'order_status',
   partial_refund_succeeded: 'order_status',
   reward_points_earned: 'points_updates',
+  reward_points_reversed: 'points_updates',
   delivery_offer_created: 'delivery_offers',
   delivery_offer_expired: 'delivery_offers',
   delivery_assigned: 'delivery_updates',
@@ -35,6 +36,8 @@ function normalizeNotification(row) {
   return {
     notification_id: row.notification_id,
     notificationId: row.notification_id,
+    store_id: row.store_id,
+    storeId: row.store_id,
     recipient_type: row.recipient_type,
     recipientType: row.recipient_type,
     recipient_id: row.recipient_id,
@@ -86,12 +89,12 @@ async function listNotifications(options = {}) {
   return rows.map(normalizeNotification);
 }
 
-async function markRead(notificationId, ownerType, ownerId) {
-  await repository.markRead(pool, notificationId, ownerType, ownerId);
+async function markRead(notificationId, ownerType, ownerId, storeId = null) {
+  await repository.markRead(pool, notificationId, ownerType, ownerId, storeId);
 }
 
-async function dismiss(notificationId, ownerType, ownerId) {
-  await repository.dismiss(pool, notificationId, ownerType, ownerId);
+async function dismiss(notificationId, ownerType, ownerId, storeId = null) {
+  await repository.dismiss(pool, notificationId, ownerType, ownerId, storeId);
 }
 
 async function deactivateInvalidDeviceTokens(failures) {
@@ -163,7 +166,13 @@ async function sendNotificationById(notificationId, options = {}) {
     )
   );
 
-  await repository.recordDeliveryResults(pool, notificationId, tokens, results);
+  await repository.recordDeliveryResults(
+    pool,
+    notificationId,
+    tokens,
+    results,
+    notification.store_id
+  );
 
   const successCount = results.filter((result) => result.status === 'fulfilled')
     .length;

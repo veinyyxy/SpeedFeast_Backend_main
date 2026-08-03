@@ -32,7 +32,7 @@ router.get('/config', async (req, res) => {
     const countryCode = normalizeCountryCode(req.query.country_code);
     const regionCode = req.query.region_code || null;
     const city = req.query.city || null;
-    const merchantId = req.query.merchant_id || null;
+    const storeId = req.storeContext.storeId;
     const configKey = req.query.config_key || null;
 
     const result = await readSystemConfigRows(undefined, {
@@ -41,7 +41,7 @@ router.get('/config', async (req, res) => {
       countryCode,
       regionCode,
       city,
-      merchantId,
+      storeId,
       configKeys: configKey ? [configKey] : null,
     });
     const rows = await resolveStoreProfileAssets(undefined, result.rows);
@@ -60,7 +60,7 @@ router.get('/config', async (req, res) => {
           country_code: countryCode,
           region_code: regionCode,
           city,
-          merchant_id: merchantId,
+          store_id: storeId,
           environment,
         },
         version: 0,

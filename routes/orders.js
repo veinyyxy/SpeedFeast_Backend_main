@@ -33,6 +33,7 @@ const {
   resolveActiveDiningTableRequest,
 } = require('../services/dine_in_tables');
 const {
+  recordBuyerPointsReversedNotification,
   sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
 
@@ -136,7 +137,7 @@ function normalizeText(value) {
   return value.toString().trim();
 }
 
-function orderPricingScopeFromRequest(body) {
+function orderPricingScopeFromRequest(body, storeId) {
   const shippingAddress =
     body.shipping_address && typeof body.shipping_address === 'object'
       ? body.shipping_address
@@ -162,7 +163,7 @@ function orderPricingScopeFromRequest(body) {
       shippingAddress.province ||
       'MB',
     city: body.city || shippingAddress.city || null,
-    merchantId: body.merchant_id || body.merchantId || null,
+    storeId,
   };
 }
 
@@ -186,7 +187,7 @@ function canCancelOrderStatus(status) {
   return ['created', 'paid'].includes((status || '').toString().toLowerCase());
 }
 
-async function fetchOrderOptionRows(client) {
+async function fetchOrderOptionRows(client, storeId) {
   try {
     const result = await client.query(`
       SELECT
@@ -201,11 +202,14 @@ async function fetchOrderOptionRows(client) {
         i.option_product_id,
         i.sort_order AS option_sort_order,
         op.name AS option_name,
-        op.base_price AS option_price,
-        op.status AS option_status
+        COALESCE(option_store.price_override, op.base_price) AS option_price,
+        option_store.status AS option_status
       FROM public.product_option_group_links l
       JOIN public.products parent
         ON parent.product_id = l.parent_product_id
+      JOIN public.store_products parent_store
+        ON parent_store.product_id = parent.product_id
+       AND parent_store.store_id = $1::uuid
       JOIN public.product_option_groups g
         ON g.option_group_id = l.option_group_id
        AND g.active = TRUE
@@ -214,14 +218,19 @@ async function fetchOrderOptionRows(client) {
        AND i.active = TRUE
       JOIN public.products op
         ON op.product_id = i.option_product_id
+      JOIN public.store_products option_store
+        ON option_store.product_id = op.product_id
+       AND option_store.store_id = parent_store.store_id
       WHERE l.active = TRUE
-        AND op.status = 'active'
+        AND parent_store.status = 'active'
+        AND option_store.status = 'active'
+        AND option_store.sold_out = FALSE
       ORDER BY l.parent_product_id,
                l.sort_order,
                g.sort_order,
                i.sort_order,
                op.name;
-    `);
+    `, [storeId]);
 
     return result.rows;
   } catch (err) {
@@ -884,10 +893,11 @@ router.get('/orders/get_list', async (req, res) => {
         LEFT JOIN public.address a
           ON a.address_id = o.shipping_address_id
         WHERE o.user_id = $1
+          AND o.store_id = $2::uuid
         ORDER BY o.created_at DESC
-        LIMIT $2
+        LIMIT $3
       `,
-      [userId, limit]
+      [userId, req.storeContext.storeId, limit]
     );
 
     const orderIds = ordersResult.rows.map((order) => order.order_id);
@@ -960,6 +970,7 @@ router.post('/orders/cancel', async (req, res) => {
   if (!authPayload) return;
 
   const userId = authPayload.user_id;
+  const storeId = req.storeContext.storeId;
   const orderId = req.body.order_id || req.body.orderId;
 
   if (!orderId) {
@@ -971,19 +982,21 @@ router.post('/orders/cancel', async (req, res) => {
 
   const client = await pool.connect();
   let merchantNotificationId = null;
+  const buyerNotificationIds = [];
 
   try {
     await client.query('BEGIN');
 
     const orderResult = await client.query(
       `
-        SELECT order_id, user_id, order_status
+        SELECT order_id, user_id, order_status, store_id
         FROM public."Order"
         WHERE order_id = $1
           AND user_id = $2
+          AND store_id = $3::uuid
         FOR UPDATE
       `,
-      [orderId, userId]
+      [orderId, userId, req.storeContext.storeId]
     );
 
     const currentOrder = orderResult.rows[0];
@@ -1017,11 +1030,12 @@ router.post('/orders/cancel', async (req, res) => {
         SELECT payment_channel, payment_status
         FROM public.payments
         WHERE order_id = $1::uuid
+          AND store_id = $2::uuid
         ORDER BY created_at DESC
         LIMIT 1
         FOR UPDATE
       `,
-      [orderId]
+      [orderId, req.storeContext.storeId]
     );
     const payment = paymentResult.rows[0] || null;
     if (
@@ -1051,11 +1065,12 @@ router.post('/orders/cancel', async (req, res) => {
               )
         WHERE order_id = $1
           AND user_id = $2
+          AND store_id = $3::uuid
         RETURNING order_id, user_id, order_status, total_amount, currency,
                   shipping_address_id, fulfillment_type, fulfillment_detail,
                   created_at, updated_at
       `,
-      [orderId, userId]
+      [orderId, userId, req.storeContext.storeId]
     );
 
     await client.query(
@@ -1072,10 +1087,11 @@ router.post('/orders/cancel', async (req, res) => {
               ),
             updated_at = now()
         WHERE order_id = $1::uuid
+          AND store_id = $2::uuid
           AND payment_channel = 'in_store'
           AND payment_status = 'awaiting_collection'
       `,
-      [orderId]
+      [orderId, req.storeContext.storeId]
     );
 
     const rewardsResult = await reversePointsForOrder(client, orderId, {
@@ -1099,11 +1115,30 @@ router.post('/orders/cancel', async (req, res) => {
     if (notification.queued) {
       merchantNotificationId = notification.notification_id;
     }
+    if (rewardsResult?.reversed) {
+      const pointsNotification = await recordBuyerPointsReversedNotification(
+        client,
+        {
+          userId: rewardsResult.user_id || currentOrder.user_id,
+          orderId: rewardsResult.order_id || orderId,
+          storeId: rewardsResult.store_id || currentOrder.store_id || storeId,
+          points: rewardsResult.points,
+          deductedPoints: rewardsResult.deducted_points,
+          unrecoveredPoints: rewardsResult.unrecovered_points,
+          transactionId: rewardsResult.transaction_id,
+          source: 'customer_cancel',
+        }
+      );
+      if (pointsNotification.queued) {
+        buyerNotificationIds.push(pointsNotification.notification_id);
+      }
+    }
 
     await client.query('COMMIT');
     if (merchantNotificationId) {
       sendMerchantNotificationInBackground(merchantNotificationId);
     }
+    sendBuyerNotificationsInBackground(buyerNotificationIds);
 
     return res.status(200).json({
       success: true,
@@ -1130,6 +1165,7 @@ router.post('/orders/create', async (req, res) => {
   if (!authPayload) return;
 
   const userId = authPayload.user_id;
+  const storeId = req.storeContext.storeId;
   const requestedCurrency = normalizeText(req.body.currency).toUpperCase();
   const fulfillmentType = normalizeFulfillmentType(req.body.fulfillment_type || 'delivery');
   const tipAmount = normalizeTipAmount(req.body.tip_amount);
@@ -1200,11 +1236,11 @@ router.post('/orders/create', async (req, res) => {
 
     const pricingConfig = await getOrderPricingConfig(
       client,
-      orderPricingScopeFromRequest(req.body)
+      orderPricingScopeFromRequest(req.body, storeId)
     );
     const operationsConfig = await getOrderOperationsConfig(
       client,
-      orderPricingScopeFromRequest(req.body)
+      orderPricingScopeFromRequest(req.body, storeId)
     );
     const inStorePaymentOption =
       paymentMode === 'in_store'
@@ -1274,7 +1310,9 @@ router.post('/orders/create', async (req, res) => {
 
     let dineInTable = null;
     if (fulfillmentType === 'dine_in') {
-      dineInTable = await resolveActiveDiningTableRequest(client, req.body);
+      dineInTable = await resolveActiveDiningTableRequest(client, req.body, {
+        storeId,
+      });
       if (!dineInTable) {
         await client.query('ROLLBACK');
         return res.status(400).json({
@@ -1287,17 +1325,26 @@ router.post('/orders/create', async (req, res) => {
     const productIds = [...new Set(items.map((item) => item.product_id))];
     const productsResult = await client.query(
       `
-        SELECT product_id, name, base_price, status
-        FROM public.products
-        WHERE product_id = ANY($1::uuid[])
+        SELECT
+          p.product_id,
+          p.name,
+          COALESCE(sp.price_override, p.base_price) AS base_price,
+          sp.status,
+          sp.visible_in_menu,
+          sp.sold_out
+        FROM public.products p
+        JOIN public.store_products sp
+          ON sp.product_id = p.product_id
+         AND sp.store_id = $1::uuid
+        WHERE p.product_id = ANY($2::uuid[])
       `,
-      [productIds]
+      [storeId, productIds]
     );
 
     const productMap = new Map(
       productsResult.rows.map((product) => [product.product_id, product])
     );
-    const optionRows = await fetchOrderOptionRows(client);
+    const optionRows = await fetchOrderOptionRows(client, storeId);
     const optionRowsByParent = groupOptionRowsByParent(optionRows);
 
     const orderItems = [];
@@ -1313,7 +1360,11 @@ router.post('/orders/create', async (req, res) => {
         });
       }
 
-      if (product.status !== 'active') {
+      if (
+        product.status !== 'active' ||
+        !product.visible_in_menu ||
+        product.sold_out
+      ) {
         await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
@@ -1361,7 +1412,8 @@ router.post('/orders/create', async (req, res) => {
           client,
           userId,
           rewardRedemptionId,
-          totalsBeforeRewards.total
+          totalsBeforeRewards.total,
+          storeId
         )
       : null;
     if (rewardRedemption?.reward_type === 'product') {
@@ -1418,6 +1470,18 @@ router.post('/orders/create', async (req, res) => {
 
     const orderResult = await client.query(
       `
+        INSERT INTO public.store_customers (store_id, user_id, last_order_at)
+        VALUES ($1::uuid, $2::uuid, now())
+        ON CONFLICT (store_id, user_id) DO UPDATE
+        SET status = 'active',
+            last_order_at = now(),
+            updated_at = now()
+      `,
+      [storeId, userId]
+    );
+
+    const createdOrderResult = await client.query(
+      `
         INSERT INTO public."Order" (
           user_id,
           order_status,
@@ -1426,12 +1490,13 @@ router.post('/orders/create', async (req, res) => {
           shipping_address_id,
           fulfillment_type,
           fulfillment_detail,
-          due_at
+          due_at,
+          store_id
         )
-        VALUES ($1, 'created', $2, $3, $4, $5, $6::jsonb, $7::timestamptz)
+        VALUES ($1, 'created', $2, $3, $4, $5, $6::jsonb, $7::timestamptz, $8::uuid)
         RETURNING order_id, user_id, order_status, total_amount, currency,
                   shipping_address_id, fulfillment_type, fulfillment_detail,
-                  due_at, created_at, updated_at
+                  due_at, store_id, created_at, updated_at
       `,
       [
         userId,
@@ -1441,10 +1506,11 @@ router.post('/orders/create', async (req, res) => {
         fulfillmentType,
         JSON.stringify(fulfillmentDetail),
         fulfillmentTiming.scheduledFor,
+        storeId,
       ]
     );
 
-    const order = orderResult.rows[0];
+    const order = createdOrderResult.rows[0];
 
     if (paymentMode === 'in_store') {
       const paymentResult = await client.query(
@@ -1458,9 +1524,10 @@ router.post('/orders/create', async (req, res) => {
             currency,
             payment_status,
             collection_timing,
-            raw_response
+            raw_response,
+            store_id
           )
-          VALUES ($1, $2, 'manual', 'in_store', $3, $4, 'awaiting_collection', $5, $6::jsonb)
+          VALUES ($1, $2, 'manual', 'in_store', $3, $4, 'awaiting_collection', $5, $6::jsonb, $7::uuid)
           RETURNING *
         `,
         [
@@ -1475,6 +1542,7 @@ router.post('/orders/create', async (req, res) => {
             collection_timing: inStorePaymentOption.collection_timing,
             available_methods: inStorePaymentOption.methods,
           }),
+          storeId,
         ]
       );
       inStorePayment = paymentResult.rows[0];
@@ -1484,7 +1552,8 @@ router.post('/orders/create', async (req, res) => {
       await markRewardRedemptionUsedForOrder(
         client,
         rewardRedemption,
-        order.order_id
+        order.order_id,
+        storeId
       );
     }
 
@@ -1501,9 +1570,10 @@ router.post('/orders/create', async (req, res) => {
             subtotal,
             item_source,
             reward_redemption_id,
-            special_instructions
+            special_instructions,
+            store_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::uuid)
           RETURNING order_item_id, order_id, product_id, quantity,
                     unit_price, subtotal, item_source, reward_redemption_id,
                     special_instructions, created_at
@@ -1517,6 +1587,7 @@ router.post('/orders/create', async (req, res) => {
           item.item_source || 'normal',
           item.reward_redemption_id || null,
           item.special_instructions || null,
+          storeId,
         ]
       );
 
@@ -1537,9 +1608,10 @@ router.post('/orders/create', async (req, res) => {
               option_product_id,
               quantity,
               unit_price,
-              subtotal
+              subtotal,
+              store_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::uuid)
             RETURNING order_item_option_id, order_item_id, option_group_id,
                       option_product_id, quantity, unit_price, subtotal,
                       created_at
@@ -1551,6 +1623,7 @@ router.post('/orders/create', async (req, res) => {
             item.quantity,
             selectedOption.unit_price.toFixed(2),
             (selectedOption.unit_price * item.quantity).toFixed(2),
+            storeId,
           ]
         );
 
@@ -1567,6 +1640,7 @@ router.post('/orders/create', async (req, res) => {
         source: 'in_store_order_created',
         payment_id: inStorePayment.payment_id,
         payment_channel: 'in_store',
+        storeId,
       });
       const notification = await recordNewInStoreOrderNotification(
         client,

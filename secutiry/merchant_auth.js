@@ -9,6 +9,7 @@ const {
   resolveMerchantAuthorization,
   satisfiesMerchantPermissions,
 } = require('../services/merchant_authorization');
+const { merchantCanAccessStore } = require('../services/store_context');
 
 function getBearerToken(req) {
   const authHeader = req.headers['authorization'];
@@ -159,7 +160,33 @@ async function authorizeMerchantRequest(
 ) {
   const payload = authenticateMerchantRequest(req, res);
   if (!payload) return null;
-  return authorizeMerchantPayload(payload, res, requirement, options);
+  const authorization = await authorizeMerchantPayload(
+    payload,
+    res,
+    requirement,
+    options
+  );
+  if (!authorization) return null;
+
+  const storeId = req.storeContext?.storeId;
+  if (
+    storeId &&
+    !options.skipStoreAuthorization &&
+    !(await merchantCanAccessStore(pool, authorization.merchant_user, storeId))
+  ) {
+    res.status(403).json({
+      success: false,
+      code: 'MERCHANT_STORE_ACCESS_DENIED',
+      error: 'You do not have access to this store',
+    });
+    return null;
+  }
+
+  return {
+    ...authorization,
+    store_id: storeId || null,
+    store: req.storeContext?.store || null,
+  };
 }
 
 async function authorizeMerchantUploadRequest(
@@ -170,7 +197,33 @@ async function authorizeMerchantUploadRequest(
 ) {
   const payload = authenticateMerchantUploadRequest(req, res);
   if (!payload) return null;
-  return authorizeMerchantPayload(payload, res, requirement, options);
+  const authorization = await authorizeMerchantPayload(
+    payload,
+    res,
+    requirement,
+    options
+  );
+  if (!authorization) return null;
+
+  const storeId = req.storeContext?.storeId;
+  if (
+    storeId &&
+    !options.skipStoreAuthorization &&
+    !(await merchantCanAccessStore(pool, authorization.merchant_user, storeId))
+  ) {
+    res.status(403).json({
+      success: false,
+      code: 'MERCHANT_STORE_ACCESS_DENIED',
+      error: 'You do not have access to this store',
+    });
+    return null;
+  }
+
+  return {
+    ...authorization,
+    store_id: storeId || null,
+    store: req.storeContext?.store || null,
+  };
 }
 
 module.exports = {

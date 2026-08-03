@@ -104,6 +104,7 @@ function buildFcmMessage(notification, token, options = {}) {
       type: eventType,
       event_type: eventType,
       notification_id: normalizeText(notification.notification_id),
+      store_id: normalizeText(notification.store_id),
       recipient_type: normalizeText(notification.recipient_type),
       recipient_id: normalizeText(notification.recipient_id),
       recipient_key: normalizeText(notification.recipient_key),

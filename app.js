@@ -14,6 +14,7 @@ const {
 } = require('./services/runtime_config');
 validateProductionEnvironment(process.env);
 const { pool } = require('./db/pgsql');
+const { attachStoreContext } = require('./services/store_context');
 /*const session = require('express-session');
 const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');*/
@@ -116,7 +117,12 @@ app.use('/api/users/login', authenticationLimiter);
 app.use('/api/merchant/auth/login', authenticationLimiter);
 app.use('/api/verification', verificationLimiter);
 
+// Every API request resolves to one active store. Single-store deployments
+// transparently use the default store; multi-store clients send X-Store-Id.
+app.use('/api', attachStoreContext);
+
 // routes
+app.use('/api', require('./routes/stores.js'));
 app.use('/api', require('./routes/products.js'));
 app.use('/api', require('./routes/verification.js'));
 app.use('/api', require('./routes/users.js'));
@@ -129,6 +135,7 @@ app.use('/api', require('./routes/config.js'));
 app.use('/api', require('./routes/payment_methods.js'));
 app.use('/api/buyer', require('./routes/buyer_notifications.js'));
 app.use('/api/merchant', require('./routes/merchant_auth.js'));
+app.use('/api/merchant', require('./routes/merchant_stores.js'));
 app.use('/api/merchant', require('./routes/merchant_users.js'));
 app.use('/api/merchant', require('./routes/merchant_dining_tables.js'));
 app.use('/api/merchant', require('./routes/merchant_orders.js'));

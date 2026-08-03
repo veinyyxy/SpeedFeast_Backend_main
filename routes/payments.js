@@ -11,6 +11,7 @@ const {
   sendMerchantNotificationInBackground,
 } = require('../services/merchant_notifications');
 const {
+  recordBuyerPointsReversedNotification,
   sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
 const { autoStartOrder } = require('../services/order_automation');
@@ -59,7 +60,7 @@ function paymentStatusToOrderStatus(paymentStatus) {
   return null;
 }
 
-async function fetchLatestPaymentByOrderIds(orderIds) {
+async function fetchLatestPaymentByOrderIds(orderIds, storeId) {
   if (!Array.isArray(orderIds) || orderIds.length === 0) return new Map();
 
   const result = await pool.query(
@@ -84,9 +85,10 @@ async function fetchLatestPaymentByOrderIds(orderIds) {
         updated_at
       FROM public.payments
       WHERE order_id = ANY($1::uuid[])
+        AND store_id = $2::uuid
       ORDER BY order_id, created_at DESC
     `,
-    [orderIds]
+    [orderIds, storeId]
   );
 
   return result.rows.reduce((acc, row) => {
@@ -158,9 +160,10 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
           SET order_status = $1,
               updated_at = now()
           WHERE order_id = $2
+            AND store_id = $3::uuid
             AND order_status IN ('created', 'paid')
         `,
-        [nextOrderStatus, payment.order_id]
+        [nextOrderStatus, payment.order_id, payment.store_id]
       );
       const automation = await autoStartOrder(client, payment.order_id, {
         source: 'payment_webhook',
@@ -194,15 +197,36 @@ async function markPaymentFromProviderUpdate(client, providerName, update, event
           SET order_status = $1,
               updated_at = now()
           WHERE order_id = $2
+            AND store_id = $3::uuid
             AND order_status NOT IN ('cancelled', 'refunded')
         `,
-        [nextOrderStatus, payment.order_id]
+        [nextOrderStatus, payment.order_id, payment.store_id]
       );
 
-      await reversePointsForOrder(client, payment.order_id, {
+      const rewardsResult = await reversePointsForOrder(client, payment.order_id, {
         source: 'stripe_webhook',
         reason: event?.type || 'stripe_refund',
       });
+      if (rewardsResult?.reversed) {
+        const notification = await recordBuyerPointsReversedNotification(client, {
+          userId: rewardsResult.user_id,
+          orderId: rewardsResult.order_id || payment.order_id,
+          storeId: rewardsResult.store_id || payment.store_id,
+          points: rewardsResult.points,
+          deductedPoints: rewardsResult.deducted_points,
+          unrecoveredPoints: rewardsResult.unrecovered_points,
+          transactionId: rewardsResult.transaction_id,
+          source: 'stripe_webhook',
+          payload: {
+            provider: providerName,
+            provider_event_id: event?.id || null,
+            provider_event_type: event?.type || null,
+          },
+        });
+        if (notification.queued) {
+          buyerNotificationIds.push(notification.notification_id);
+        }
+      }
       await restoreOrderRewardRedemptions(client, payment.order_id, {
         source: 'stripe_webhook',
       });
@@ -242,6 +266,7 @@ router.post('/payments/create', async (req, res) => {
       `
         SELECT
           order_id,
+          store_id,
           user_id,
           order_status,
           total_amount,
@@ -253,9 +278,10 @@ router.post('/payments/create', async (req, res) => {
         FROM public."Order"
         WHERE order_id = $1
           AND user_id = $2
+          AND store_id = $3::uuid
         FOR UPDATE
       `,
-      [orderId, userId]
+      [orderId, userId, req.storeContext.storeId]
     );
 
     const order = orderResult.rows[0];
@@ -272,12 +298,13 @@ router.post('/payments/create', async (req, res) => {
         SELECT payment_id
         FROM public.payments
         WHERE order_id = $1::uuid
+          AND store_id = $2::uuid
           AND payment_channel = 'in_store'
         ORDER BY created_at DESC
         LIMIT 1
         FOR UPDATE
       `,
-      [order.order_id]
+      [order.order_id, order.store_id]
     );
     if (inStorePaymentResult.rowCount > 0) {
       await client.query('ROLLBACK');
@@ -307,6 +334,7 @@ router.post('/payments/create', async (req, res) => {
       `
         INSERT INTO public.payments (
           order_id,
+          store_id,
           user_id,
           provider,
           payment_channel,
@@ -314,11 +342,12 @@ router.post('/payments/create', async (req, res) => {
           currency,
           payment_status
         )
-        VALUES ($1, $2, $3, 'online', $4, $5, 'pending')
+        VALUES ($1, $2, $3, $4, 'online', $5, $6, 'pending')
         RETURNING *
       `,
       [
         order.order_id,
+        order.store_id,
         userId,
         providerName,
         Number(order.total_amount).toFixed(2),
@@ -406,7 +435,10 @@ router.get('/payments/status', async (req, res) => {
   }
 
   try {
-    const paymentsByOrderId = await fetchLatestPaymentByOrderIds([orderId]);
+    const paymentsByOrderId = await fetchLatestPaymentByOrderIds(
+      [orderId],
+      req.storeContext.storeId
+    );
     const payment = paymentsByOrderId.get(orderId);
 
     if (!payment) {
@@ -422,8 +454,9 @@ router.get('/payments/status', async (req, res) => {
         FROM public."Order"
         WHERE order_id = $1
           AND user_id = $2
+          AND store_id = $3::uuid
       `,
-      [orderId, userId]
+      [orderId, userId, req.storeContext.storeId]
     );
 
     if (ownershipResult.rowCount === 0) {
@@ -465,6 +498,7 @@ router.post('/payments/webhook/stripe', async (req, res) => {
     await client.query(
       `
         INSERT INTO public.payment_events (
+          store_id,
           provider,
           provider_event_id,
           event_type,
@@ -473,10 +507,18 @@ router.post('/payments/webhook/stripe', async (req, res) => {
           payload,
           processed_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
+        VALUES (
+          COALESCE(
+            $1::uuid,
+            (SELECT store_id FROM public."Order" WHERE order_id = $5::uuid),
+            public.default_store_id()
+          ),
+          $2, $3, $4, $5, $6, $7::jsonb, now()
+        )
         ON CONFLICT (provider, provider_event_id) DO NOTHING
       `,
       [
+        payment?.store_id || null,
         'stripe',
         event.id || '',
         event.type || '',

@@ -142,7 +142,7 @@ async function getOrderOperationsConfig(
     countryCode = DEFAULT_ORDER_OPERATION_SCOPE.countryCode,
     regionCode = DEFAULT_ORDER_OPERATION_SCOPE.regionCode,
     city = null,
-    merchantId = null,
+    storeId = null,
   } = {}
 ) {
   const normalizedAppScope =
@@ -152,7 +152,7 @@ async function getOrderOperationsConfig(
     normalizeCountryCode(countryCode) || DEFAULT_ORDER_OPERATION_SCOPE.countryCode;
   const normalizedRegionCode = normalizeRegionCode(regionCode);
   const normalizedCity = normalizeText(city) || null;
-  const normalizedMerchantId = normalizeText(merchantId) || null;
+  const normalizedStoreId = normalizeText(storeId) || null;
 
   try {
     const result = await readSystemConfigRows(db, {
@@ -161,7 +161,7 @@ async function getOrderOperationsConfig(
       countryCode: normalizedCountryCode,
       regionCode: normalizedRegionCode,
       city: normalizedCity,
-      merchantId: normalizedMerchantId,
+      storeId: normalizedStoreId,
       configKeys: ORDER_OPERATION_CONFIG_KEYS,
     });
     const configs = firstConfigRows(result.rows);
@@ -185,7 +185,7 @@ async function getOrderOperationsConfig(
         country_code: normalizedCountryCode,
         region_code: normalizedRegionCode,
         city: normalizedCity,
-        merchant_id: normalizedMerchantId,
+        store_id: normalizedStoreId,
         environment: normalizedEnvironment,
       },
     };
@@ -200,7 +200,7 @@ async function getOrderOperationsConfig(
         country_code: normalizedCountryCode,
         region_code: normalizedRegionCode,
         city: normalizedCity,
-        merchant_id: normalizedMerchantId,
+        store_id: normalizedStoreId,
         environment: normalizedEnvironment,
       },
     };

@@ -60,39 +60,42 @@ function normalizeReviewItems(items) {
     );
 }
 
-async function fetchOwnedOrder(client, orderId, userId) {
+async function fetchOwnedOrder(client, orderId, userId, storeId) {
   const result = await client.query(
     `
-      SELECT order_id, user_id, order_status
+      SELECT order_id, user_id, order_status, store_id
       FROM public."Order"
       WHERE order_id = $1
         AND user_id = $2
+        AND store_id = $3::uuid
     `,
-    [orderId, userId]
+    [orderId, userId, storeId]
   );
   return result.rows[0] || null;
 }
 
-async function fetchOrderItems(client, orderId) {
+async function fetchOrderItems(client, orderId, storeId) {
   const result = await client.query(
     `
       SELECT order_item_id, order_id, product_id
       FROM public.orderitem
       WHERE order_id = $1
+        AND store_id = $2::uuid
     `,
-    [orderId]
+    [orderId, storeId]
   );
   return result.rows;
 }
 
-async function fetchOrderReview(client, orderId) {
+async function fetchOrderReview(client, orderId, storeId) {
   const reviewResult = await client.query(
     `
       SELECT review_id, order_id, user_id, comment, created_at, updated_at
       FROM public.order_reviews
       WHERE order_id = $1
+        AND store_id = $2::uuid
     `,
-    [orderId]
+    [orderId, storeId]
   );
 
   const itemResult = await client.query(
@@ -101,9 +104,10 @@ async function fetchOrderReview(client, orderId) {
              rating, created_at, updated_at
       FROM public.order_item_reviews
       WHERE order_id = $1
+        AND store_id = $2::uuid
       ORDER BY created_at ASC
     `,
-    [orderId]
+    [orderId, storeId]
   );
 
   const review = reviewResult.rows[0] || null;
@@ -121,16 +125,17 @@ router.get('/reviews/orders/:orderId', async (req, res) => {
 
   const orderId = req.params.orderId;
   const userId = authPayload.user_id;
+  const storeId = req.storeContext.storeId;
   const client = await pool.connect();
 
   try {
-    const order = await fetchOwnedOrder(client, orderId, userId);
+    const order = await fetchOwnedOrder(client, orderId, userId, storeId);
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
     const status = (order.order_status || '').toLowerCase();
-    const review = await fetchOrderReview(client, orderId);
+    const review = await fetchOrderReview(client, orderId, storeId);
 
     return res.status(200).json({
       success: true,
@@ -155,6 +160,7 @@ router.post('/reviews/orders/:orderId', async (req, res) => {
 
   const orderId = req.params.orderId;
   const userId = authPayload.user_id;
+  const storeId = req.storeContext.storeId;
   const comment = normalizeComment(req.body.comment);
   const reviewItems = normalizeReviewItems(req.body.items);
 
@@ -170,7 +176,7 @@ router.post('/reviews/orders/:orderId', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const order = await fetchOwnedOrder(client, orderId, userId);
+    const order = await fetchOwnedOrder(client, orderId, userId, storeId);
     if (!order) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Order not found' });
@@ -185,7 +191,7 @@ router.post('/reviews/orders/:orderId', async (req, res) => {
       });
     }
 
-    const orderItems = await fetchOrderItems(client, orderId);
+    const orderItems = await fetchOrderItems(client, orderId, storeId);
     const orderItemsById = new Map(
       orderItems.map((item) => [item.order_item_id, item])
     );
@@ -203,13 +209,13 @@ router.post('/reviews/orders/:orderId', async (req, res) => {
 
     await client.query(
       `
-        INSERT INTO public.order_reviews (order_id, user_id, comment)
-        VALUES ($1, $2, $3)
+        INSERT INTO public.order_reviews (order_id, store_id, user_id, comment)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (order_id)
         DO UPDATE SET comment = EXCLUDED.comment,
                       updated_at = now()
       `,
-      [orderId, userId, comment]
+      [orderId, storeId, userId, comment]
     );
 
     for (const item of reviewItems) {
@@ -217,21 +223,22 @@ router.post('/reviews/orders/:orderId', async (req, res) => {
         `
           INSERT INTO public.order_item_reviews (
             order_id,
+            store_id,
             order_item_id,
             product_id,
             user_id,
             rating
           )
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
           ON CONFLICT (order_item_id)
           DO UPDATE SET rating = EXCLUDED.rating,
                         updated_at = now()
         `,
-        [orderId, item.order_item_id, item.product_id, userId, item.rating]
+        [orderId, storeId, item.order_item_id, item.product_id, userId, item.rating]
       );
     }
 
-    const review = await fetchOrderReview(client, orderId);
+    const review = await fetchOrderReview(client, orderId, storeId);
     await client.query('COMMIT');
 
     return res.status(200).json({

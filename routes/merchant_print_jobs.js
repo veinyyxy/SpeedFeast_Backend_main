@@ -39,7 +39,11 @@ router.post('/print-jobs/claim', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const job = await claimNextOrderReceipt(client, deviceId);
+    const job = await claimNextOrderReceipt(
+      client,
+      deviceId,
+      authPayload.store_id
+    );
     await client.query('COMMIT');
     return res.status(200).json({ success: true, job });
   } catch (err) {
@@ -70,10 +74,15 @@ router.post('/print-jobs/:printJobId/result', async (req, res) => {
 
   try {
     const job = succeeded
-      ? await completePrintJob(pool, { printJobId, claimToken })
+      ? await completePrintJob(pool, {
+          printJobId,
+          claimToken,
+          storeId: authPayload.store_id,
+        })
       : await failPrintJob(pool, {
           printJobId,
           claimToken,
+          storeId: authPayload.store_id,
           errorMessage: req.body.error || req.body.error_message,
         });
     if (!job) {

@@ -45,7 +45,10 @@ router.get('/rewards/summary', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const summary = await getRewardsSummary(authPayload.user_id);
+    const summary = await getRewardsSummary(
+      authPayload.user_id,
+      req.storeContext.storeId
+    );
     return res.status(200).json({
       success: true,
       summary,
@@ -64,10 +67,14 @@ router.get('/rewards/transactions', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const data = await getRewardsTransactions(authPayload.user_id, {
-      limit: req.query.limit,
-      offset: req.query.offset,
-    });
+    const data = await getRewardsTransactions(
+      authPayload.user_id,
+      req.storeContext.storeId,
+      {
+        limit: req.query.limit,
+        offset: req.query.offset,
+      }
+    );
     return res.status(200).json({
       success: true,
       ...data,
@@ -86,9 +93,11 @@ router.get('/rewards/redemptions', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const redemptions = await getRewardRedemptions(authPayload.user_id, {
-      status: req.query.status,
-    });
+    const redemptions = await getRewardRedemptions(
+      authPayload.user_id,
+      req.storeContext.storeId,
+      { status: req.query.status }
+    );
     return res.status(200).json({
       success: true,
       redemptions,
@@ -109,7 +118,11 @@ router.post('/rewards/redeem', async (req, res) => {
 
   const rewardId = req.body.reward_id || req.body.rewardId;
   try {
-    const data = await redeemReward(authPayload.user_id, rewardId);
+    const data = await redeemReward(
+      authPayload.user_id,
+      rewardId,
+      req.storeContext.storeId
+    );
     return res.status(200).json({
       success: true,
       ...data,

@@ -181,6 +181,7 @@ async function storeMerchantImageAsset({
     const result = await dbPool.query(
       `
         INSERT INTO public.media_assets (
+          store_id,
           asset_type,
           storage_provider,
           bucket,
@@ -194,21 +195,23 @@ async function storeMerchantImageAsset({
           metadata
         )
         VALUES (
+          $1::uuid,
           'image',
-          $1,
           $2,
           $3,
           $4,
-          jsonb_build_object('original', $4::text),
           $5,
+          jsonb_build_object('original', $5::text),
           $6,
           $7,
+          $8,
           'ready',
-          $8::jsonb
+          $9::jsonb
         )
         RETURNING asset_id, public_url, object_key, mime_type, size_bytes
       `,
       [
+        merchantAuthPayload.store_id,
         storageClient.provider,
         storageClient.bucket,
         objectKey,

@@ -465,9 +465,9 @@ function buildOptionGroups(parentProductId, rowsByParent, visited = new Set()) {
     .sort((a, b) => a.sort_order - b.sort_order);
 }
 
-async function fetchProductOptionRows() {
+async function fetchProductOptionRows(storeId, db = pool) {
   try {
-    const result = await pool.query(`
+    const result = await db.query(`
       SELECT
         l.parent_product_id,
         g.option_group_id,
@@ -481,9 +481,9 @@ async function fetchProductOptionRows() {
         i.sort_order AS option_sort_order,
         op.name AS option_name,
         op.description AS option_description,
-        op.base_price AS option_price,
+        COALESCE(option_store.price_override, op.base_price) AS option_price,
         op.options_affect_price AS option_options_affect_price,
-        op.status AS option_status,
+        option_store.status AS option_status,
         ma.public_url AS option_image_url
       FROM public.product_option_group_links l
       JOIN public.product_option_groups g
@@ -492,6 +492,9 @@ async function fetchProductOptionRows() {
         ON i.option_group_id = g.option_group_id
       JOIN public.products op
         ON op.product_id = i.option_product_id
+      JOIN public.store_products option_store
+        ON option_store.product_id = op.product_id
+       AND option_store.store_id = $1::uuid
       LEFT JOIN public.product_images pi
         ON pi.product_id = op.product_id
        AND pi.is_primary = TRUE
@@ -506,7 +509,7 @@ async function fetchProductOptionRows() {
                g.sort_order,
                i.sort_order,
                op.name
-    `);
+    `, [storeId]);
 
     return result.rows;
   } catch (err) {
@@ -529,6 +532,7 @@ function normalizeProduct(row, optionRowsByParent) {
     dimensions: row.dimensions,
     status: row.status,
     visible_in_menu: row.visible_in_menu !== false,
+    sold_out: row.sold_out === true,
     image_url: row.image_url,
     is_option_product: row.is_option_product,
     rating_average: Number(row.rating_average || 0),
@@ -540,25 +544,26 @@ function normalizeProduct(row, optionRowsByParent) {
   };
 }
 
-async function fetchMerchantProducts(productId = null) {
-  const params = [];
-  const whereClause = productId ? 'WHERE p.product_id = $1::uuid' : '';
+async function fetchMerchantProducts(storeId, productId = null, db = pool) {
+  const params = [storeId];
+  const whereClause = productId ? 'WHERE p.product_id = $2::uuid' : '';
   if (productId) params.push(productId);
 
-  const productsResult = await pool.query(
+  const productsResult = await db.query(
     `
       SELECT
         p.product_id,
         p.sku,
         p.name,
         p.description,
-        p.base_price,
+        COALESCE(sp.price_override, p.base_price) AS base_price,
         p.options_affect_price,
         p.cost_price,
         p.weight,
         p.dimensions,
-        p.status,
-        p.visible_in_menu,
+        sp.status,
+        sp.visible_in_menu,
+        sp.sold_out,
         p.created_at,
         p.updated_at,
         pi.public_url AS image_url,
@@ -579,10 +584,17 @@ async function fetchMerchantProducts(productId = null) {
           '[]'::jsonb
         ) AS categories
       FROM public.products p
-      LEFT JOIN public.product_categories pc
+      JOIN public.store_products sp
+        ON sp.product_id = p.product_id
+       AND sp.store_id = $1::uuid
+      LEFT JOIN public.store_product_categories pc
         ON pc.product_id = p.product_id
+       AND pc.store_id = sp.store_id
       LEFT JOIN public.categories c
         ON c.category_id = pc.category_id
+      LEFT JOIN public.store_categories sc
+        ON sc.category_id = c.category_id
+       AND sc.store_id = sp.store_id
       LEFT JOIN LATERAL (
         SELECT ma.public_url
         FROM public.product_images image
@@ -601,28 +613,32 @@ async function fetchMerchantProducts(productId = null) {
           ROUND(AVG(rating)::numeric, 2) AS rating_average,
           COUNT(*)::int AS rating_count
         FROM public.order_item_reviews
+        WHERE store_id = $1::uuid
         GROUP BY product_id
       ) pr ON pr.product_id = p.product_id
       ${whereClause}
-      GROUP BY p.product_id, pi.public_url, pr.rating_average, pr.rating_count
-      ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC NULLS LAST, p.name ASC
+      GROUP BY p.product_id, sp.price_override, sp.status,
+               sp.visible_in_menu, sp.sold_out, sp.updated_at,
+               pi.public_url, pr.rating_average, pr.rating_count
+      ORDER BY sp.updated_at DESC NULLS LAST, p.name ASC
     `,
     params
   );
 
-  const optionRows = await fetchProductOptionRows();
+  const optionRows = await fetchProductOptionRows(storeId, db);
   const optionRowsByParent = groupOptionRowsByParent(optionRows);
   return productsResult.rows.map((row) => normalizeProduct(row, optionRowsByParent));
 }
 
-async function assertCategoriesExist(client, categoryIds) {
+async function assertCategoriesExist(client, storeId, categoryIds) {
   const result = await client.query(
     `
       SELECT category_id
-      FROM public.categories
-      WHERE category_id = ANY($1::bigint[])
+      FROM public.store_categories
+      WHERE store_id = $1::uuid
+        AND category_id = ANY($2::bigint[])
     `,
-    [categoryIds]
+    [storeId, categoryIds]
   );
   const existingIds = new Set(result.rows.map((row) => Number(row.category_id)));
   const missingIds = categoryIds.filter((id) => !existingIds.has(id));
@@ -631,7 +647,43 @@ async function assertCategoriesExist(client, categoryIds) {
   }
 }
 
-async function insertProduct(client, product) {
+async function upsertStoreProduct(
+  client,
+  storeId,
+  productId,
+  product,
+  { priceOverride = null } = {}
+) {
+  await client.query(
+    `
+      INSERT INTO public.store_products (
+        store_id,
+        product_id,
+        price_override,
+        status,
+        visible_in_menu,
+        sold_out
+      )
+      VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+      ON CONFLICT (store_id, product_id) DO UPDATE
+      SET price_override = EXCLUDED.price_override,
+          status = EXCLUDED.status,
+          visible_in_menu = EXCLUDED.visible_in_menu,
+          sold_out = EXCLUDED.sold_out,
+          updated_at = now()
+    `,
+    [
+      storeId,
+      productId,
+      priceOverride,
+      product.status,
+      product.visible_in_menu,
+      product.sold_out === true,
+    ]
+  );
+}
+
+async function insertProduct(client, storeId, product) {
   const result = await client.query(
     `
       INSERT INTO public.products (
@@ -656,32 +708,28 @@ async function insertProduct(client, product) {
       product.visible_in_menu,
     ]
   );
-  return result.rows[0].product_id;
+  const productId = result.rows[0].product_id;
+  await upsertStoreProduct(client, storeId, productId, product);
+  return productId;
 }
 
-async function updateProductRecord(client, product) {
+async function updateProductRecord(client, storeId, product) {
   const result = await client.query(
     `
       UPDATE public.products
       SET sku = $1,
           name = $2,
           description = $3,
-          base_price = $4,
-          options_affect_price = $5,
-          status = $6,
-          visible_in_menu = $7,
+          options_affect_price = $4,
           updated_at = CURRENT_TIMESTAMP
-      WHERE product_id = $8::uuid
+      WHERE product_id = $5::uuid
       RETURNING product_id
     `,
     [
       product.sku,
       product.name,
       product.description,
-      product.base_price.toFixed(2),
       product.options_affect_price,
-      product.status,
-      product.visible_in_menu,
       product.product_id,
     ]
   );
@@ -689,10 +737,18 @@ async function updateProductRecord(client, product) {
   if (result.rows.length === 0) {
     throw new ValidationError('Product not found');
   }
+  await upsertStoreProduct(client, storeId, product.product_id, product, {
+    priceOverride: product.base_price.toFixed(2),
+  });
   return result.rows[0].product_id;
 }
 
-async function insertOptionProduct(client, option, inheritedCategoryIds) {
+async function insertOptionProduct(
+  client,
+  storeId,
+  option,
+  inheritedCategoryIds
+) {
   const result = await client.query(
     `
       INSERT INTO public.products (
@@ -719,29 +775,36 @@ async function insertOptionProduct(client, option, inheritedCategoryIds) {
   );
 
   const productId = result.rows[0].product_id;
+  await upsertStoreProduct(client, storeId, productId, option);
   await replacePrimaryImage(client, productId, option.image_url);
   if (option.visible_in_menu) {
     const categoryIds =
       option.category_ids.length > 0 ? option.category_ids : inheritedCategoryIds;
     if (categoryIds.length > 0) {
-      await insertProductCategories(client, productId, categoryIds);
+      await insertProductCategories(client, storeId, productId, categoryIds);
     }
   }
   return productId;
 }
 
-async function resolveOptionProductId(client, option, inheritedCategoryIds) {
+async function resolveOptionProductId(
+  client,
+  storeId,
+  option,
+  inheritedCategoryIds
+) {
   if (!option.product_id) {
-    return insertOptionProduct(client, option, inheritedCategoryIds);
+    return insertOptionProduct(client, storeId, option, inheritedCategoryIds);
   }
 
   const result = await client.query(
     `
       SELECT product_id
-      FROM public.products
-      WHERE product_id = $1::uuid
+      FROM public.store_products
+      WHERE store_id = $1::uuid
+        AND product_id = $2::uuid
     `,
-    [option.product_id]
+    [storeId, option.product_id]
   );
 
   if (result.rows.length === 0) {
@@ -751,7 +814,7 @@ async function resolveOptionProductId(client, option, inheritedCategoryIds) {
   return result.rows[0].product_id;
 }
 
-async function insertProductCategories(client, productId, categoryIds) {
+async function insertProductCategories(client, storeId, productId, categoryIds) {
   await client.query(
     `
       INSERT INTO public.product_categories (product_id, category_id)
@@ -759,6 +822,18 @@ async function insertProductCategories(client, productId, categoryIds) {
       ON CONFLICT (product_id, category_id) DO NOTHING
     `,
     [productId, categoryIds]
+  );
+  await client.query(
+    `
+      INSERT INTO public.store_product_categories (
+        store_id,
+        product_id,
+        category_id
+      )
+      SELECT $1::uuid, $2::uuid, unnest($3::bigint[])
+      ON CONFLICT (store_id, product_id, category_id) DO NOTHING
+    `,
+    [storeId, productId, categoryIds]
   );
 }
 
@@ -862,18 +937,25 @@ async function setPrimaryImage(client, productId, imageUrl) {
   await insertPrimaryImage(client, productId, imageUrl);
 }
 
-async function replaceProductCategories(client, productId, categoryIds) {
+async function replaceProductCategories(client, storeId, productId, categoryIds) {
   await client.query(
     `
-      DELETE FROM public.product_categories
-      WHERE product_id = $1::uuid
+      DELETE FROM public.store_product_categories
+      WHERE store_id = $1::uuid
+        AND product_id = $2::uuid
     `,
-    [productId]
+    [storeId, productId]
   );
-  await insertProductCategories(client, productId, categoryIds);
+  await insertProductCategories(client, storeId, productId, categoryIds);
 }
 
-async function replaceProductOptionGroupLinks(client, productId, optionGroups, inheritedCategoryIds) {
+async function replaceProductOptionGroupLinks(
+  client,
+  storeId,
+  productId,
+  optionGroups,
+  inheritedCategoryIds
+) {
   await client.query(
     `
       DELETE FROM public.product_option_group_links
@@ -883,6 +965,7 @@ async function replaceProductOptionGroupLinks(client, productId, optionGroups, i
   );
   await createOptionGroupsForParent(
     client,
+    storeId,
     productId,
     optionGroups,
     inheritedCategoryIds
@@ -982,6 +1065,7 @@ async function linkOptionToGroup(client, optionGroupId, optionProductId, sortOrd
 
 async function createOptionGroupsForParent(
   client,
+  storeId,
   parentProductId,
   optionGroups,
   inheritedCategoryIds = []
@@ -1002,6 +1086,7 @@ async function createOptionGroupsForParent(
     for (const option of group.options) {
       const optionProductId = await resolveOptionProductId(
         client,
+        storeId,
         option,
         inheritedCategoryIds
       );
@@ -1015,6 +1100,7 @@ async function createOptionGroupsForParent(
       if (option.child_groups.length > 0) {
         await createOptionGroupsForParent(
           client,
+          storeId,
           optionProductId,
           option.child_groups,
           inheritedCategoryIds
@@ -1031,12 +1117,17 @@ router.get('/categories', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        category_id,
-        name,
-        parent_id
-      FROM public.categories
-      ORDER BY parent_id NULLS FIRST, name ASC
-    `);
+        c.category_id,
+        COALESCE(sc.display_name, c.name) AS name,
+        c.parent_id,
+        sc.visible_in_menu,
+        sc.sort_order
+      FROM public.categories c
+      JOIN public.store_categories sc
+        ON sc.category_id = c.category_id
+       AND sc.store_id = $1::uuid
+      ORDER BY c.parent_id NULLS FIRST, sc.sort_order, c.name ASC
+    `, [authPayload.store_id]);
 
     return res.status(200).json({
       success: true,
@@ -1083,10 +1174,11 @@ router.post('/categories/create', async (req, res) => {
       const parentResult = await client.query(
         `
           SELECT category_id
-          FROM public.categories
-          WHERE category_id = $1::bigint
+          FROM public.store_categories
+          WHERE store_id = $1::uuid
+            AND category_id = $2::bigint
         `,
-        [parentId]
+        [authPayload.store_id, parentId]
       );
 
       if (parentResult.rows.length === 0) {
@@ -1113,6 +1205,14 @@ router.post('/categories/create', async (req, res) => {
     );
 
     if (existingResult.rows.length > 0) {
+      await client.query(
+        `
+          INSERT INTO public.store_categories (store_id, category_id)
+          VALUES ($1::uuid, $2::bigint)
+          ON CONFLICT (store_id, category_id) DO NOTHING
+        `,
+        [authPayload.store_id, existingResult.rows[0].category_id]
+      );
       await client.query('COMMIT');
       return res.status(200).json({
         success: true,
@@ -1130,6 +1230,14 @@ router.post('/categories/create', async (req, res) => {
       [name, parentId]
     );
 
+    await client.query(
+      `
+        INSERT INTO public.store_categories (store_id, category_id)
+        VALUES ($1::uuid, $2::bigint)
+      `,
+      [authPayload.store_id, insertResult.rows[0].category_id]
+    );
+
     await client.query('COMMIT');
     return res.status(201).json({
       success: true,
@@ -1145,10 +1253,10 @@ router.post('/categories/create', async (req, res) => {
   }
 });
 
-async function fetchMerchantOptionGroups(optionGroupId = null, db = pool) {
-  const params = optionGroupId ? [optionGroupId] : [];
+async function fetchMerchantOptionGroups(storeId, optionGroupId = null, db = pool) {
+  const params = optionGroupId ? [storeId, optionGroupId] : [storeId];
   const optionGroupFilter = optionGroupId
-    ? 'AND g.option_group_id = $1::uuid'
+    ? 'AND g.option_group_id = $2::uuid'
     : '';
 
   return db.query(
@@ -1164,6 +1272,9 @@ async function fetchMerchantOptionGroups(optionGroupId = null, db = pool) {
         (
           SELECT COUNT(*)::int
           FROM public.product_option_group_links link_count
+          JOIN public.store_products linked_store
+            ON linked_store.product_id = link_count.parent_product_id
+           AND linked_store.store_id = $1::uuid
           WHERE link_count.option_group_id = g.option_group_id
             AND link_count.active = TRUE
         ) AS linked_product_count,
@@ -1172,13 +1283,13 @@ async function fetchMerchantOptionGroups(optionGroupId = null, db = pool) {
             jsonb_build_object(
               'product_id', p.product_id,
               'name', p.name,
-              'base_price', p.base_price,
+              'base_price', COALESCE(sp.price_override, p.base_price),
               'options_affect_price', p.options_affect_price,
-              'status', p.status,
+              'status', sp.status,
               'sort_order', i.sort_order
             )
             ORDER BY i.sort_order, p.name
-          ) FILTER (WHERE p.product_id IS NOT NULL),
+          ) FILTER (WHERE sp.product_id IS NOT NULL),
           '[]'::jsonb
         ) AS options
       FROM public.product_option_groups g
@@ -1187,6 +1298,9 @@ async function fetchMerchantOptionGroups(optionGroupId = null, db = pool) {
        AND i.active = TRUE
       LEFT JOIN public.products p
         ON p.product_id = i.option_product_id
+      LEFT JOIN public.store_products sp
+        ON sp.product_id = p.product_id
+       AND sp.store_id = $1::uuid
       WHERE g.active = TRUE
         ${optionGroupFilter}
       GROUP BY g.option_group_id
@@ -1201,7 +1315,7 @@ router.get('/option-groups', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const result = await fetchMerchantOptionGroups();
+    const result = await fetchMerchantOptionGroups(authPayload.store_id);
 
     return res.status(200).json({
       success: true,
@@ -1258,10 +1372,11 @@ router.post('/option-groups/update', async (req, res) => {
     const productsResult = await client.query(
       `
         SELECT product_id
-        FROM public.products
-        WHERE product_id = ANY($1::uuid[])
+        FROM public.store_products
+        WHERE store_id = $1::uuid
+          AND product_id = ANY($2::uuid[])
       `,
-      [payload.option_product_ids]
+      [authPayload.store_id, payload.option_product_ids]
     );
     const existingProductIds = new Set(
       productsResult.rows.map((row) => row.product_id)
@@ -1342,6 +1457,7 @@ router.post('/option-groups/update', async (req, res) => {
     );
 
     const updatedResult = await fetchMerchantOptionGroups(
+      authPayload.store_id,
       payload.option_group_id,
       client
     );
@@ -1390,7 +1506,7 @@ router.get('/products', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const products = await fetchMerchantProducts();
+    const products = await fetchMerchantProducts(authPayload.store_id);
     return res.status(200).json({
       success: true,
       products,
@@ -1426,13 +1542,23 @@ router.post('/products/create', async (req, res) => {
 
   try {
     await client.query('BEGIN');
-    await assertCategoriesExist(client, payload.category_ids);
+    await assertCategoriesExist(
+      client,
+      authPayload.store_id,
+      payload.category_ids
+    );
 
-    const productId = await insertProduct(client, payload);
-    await insertProductCategories(client, productId, payload.category_ids);
+    const productId = await insertProduct(client, authPayload.store_id, payload);
+    await insertProductCategories(
+      client,
+      authPayload.store_id,
+      productId,
+      payload.category_ids
+    );
     await replacePrimaryImage(client, productId, payload.image_url);
     await createOptionGroupsForParent(
       client,
+      authPayload.store_id,
       productId,
       payload.option_groups,
       payload.category_ids
@@ -1440,7 +1566,10 @@ router.post('/products/create', async (req, res) => {
 
     await client.query('COMMIT');
 
-    const createdProducts = await fetchMerchantProducts(productId);
+    const createdProducts = await fetchMerchantProducts(
+      authPayload.store_id,
+      productId
+    );
     return res.status(201).json({
       success: true,
       product: createdProducts[0] || null,
@@ -1495,19 +1624,36 @@ router.post('/products/update', async (req, res) => {
 
   try {
     await client.query('BEGIN');
-    await assertCategoriesExist(client, payload.category_ids);
-    const productId = await updateProductRecord(client, payload);
-    await replaceProductCategories(client, productId, payload.category_ids);
+    await assertCategoriesExist(
+      client,
+      authPayload.store_id,
+      payload.category_ids
+    );
+    const productId = await updateProductRecord(
+      client,
+      authPayload.store_id,
+      payload
+    );
+    await replaceProductCategories(
+      client,
+      authPayload.store_id,
+      productId,
+      payload.category_ids
+    );
     await setPrimaryImage(client, productId, payload.image_url);
     await replaceProductOptionGroupLinks(
       client,
+      authPayload.store_id,
       productId,
       payload.option_groups,
       payload.category_ids
     );
     await client.query('COMMIT');
 
-    const products = await fetchMerchantProducts(productId);
+    const products = await fetchMerchantProducts(
+      authPayload.store_id,
+      productId
+    );
     return res.status(200).json({
       success: true,
       product: products[0] || null,
@@ -1562,22 +1708,24 @@ router.post('/products/status/update', async (req, res) => {
   try {
     const result = await pool.query(
       `
-        UPDATE public.products
+        UPDATE public.store_products
         SET status = $1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE product_id = $2
-        RETURNING product_id, sku, name, description, base_price,
-                  options_affect_price, cost_price, weight, dimensions, status,
-                  created_at, updated_at
+            updated_at = now()
+        WHERE store_id = $2::uuid
+          AND product_id = $3::uuid
+        RETURNING product_id, status
       `,
-      [status, productId]
+      [status, authPayload.store_id, productId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Product not found' });
     }
 
-    const products = await fetchMerchantProducts(productId);
+    const products = await fetchMerchantProducts(
+      authPayload.store_id,
+      productId
+    );
 
     return res.status(200).json({
       success: true,
@@ -1613,20 +1761,24 @@ router.post('/products/menu-visibility/update', async (req, res) => {
   try {
     const result = await pool.query(
       `
-        UPDATE public.products
+        UPDATE public.store_products
         SET visible_in_menu = $1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE product_id = $2::uuid
+            updated_at = now()
+        WHERE store_id = $2::uuid
+          AND product_id = $3::uuid
         RETURNING product_id
       `,
-      [visibleInMenu, productId]
+      [visibleInMenu, authPayload.store_id, productId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Product not found' });
     }
 
-    const products = await fetchMerchantProducts(productId);
+    const products = await fetchMerchantProducts(
+      authPayload.store_id,
+      productId
+    );
     return res.status(200).json({
       success: true,
       product: products[0] || null,

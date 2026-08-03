@@ -144,7 +144,7 @@ test('S3 media record contains provider, bucket, key, and public URL', async () 
   const dbPool = {
     async query(text, params) {
       query = { text, params };
-      return { rows: [{ asset_id: 'asset-1', public_url: params[3] }] };
+      return { rows: [{ asset_id: 'asset-1', public_url: params[4] }] };
     },
   };
 
@@ -156,7 +156,10 @@ test('S3 media record contains provider, bucket, key, and public URL', async () 
       mimetype: 'image/png',
     },
     productImageObjectPrefix: 'products/2026/07',
-    merchantAuthPayload: { merchant_user_id: 'merchant-user-1' },
+    merchantAuthPayload: {
+      merchant_user_id: 'merchant-user-1',
+      store_id: 'cdd417c5-9351-428a-975b-4df73a99f1ab',
+    },
     storageClient,
     dbPool,
   });
@@ -164,8 +167,9 @@ test('S3 media record contains provider, bucket, key, and public URL', async () 
   assert.equal(asset.asset_id, 'asset-1');
   assert.match(query.text, /storage_provider/);
   assert.match(query.text, /bucket/);
-  assert.equal(query.params[0], 's3');
-  assert.equal(query.params[1], 'speedfeast-images');
-  assert.match(query.params[2], /^products\/2026\/07\/.+\.png$/);
-  assert.equal(query.params[3], `https://images.example.com/${query.params[2]}`);
+  assert.equal(query.params[0], 'cdd417c5-9351-428a-975b-4df73a99f1ab');
+  assert.equal(query.params[1], 's3');
+  assert.equal(query.params[2], 'speedfeast-images');
+  assert.match(query.params[3], /^products\/2026\/07\/.+\.png$/);
+  assert.equal(query.params[4], `https://images.example.com/${query.params[3]}`);
 });

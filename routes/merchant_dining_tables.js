@@ -45,10 +45,11 @@ router.get('/dine-in/tables', async (req, res) => {
         SELECT table_id, store_id, table_number, table_token, is_active,
                created_at, updated_at
         FROM public.dining_tables
-        WHERE $1::boolean = TRUE OR is_active = TRUE
+        WHERE store_id = $1::uuid
+          AND ($2::boolean = TRUE OR is_active = TRUE)
         ORDER BY is_active DESC, lower(table_number), table_number
       `,
-      [includeInactive]
+      [authPayload.store_id, includeInactive]
     );
     return res.status(200).json({
       success: true,
@@ -70,17 +71,13 @@ router.post('/dine-in/tables/create', async (req, res) => {
   const tableNumber = normalizeTableNumber(
     req.body.table_number || req.body.tableNumber
   );
-  const storeId = normalizeText(req.body.store_id || req.body.storeId) || null;
+  const storeId = authPayload.store_id;
   if (!tableNumber) {
     return res.status(400).json({
       success: false,
       error: 'table_number must be 1-40 characters without control characters',
     });
   }
-  if (storeId && storeId.length > 120) {
-    return res.status(400).json({ success: false, error: 'store_id is too long' });
-  }
-
   try {
     const result = await pool.query(
       `
@@ -131,10 +128,7 @@ router.post('/dine-in/tables/batch-create', async (req, res) => {
       error: `table_numbers must contain 1-${MAX_BATCH_TABLES} unique valid table numbers`,
     });
   }
-  const storeId = normalizeText(req.body.store_id || req.body.storeId) || null;
-  if (storeId && storeId.length > 120) {
-    return res.status(400).json({ success: false, error: 'store_id is too long' });
-  }
+  const storeId = authPayload.store_id;
 
   const client = await pool.connect();
   try {
@@ -209,10 +203,11 @@ router.post('/dine-in/tables/update', async (req, res) => {
             is_active = COALESCE($3, is_active),
             updated_at = now()
         WHERE table_id = $1::uuid
+          AND store_id = $4::uuid
         RETURNING table_id, store_id, table_number, table_token, is_active,
                   created_at, updated_at
       `,
-      [tableId, tableNumber, isActive]
+      [tableId, tableNumber, isActive, authPayload.store_id]
     );
     if (!result.rows[0]) {
       return res.status(404).json({ success: false, error: 'Table not found' });
@@ -247,10 +242,11 @@ router.post('/dine-in/tables/rotate-token', async (req, res) => {
         SET table_token = $2,
             updated_at = now()
         WHERE table_id = $1::uuid
+          AND store_id = $3::uuid
         RETURNING table_id, store_id, table_number, table_token, is_active,
                   created_at, updated_at
       `,
-      [tableId, generateTableToken()]
+      [tableId, generateTableToken(), authPayload.store_id]
     );
     if (!result.rows[0]) {
       return res.status(404).json({ success: false, error: 'Table not found' });

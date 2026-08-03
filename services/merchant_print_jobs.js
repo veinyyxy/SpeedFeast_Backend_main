@@ -8,21 +8,23 @@ function normalizeText(value) {
 
 async function enqueueAutomaticOrderReceipt(
   client,
-  { orderId, metadata = {} }
+  { orderId, storeId, metadata = {} }
 ) {
   const result = await client.query(
     `
       INSERT INTO public.merchant_order_print_jobs (
         order_id,
+        store_id,
         job_type,
         metadata
       )
-      VALUES ($1::uuid, $2::text, $3::jsonb)
+      VALUES ($1::uuid, $2::uuid, $3::text, $4::jsonb)
       ON CONFLICT (order_id, job_type) DO NOTHING
       RETURNING *
     `,
     [
       orderId,
+      storeId,
       PRINT_JOB_TYPE_ORDER_RECEIPT,
       JSON.stringify(metadata || {}),
     ]
@@ -43,7 +45,7 @@ async function enqueueAutomaticOrderReceipt(
   return existing.rows[0] || null;
 }
 
-async function claimNextOrderReceipt(client, deviceId) {
+async function claimNextOrderReceipt(client, deviceId, storeId) {
   const normalizedDeviceId = normalizeText(deviceId).slice(0, 180);
   if (!normalizedDeviceId) return null;
 
@@ -55,6 +57,7 @@ async function claimNextOrderReceipt(client, deviceId) {
         JOIN public."Order" orders
           ON orders.order_id = jobs.order_id
         WHERE jobs.job_type = $1::text
+          AND jobs.store_id = $4::uuid
           AND jobs.attempts < $2::integer
           AND orders.order_status NOT IN ('cancelled', 'refunded')
           AND (
@@ -84,13 +87,18 @@ async function claimNextOrderReceipt(client, deviceId) {
       WHERE jobs.print_job_id = candidate.print_job_id
       RETURNING jobs.*
     `,
-    [PRINT_JOB_TYPE_ORDER_RECEIPT, MAX_PRINT_ATTEMPTS, normalizedDeviceId]
+    [
+      PRINT_JOB_TYPE_ORDER_RECEIPT,
+      MAX_PRINT_ATTEMPTS,
+      normalizedDeviceId,
+      storeId,
+    ]
   );
 
   return result.rows[0] || null;
 }
 
-async function completePrintJob(client, { printJobId, claimToken }) {
+async function completePrintJob(client, { printJobId, claimToken, storeId }) {
   const result = await client.query(
     `
       UPDATE public.merchant_order_print_jobs
@@ -101,17 +109,18 @@ async function completePrintJob(client, { printJobId, claimToken }) {
           updated_at = now()
       WHERE print_job_id = $1::uuid
         AND claim_token = $2::uuid
+        AND store_id = $3::uuid
         AND status = 'processing'
       RETURNING *
     `,
-    [printJobId, claimToken]
+    [printJobId, claimToken, storeId]
   );
   return result.rows[0] || null;
 }
 
 async function failPrintJob(
   client,
-  { printJobId, claimToken, errorMessage }
+  { printJobId, claimToken, storeId, errorMessage }
 ) {
   const result = await client.query(
     `
@@ -127,10 +136,16 @@ async function failPrintJob(
           updated_at = now()
       WHERE print_job_id = $1::uuid
         AND claim_token = $2::uuid
+        AND store_id = $4::uuid
         AND status = 'processing'
       RETURNING *
     `,
-    [printJobId, claimToken, normalizeText(errorMessage).slice(0, 1000)]
+    [
+      printJobId,
+      claimToken,
+      normalizeText(errorMessage).slice(0, 1000),
+      storeId,
+    ]
   );
   return result.rows[0] || null;
 }

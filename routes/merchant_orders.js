@@ -16,6 +16,7 @@ const {
   recordBuyerOrderStatusNotification,
   recordBuyerInStorePaymentCollectedNotification,
   recordBuyerPointsEarnedNotification,
+  recordBuyerPointsReversedNotification,
   recordBuyerRefundNotification,
   sendBuyerNotificationsInBackground,
 } = require('../services/buyer_notifications');
@@ -163,6 +164,27 @@ function queueNotificationId(queue, notification) {
   if (notification?.queued && notification.notification_id) {
     queue.push(notification.notification_id);
   }
+}
+
+async function queueBuyerPointsReversedNotification(
+  client,
+  queue,
+  order,
+  rewardsResult,
+  source
+) {
+  if (!rewardsResult?.reversed) return;
+  const notification = await recordBuyerPointsReversedNotification(client, {
+    userId: rewardsResult.user_id || order?.user_id,
+    orderId: rewardsResult.order_id || order?.order_id,
+    storeId: rewardsResult.store_id || order?.store_id,
+    points: rewardsResult.points,
+    deductedPoints: rewardsResult.deducted_points,
+    unrecoveredPoints: rewardsResult.unrecovered_points,
+    transactionId: rewardsResult.transaction_id,
+    source,
+  });
+  queueNotificationId(queue, notification);
 }
 
 function normalizeAddress(row) {
@@ -616,6 +638,7 @@ function baseOrderSelect() {
   return `
     SELECT
       o.order_id,
+      o.store_id,
       o.user_id,
       o.order_status,
       o.total_amount,
@@ -721,9 +744,10 @@ async function upsertProviderRefunds(client, payment, refunds) {
             currency,
             refund_status,
             reason,
-            raw_response
+            raw_response,
+            store_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::uuid)
         `,
         [
           payment.payment_id,
@@ -734,6 +758,7 @@ async function upsertProviderRefunds(client, payment, refunds) {
           status,
           reason,
           rawResponse,
+          payment.store_id,
         ]
       );
     }
@@ -876,8 +901,8 @@ router.get('/orders', async (req, res) => {
   const offset = normalizeOffset(req.query.offset);
   const dateFrom = normalizeDate(req.query.date_from || req.query.dateFrom);
   const dateTo = normalizeDate(req.query.date_to || req.query.dateTo);
-  const params = [];
-  const where = [];
+  const params = [authPayload.store_id];
+  const where = ['o.store_id = $1::uuid'];
 
   if (status) {
     params.push(status);
@@ -935,8 +960,9 @@ router.get('/orders/detail', async (req, res) => {
       `
         ${baseOrderSelect()}
         WHERE o.order_id = $1
+          AND o.store_id = $2::uuid
       `,
-      [orderId]
+      [orderId, authPayload.store_id]
     );
 
     if (orderResult.rows.length === 0) {
@@ -984,12 +1010,13 @@ router.post('/orders/in-store-payment/collect', async (req, res) => {
     const orderResult = await client.query(
       `
         SELECT order_id, user_id, order_status, total_amount, currency,
-               fulfillment_type
+               fulfillment_type, store_id
         FROM public."Order"
         WHERE order_id = $1::uuid
+          AND store_id = $2::uuid
         FOR UPDATE
       `,
-      [orderId]
+      [orderId, authPayload.store_id]
     );
     const order = orderResult.rows[0];
     if (!order) {
@@ -1100,6 +1127,7 @@ router.post('/orders/in-store-payment/collect', async (req, res) => {
       const pointsNotification = await recordBuyerPointsEarnedNotification(client, {
         userId: rewardsResult.user_id || order.user_id,
         orderId: rewardsResult.order_id || orderId,
+        storeId: order.store_id,
         points: rewardsResult.points,
         transactionId: rewardsResult.transaction_id,
         source: 'in_store_payment_collected',
@@ -1165,12 +1193,13 @@ router.post('/orders/payments/sync', async (req, res) => {
 
     const orderResult = await client.query(
       `
-        SELECT order_id, user_id, order_status, total_amount, currency
+        SELECT order_id, user_id, order_status, total_amount, currency, store_id
         FROM public."Order"
         WHERE order_id = $1::uuid
+          AND store_id = $2::uuid
         FOR UPDATE
       `,
-      [orderId]
+      [orderId, authPayload.store_id]
     );
     const order = orderResult.rows[0];
     if (!order) {
@@ -1292,6 +1321,13 @@ router.post('/orders/payments/sync', async (req, res) => {
         orderId,
         { source: 'merchant_payment_sync' }
       );
+      await queueBuyerPointsReversedNotification(
+        client,
+        buyerNotificationIds,
+        order,
+        rewardsResult,
+        'merchant_payment_sync'
+      );
     }
 
     await client.query('COMMIT');
@@ -1383,12 +1419,13 @@ router.post('/orders/refund', async (req, res) => {
 
     const orderResult = await client.query(
       `
-        SELECT order_id, user_id, order_status, total_amount, currency
+        SELECT order_id, user_id, order_status, total_amount, currency, store_id
         FROM public."Order"
         WHERE order_id = $1::uuid
+          AND store_id = $2::uuid
         FOR UPDATE
       `,
-      [orderId]
+      [orderId, authPayload.store_id]
     );
 
     const order = orderResult.rows[0];
@@ -1497,6 +1534,13 @@ router.post('/orders/refund', async (req, res) => {
         },
       });
       queueNotificationId(buyerNotificationIds, notification);
+      await queueBuyerPointsReversedNotification(
+        client,
+        buyerNotificationIds,
+        order,
+        rewardsResult,
+        'merchant_refund'
+      );
 
       await client.query('COMMIT');
       responseBody = {
@@ -1535,9 +1579,10 @@ router.post('/orders/refund', async (req, res) => {
             amount,
             currency,
             refund_status,
-            reason
+            reason,
+            store_id
           )
-          VALUES ($1, $2, $3, $4, 'pending', $5)
+          VALUES ($1, $2, $3, $4, 'pending', $5, $6::uuid)
           RETURNING refund_id
         `,
         [
@@ -1546,6 +1591,7 @@ router.post('/orders/refund', async (req, res) => {
           refundAmount.toFixed(2),
           payment.currency || order.currency || 'CAD',
           note,
+          order.store_id,
         ]
       );
 
@@ -1724,6 +1770,13 @@ router.post('/orders/refund', async (req, res) => {
           },
         });
         queueNotificationId(buyerNotificationIds, notification);
+        await queueBuyerPointsReversedNotification(
+          client,
+          buyerNotificationIds,
+          order,
+          rewardsResult,
+          'merchant_refund'
+        );
       } else {
         responseStatus = 202;
       }
@@ -1830,12 +1883,13 @@ router.post('/orders/status/update', async (req, res) => {
       `
         SELECT order_id, user_id, order_status, fulfillment_type,
                total_amount, currency, created_at,
-               preparation_minutes, due_at
+               preparation_minutes, due_at, store_id
         FROM public."Order"
         WHERE order_id = $1
+          AND store_id = $2::uuid
         FOR UPDATE
       `,
-      [orderId]
+      [orderId, authPayload.store_id]
     );
 
     const currentOrder = currentResult.rows[0];
@@ -2015,12 +2069,21 @@ router.post('/orders/status/update', async (req, res) => {
       const notification = await recordBuyerPointsEarnedNotification(client, {
         userId: rewardsResult.user_id || currentOrder.user_id,
         orderId: rewardsResult.order_id || orderId,
+        storeId: currentOrder.store_id,
         points: rewardsResult.points,
         transactionId: rewardsResult.transaction_id,
         source: 'order_completed',
       });
       queueNotificationId(buyerNotificationIds, notification);
     }
+
+    await queueBuyerPointsReversedNotification(
+      client,
+      buyerNotificationIds,
+      currentOrder,
+      rewardsResult,
+      'merchant_cancel'
+    );
 
     await client.query('COMMIT');
     sendBuyerNotificationsInBackground(buyerNotificationIds);

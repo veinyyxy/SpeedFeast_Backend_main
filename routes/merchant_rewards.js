@@ -164,16 +164,19 @@ function normalizeRewardItem(row) {
   };
 }
 
-async function assertProductRewardCanUseProduct(productId) {
+async function assertProductRewardCanUseProduct(productId, storeId) {
   if (!productId) return;
 
   const result = await pool.query(
     `
-      SELECT product_id, status
-      FROM public.products
-      WHERE product_id = $1::uuid
+      SELECT p.product_id, COALESCE(sp.status, p.status) AS status
+      FROM public.products p
+      INNER JOIN public.store_products sp
+        ON sp.product_id = p.product_id
+       AND sp.store_id = $2::uuid
+      WHERE p.product_id = $1::uuid
     `,
-    [productId]
+    [productId, storeId]
   );
   const product = result.rows[0];
   if (!product) {
@@ -188,12 +191,12 @@ async function assertProductRewardCanUseProduct(productId) {
   }
 }
 
-async function fetchRewardItems(rewardId = null) {
-  const params = [];
-  let whereClause = '';
+async function fetchRewardItems(storeId, rewardId = null) {
+  const params = [storeId];
+  const whereParts = ['ri.store_id = $1::uuid'];
   if (rewardId) {
     params.push(rewardId);
-    whereClause = 'WHERE ri.reward_id = $1::uuid';
+    whereParts.push(`ri.reward_id = $${params.length}::uuid`);
   }
 
   const result = await pool.query(
@@ -212,12 +215,15 @@ async function fetchRewardItems(rewardId = null) {
         ri.created_at,
         ri.updated_at,
         p.name AS product_name,
-        p.base_price AS product_base_price,
-        p.status AS product_status,
+        COALESCE(sp.price_override, p.base_price) AS product_base_price,
+        COALESCE(sp.status, p.status) AS product_status,
         COALESCE(product_image.public_url, ri.image_path) AS product_image_path
       FROM public.reward_items ri
       LEFT JOIN public.products p
         ON p.product_id = ri.product_id
+      LEFT JOIN public.store_products sp
+        ON sp.store_id = ri.store_id
+       AND sp.product_id = ri.product_id
       LEFT JOIN LATERAL (
         SELECT ma.public_url
         FROM public.product_images image
@@ -230,7 +236,7 @@ async function fetchRewardItems(rewardId = null) {
                  image.image_id ASC
         LIMIT 1
       ) product_image ON TRUE
-      ${whereClause}
+      WHERE ${whereParts.join(' AND ')}
       ORDER BY ri.active DESC, ri.points_cost ASC, ri.sort_order ASC, ri.title ASC
     `,
     params
@@ -244,7 +250,7 @@ router.get('/rewards', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const rewards = await fetchRewardItems();
+    const rewards = await fetchRewardItems(authPayload.store_id);
     return res.status(200).json({
       success: true,
       rewards,
@@ -263,7 +269,7 @@ router.get('/rewards/settings', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const earnRate = await getRewardEarnRate();
+    const earnRate = await getRewardEarnRate(pool, authPayload.store_id);
     return res.status(200).json({
       success: true,
       settings: {
@@ -319,12 +325,15 @@ router.post('/rewards/settings', async (req, res) => {
       countryCode: REWARD_CONFIG_SCOPE.countryCode,
       regionCode: REWARD_CONFIG_SCOPE.regionCode,
       city: null,
-      merchantId: null,
+      storeId: authPayload.store_id,
       environmentFallback: 'dev',
     });
     await client.query('COMMIT');
 
-    const savedEarnRate = await getRewardEarnRate();
+    const savedEarnRate = await getRewardEarnRate(
+      pool,
+      authPayload.store_id
+    );
     return res.status(200).json({
       success: true,
       settings: {
@@ -365,18 +374,23 @@ router.post('/rewards/create', async (req, res) => {
   }
 
   try {
-    await assertProductRewardCanUseProduct(payload.product_id);
+    await assertProductRewardCanUseProduct(
+      payload.product_id,
+      authPayload.store_id
+    );
 
     const result = await pool.query(
       `
         INSERT INTO public.reward_items (
+          store_id,
           title, description, points_cost, reward_type,
           product_id, discount_amount, expires_in_days, active, sort_order
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING reward_id
       `,
       [
+        authPayload.store_id,
         payload.title,
         payload.description,
         payload.points_cost,
@@ -389,7 +403,10 @@ router.post('/rewards/create', async (req, res) => {
       ]
     );
 
-    const rewards = await fetchRewardItems(result.rows[0].reward_id);
+    const rewards = await fetchRewardItems(
+      authPayload.store_id,
+      result.rows[0].reward_id
+    );
     return res.status(201).json({
       success: true,
       reward: rewards[0] || null,
@@ -432,7 +449,10 @@ router.post('/rewards/update', async (req, res) => {
   }
 
   try {
-    await assertProductRewardCanUseProduct(payload.product_id);
+    await assertProductRewardCanUseProduct(
+      payload.product_id,
+      authPayload.store_id
+    );
 
     const result = await pool.query(
       `
@@ -448,6 +468,7 @@ router.post('/rewards/update', async (req, res) => {
             sort_order = $9,
             updated_at = now()
         WHERE reward_id = $10::uuid
+          AND store_id = $11::uuid
         RETURNING reward_id
       `,
       [
@@ -461,6 +482,7 @@ router.post('/rewards/update', async (req, res) => {
         payload.active,
         payload.sort_order,
         payload.reward_id,
+        authPayload.store_id,
       ]
     );
 
@@ -471,7 +493,10 @@ router.post('/rewards/update', async (req, res) => {
       });
     }
 
-    const rewards = await fetchRewardItems(payload.reward_id);
+    const rewards = await fetchRewardItems(
+      authPayload.store_id,
+      payload.reward_id
+    );
     return res.status(200).json({
       success: true,
       reward: rewards[0] || null,
@@ -516,9 +541,10 @@ router.post('/rewards/status', async (req, res) => {
         SET active = $1,
             updated_at = now()
         WHERE reward_id = $2::uuid
+          AND store_id = $3::uuid
         RETURNING reward_id
       `,
-      [active, rewardId]
+      [active, rewardId, authPayload.store_id]
     );
 
     if (result.rows.length === 0) {
@@ -528,7 +554,7 @@ router.post('/rewards/status', async (req, res) => {
       });
     }
 
-    const rewards = await fetchRewardItems(rewardId);
+    const rewards = await fetchRewardItems(authPayload.store_id, rewardId);
     return res.status(200).json({
       success: true,
       reward: rewards[0] || null,

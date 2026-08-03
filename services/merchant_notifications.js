@@ -36,7 +36,7 @@ async function fetchOrderNotificationContext(client, orderId) {
 
   const result = await client.query(
     `
-      SELECT order_id, total_amount, currency, fulfillment_type
+      SELECT order_id, total_amount, currency, fulfillment_type, store_id
       FROM public."Order"
       WHERE order_id = $1::uuid
       LIMIT 1
@@ -103,6 +103,7 @@ async function recordMerchantNotification(client, options = {}) {
     ...normalizeObject(options.actionPayload || options.action_payload),
   };
   if (orderId && !actionPayload.order_id) actionPayload.order_id = orderId;
+  const storeId = normalizeText(options.storeId || options.store_id) || null;
 
   return notificationRepository.createNotification(client, {
     recipientType: RECIPIENT_TYPES.MERCHANT_ALL,
@@ -116,6 +117,7 @@ async function recordMerchantNotification(client, options = {}) {
     actionType,
     actionPayload,
     payload: normalizeObject(options.payload),
+    storeId,
   });
 }
 
@@ -129,6 +131,7 @@ async function recordNewPaidOrderNotification(client, orderId, payload = {}) {
   const content = buildNewPaidOrderContent(order, textOrderId);
   return recordMerchantNotification(client, {
     eventType: NEW_PAID_ORDER_EVENT,
+    storeId: order.store_id,
     orderId: textOrderId,
     dedupeKey: `${NEW_PAID_ORDER_EVENT}:${textOrderId}`,
     title: content.title,
@@ -155,6 +158,7 @@ async function recordNewInStoreOrderNotification(client, orderId, payload = {}) 
   const content = buildNewInStoreOrderContent(order, textOrderId);
   return recordMerchantNotification(client, {
     eventType: NEW_IN_STORE_ORDER_EVENT,
+    storeId: order.store_id,
     orderId: textOrderId,
     dedupeKey: `${NEW_IN_STORE_ORDER_EVENT}:${textOrderId}`,
     title: content.title,
@@ -187,6 +191,7 @@ async function recordCustomerCancelledOrderNotification(
   const content = buildCustomerCancelledOrderContent(order, textOrderId);
   return recordMerchantNotification(client, {
     eventType: CUSTOMER_CANCELLED_ORDER_EVENT,
+    storeId: order.store_id,
     orderId: textOrderId,
     dedupeKey: `${CUSTOMER_CANCELLED_ORDER_EVENT}:${textOrderId}`,
     title: content.title,

@@ -45,6 +45,7 @@ async function registerDeviceToken(pool, options = {}) {
   );
   const platform = normalizePlatform(options.platform);
   const metadata = normalizeObject(options.metadata);
+  const storeId = normalizeText(options.storeId || options.store_id) || null;
 
   if (!ownerType) throw new Error('ownerType is required');
   if (!ownerId) throw new Error('ownerId is required');
@@ -59,9 +60,10 @@ async function registerDeviceToken(pool, options = {}) {
         fcm_token,
         active,
         metadata,
-        last_seen_at
+        last_seen_at,
+        store_id
       )
-      VALUES ($1, $2::uuid, $3, $4, TRUE, $5::jsonb, now())
+      VALUES ($1, $2::uuid, $3, $4, TRUE, $5::jsonb, now(), COALESCE($6::uuid, public.default_store_id()))
       ON CONFLICT (fcm_token)
       DO UPDATE SET
         owner_type = EXCLUDED.owner_type,
@@ -69,12 +71,20 @@ async function registerDeviceToken(pool, options = {}) {
         platform = EXCLUDED.platform,
         active = TRUE,
         metadata = EXCLUDED.metadata,
+        store_id = EXCLUDED.store_id,
         last_seen_at = now(),
         updated_at = now()
       RETURNING device_token_id, owner_type, owner_id, platform, active,
-                last_seen_at, created_at, updated_at
+                store_id, last_seen_at, created_at, updated_at
     `,
-    [ownerType, ownerId, platform, fcmToken, JSON.stringify(metadata)]
+    [
+      ownerType,
+      ownerId,
+      platform,
+      fcmToken,
+      JSON.stringify(metadata),
+      storeId,
+    ]
   );
 
   return result.rows[0] || null;
@@ -132,6 +142,7 @@ async function createNotification(pool, options = {}) {
     options.actionPayload || options.action_payload
   );
   const payload = normalizeObject(options.payload);
+  const storeId = normalizeText(options.storeId || options.store_id) || null;
 
   if (!recipientType) {
     return { queued: false, reason: 'missing_recipient_type' };
@@ -153,10 +164,11 @@ async function createNotification(pool, options = {}) {
         body,
         action_type,
         action_payload,
-        payload
+        payload,
+        store_id
       )
-      VALUES ($1, $2::uuid, $3, $4, $5, $6::uuid, $7, $8, $9, $10, $11::jsonb, $12::jsonb)
-      ON CONFLICT (recipient_key, event_type, dedupe_key) DO NOTHING
+      VALUES ($1, $2::uuid, $3, $4, $5, $6::uuid, $7, $8, $9, $10, $11::jsonb, $12::jsonb, COALESCE($13::uuid, public.default_store_id()))
+      ON CONFLICT (store_id, recipient_key, event_type, dedupe_key) DO NOTHING
       RETURNING notification_id
     `,
     [
@@ -172,6 +184,7 @@ async function createNotification(pool, options = {}) {
       actionType,
       JSON.stringify(actionPayload),
       JSON.stringify(payload),
+      storeId,
     ]
   );
 
@@ -202,6 +215,7 @@ async function fetchNotificationContext(pool, notificationId) {
         action_type,
         action_payload,
         payload,
+        store_id,
         status
       FROM public.notification_outbox
       WHERE notification_id = $1::uuid
@@ -249,6 +263,33 @@ async function fetchActiveDeviceTokensForNotification(pool, notification) {
   if (target.ownerId) {
     params.push(target.ownerId);
     whereParts.push(`owner_id = $${params.length}::uuid`);
+  }
+  let storeParam = null;
+  if (notification.store_id) {
+    params.push(notification.store_id);
+    storeParam = params.length;
+    whereParts.push(`store_id = $${storeParam}::uuid`);
+  }
+  if (
+    target.ownerType === OWNER_TYPES.MERCHANT_USER &&
+    storeParam !== null
+  ) {
+    whereParts.push(`(
+      EXISTS (
+        SELECT 1
+        FROM public.merchant_users merchant_user
+        WHERE merchant_user.merchant_user_id = owner_id
+          AND merchant_user.role = 'owner'
+          AND merchant_user.active = TRUE
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.merchant_user_stores merchant_store
+        WHERE merchant_store.merchant_user_id = owner_id
+          AND merchant_store.store_id = $${storeParam}::uuid
+          AND merchant_store.active = TRUE
+      )
+    )`);
   }
   if (target.courierPoolKey) {
     params.push(target.courierPoolKey);
@@ -307,7 +348,13 @@ async function deactivateDeviceTokensById(pool, deviceTokenIds) {
   return result.rowCount || 0;
 }
 
-async function recordDeliveryResults(pool, notificationId, tokens, results) {
+async function recordDeliveryResults(
+  pool,
+  notificationId,
+  tokens,
+  results,
+  storeId = null
+) {
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     const result = results[index];
@@ -336,9 +383,10 @@ async function recordDeliveryResults(pool, notificationId, tokens, results) {
           platform,
           status,
           response,
-          error_message
+          error_message,
+          store_id
         )
-        VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7::jsonb, $8)
+        VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7::jsonb, $8, COALESCE($9::uuid, public.default_store_id()))
       `,
       [
         notificationId,
@@ -349,6 +397,7 @@ async function recordDeliveryResults(pool, notificationId, tokens, results) {
         sent ? 'sent' : 'failed',
         JSON.stringify(response),
         error,
+        storeId,
       ]
     );
   }
@@ -360,6 +409,7 @@ async function listNotifications(pool, options = {}) {
   const recipientKeys = options.recipientKeys || options.recipient_keys || [];
   const limit = Math.min(Math.max(Number(options.limit) || 30, 1), 100);
   const offset = Math.max(Number(options.offset) || 0, 0);
+  const storeId = normalizeText(options.storeId || options.store_id) || null;
 
   if (!ownerType) throw new Error('ownerType is required');
   if (!ownerId) throw new Error('ownerId is required');
@@ -369,6 +419,7 @@ async function listNotifications(pool, options = {}) {
     `
       SELECT
         n.notification_id,
+        n.store_id,
         n.recipient_type,
         n.recipient_id,
         n.recipient_key,
@@ -396,47 +447,50 @@ async function listNotifications(pool, options = {}) {
        AND d.owner_id = $2::uuid
       WHERE n.recipient_key = ANY($3::text[])
         AND d.notification_id IS NULL
+        AND ($6::uuid IS NULL OR n.store_id = $6::uuid)
       ORDER BY n.created_at DESC
       LIMIT $4
       OFFSET $5
     `,
-    [ownerType, ownerId, keys, limit, offset]
+    [ownerType, ownerId, keys, limit, offset, storeId]
   );
 
   return result.rows;
 }
 
-async function markRead(pool, notificationId, ownerType, ownerId) {
+async function markRead(pool, notificationId, ownerType, ownerId, storeId = null) {
   await pool.query(
     `
       INSERT INTO public.notification_reads (
         notification_id,
         owner_type,
         owner_id,
-        read_at
+        read_at,
+        store_id
       )
-      VALUES ($1::uuid, $2, $3::uuid, now())
+      VALUES ($1::uuid, $2, $3::uuid, now(), COALESCE($4::uuid, public.default_store_id()))
       ON CONFLICT (notification_id, owner_type, owner_id)
       DO UPDATE SET read_at = EXCLUDED.read_at
     `,
-    [notificationId, ownerType, ownerId]
+    [notificationId, ownerType, ownerId, storeId]
   );
 }
 
-async function dismiss(pool, notificationId, ownerType, ownerId) {
+async function dismiss(pool, notificationId, ownerType, ownerId, storeId = null) {
   await pool.query(
     `
       INSERT INTO public.notification_dismissals (
         notification_id,
         owner_type,
         owner_id,
-        dismissed_at
+        dismissed_at,
+        store_id
       )
-      VALUES ($1::uuid, $2, $3::uuid, now())
+      VALUES ($1::uuid, $2, $3::uuid, now(), COALESCE($4::uuid, public.default_store_id()))
       ON CONFLICT (notification_id, owner_type, owner_id)
       DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
     `,
-    [notificationId, ownerType, ownerId]
+    [notificationId, ownerType, ownerId, storeId]
   );
 }
 

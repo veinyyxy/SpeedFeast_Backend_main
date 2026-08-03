@@ -56,14 +56,14 @@ function normalizeOrderAutomationConfig(value = {}) {
   };
 }
 
-async function getOrderAutomationConfig(db) {
+async function getOrderAutomationConfig(db, storeId = null) {
   const result = await readSystemConfigRows(db, {
     appScope: ORDER_AUTOMATION_SCOPE.appScope,
     environment: ORDER_AUTOMATION_SCOPE.environment,
     countryCode: ORDER_AUTOMATION_SCOPE.countryCode,
     regionCode: ORDER_AUTOMATION_SCOPE.regionCode,
     city: null,
-    merchantId: null,
+    storeId,
     configKeys: [ORDER_AUTOMATION_CONFIG_KEY],
     environmentFallback: 'dev',
   });
@@ -73,7 +73,7 @@ async function getOrderAutomationConfig(db) {
   return normalizeOrderAutomationConfig(row?.config_value);
 }
 
-async function saveOrderAutomationConfig(client, value) {
+async function saveOrderAutomationConfig(client, value, storeId = null) {
   const config = normalizeOrderAutomationConfig(value);
   await upsertSystemConfig(client, {
     configKey: ORDER_AUTOMATION_CONFIG_KEY,
@@ -85,7 +85,7 @@ async function saveOrderAutomationConfig(client, value) {
     countryCode: ORDER_AUTOMATION_SCOPE.countryCode,
     regionCode: ORDER_AUTOMATION_SCOPE.regionCode,
     city: null,
-    merchantId: null,
+    storeId,
     environmentFallback: 'dev',
   });
   return config;
@@ -118,15 +118,10 @@ function automaticReadyAllowed(paymentChannel) {
 }
 
 async function autoStartOrder(client, orderId, options = {}) {
-  const config = await getOrderAutomationConfig(client);
-  if (!config.auto_accept_enabled) {
-    return { started: false, reason: 'disabled', config };
-  }
-
   const orderResult = await client.query(
     `
       SELECT order_id, user_id, order_status, fulfillment_type,
-             fulfillment_detail, created_at
+             fulfillment_detail, store_id, created_at
       FROM public."Order"
       WHERE order_id = $1::uuid
       FOR UPDATE
@@ -134,7 +129,15 @@ async function autoStartOrder(client, orderId, options = {}) {
     [orderId]
   );
   const order = orderResult.rows[0];
-  if (!order) return { started: false, reason: 'order_not_found', config };
+  if (!order) return { started: false, reason: 'order_not_found' };
+
+  const config = await getOrderAutomationConfig(
+    client,
+    options.storeId || order.store_id
+  );
+  if (!config.auto_accept_enabled) {
+    return { started: false, reason: 'disabled', config };
+  }
 
   const paymentResult = await client.query(
     `
@@ -245,6 +248,7 @@ async function autoStartOrder(client, orderId, options = {}) {
   const printJob = config.auto_print_enabled
     ? await enqueueAutomaticOrderReceipt(client, {
         orderId,
+        storeId: order.store_id,
         metadata: {
           source,
           preparation_minutes: preparationMinutes,

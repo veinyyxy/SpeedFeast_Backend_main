@@ -4,6 +4,7 @@ INSERT INTO public.system_config (
   app_scope,
   country_code,
   region_code,
+  store_id,
   environment,
   value_type,
   active,
@@ -31,6 +32,7 @@ SELECT
   'order_client',
   'CA',
   'MB',
+  public.default_store_id(),
   'dev',
   'json',
   TRUE,
@@ -44,6 +46,6 @@ WHERE NOT EXISTS (
     AND country_code = 'CA'
     AND region_code = 'MB'
     AND city IS NULL
-    AND merchant_id IS NULL
+    AND store_id = public.default_store_id()
     AND environment = 'dev'
 );

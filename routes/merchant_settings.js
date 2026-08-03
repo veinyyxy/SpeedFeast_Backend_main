@@ -32,6 +32,7 @@ const {
   MIN_PREPARATION_MINUTES,
   normalizePreparationMinutes,
 } = require('../services/order_preparation_timing');
+const { clearStoreCache } = require('../services/store_context');
 
 const router = express.Router();
 
@@ -686,14 +687,14 @@ function normalizeSettingsPayload(body) {
   return payload;
 }
 
-async function fetchBuyerConfig(db = pool) {
+async function fetchBuyerConfig(db = pool, storeId = null) {
   const result = await readSystemConfigRows(db, {
     appScope: SETTINGS_SCOPE.appScope,
     environment: SETTINGS_SCOPE.environment,
     countryCode: SETTINGS_SCOPE.countryCode,
     regionCode: SETTINGS_SCOPE.regionCode,
     city: null,
-    merchantId: null,
+    storeId,
     configKeys: CONFIG_KEYS,
     environmentFallback: 'dev',
   });
@@ -701,7 +702,14 @@ async function fetchBuyerConfig(db = pool) {
   return buildConfigFromRows(rows);
 }
 
-async function upsertConfig(client, key, value, valueType, description) {
+async function upsertConfig(
+  client,
+  storeId,
+  key,
+  value,
+  valueType,
+  description
+) {
   await upsertSystemConfig(client, {
     configKey: key,
     value,
@@ -712,7 +720,7 @@ async function upsertConfig(client, key, value, valueType, description) {
     countryCode: SETTINGS_SCOPE.countryCode,
     regionCode: SETTINGS_SCOPE.regionCode,
     city: null,
-    merchantId: null,
+    storeId,
     environmentFallback: 'dev',
   });
 }
@@ -732,7 +740,7 @@ router.get('/settings/buyer-config', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const config = await fetchBuyerConfig();
+    const config = await fetchBuyerConfig(pool, authPayload.store_id);
     return res.status(200).json({
       success: true,
       scope: {
@@ -741,7 +749,7 @@ router.get('/settings/buyer-config', async (req, res) => {
         region_code: SETTINGS_SCOPE.regionCode,
         environment: SETTINGS_SCOPE.environment,
         city: null,
-        merchant_id: null,
+        store_id: authPayload.store_id,
       },
       config,
     });
@@ -779,25 +787,74 @@ router.post('/settings/buyer-config', async (req, res) => {
   }
 
   const client = await pool.connect();
+  let storeRecordChanged = false;
   try {
     await client.query('BEGIN');
     if (
       payload.store.profile &&
       hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_STORE_MANAGE)
     ) {
+      const logoAssetId = payload.store.profile.logo?.asset_id || null;
+      if (logoAssetId) {
+        const logoResult = await client.query(
+          `
+            SELECT 1
+            FROM public.media_assets
+            WHERE asset_id = $1::uuid
+              AND status = 'ready'
+              AND deleted_at IS NULL
+              AND (
+                store_id = $2::uuid
+                OR EXISTS (
+                  SELECT 1
+                  FROM public.system_config sc
+                  WHERE sc.store_id = $2::uuid
+                    AND sc.config_key = 'store.profile'
+                    AND sc.active = TRUE
+                    AND sc.config_value#>>'{logo,asset_id}' = $1::text
+                )
+              )
+          `,
+          [logoAssetId, authPayload.store_id]
+        );
+        if (logoResult.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            error: 'Store logo asset was not found for this store',
+          });
+        }
+      }
       await upsertConfig(
         client,
+        authPayload.store_id,
         'store.profile',
         payload.store.profile,
         'json',
         'Store profile for order client'
       );
+      await client.query(
+        `
+          UPDATE public.stores
+          SET phone = $2,
+              address = $3::jsonb,
+              updated_at = now()
+          WHERE store_id = $1::uuid
+        `,
+        [
+          authPayload.store_id,
+          payload.store.profile.phone,
+          JSON.stringify(payload.store.profile.address),
+        ]
+      );
+      storeRecordChanged = true;
     }
     if (
       hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_PRICING_MANAGE)
     ) {
       await upsertConfig(
         client,
+        authPayload.store_id,
         'pricing.currency',
         payload.pricing.currency,
         'string',
@@ -805,6 +862,7 @@ router.post('/settings/buyer-config', async (req, res) => {
       );
       await upsertConfig(
         client,
+        authPayload.store_id,
         'pricing.delivery_fee',
         payload.pricing.delivery_fee,
         'number',
@@ -812,6 +870,7 @@ router.post('/settings/buyer-config', async (req, res) => {
       );
       await upsertConfig(
         client,
+        authPayload.store_id,
         'pricing.delivery_service_fee',
         payload.pricing.delivery_service_fee,
         'number',
@@ -819,17 +878,29 @@ router.post('/settings/buyer-config', async (req, res) => {
       );
       await upsertConfig(
         client,
+        authPayload.store_id,
         'pricing.tax',
         payload.pricing.tax,
         'json',
         'Tax rate for Manitoba, Canada'
       );
+      await client.query(
+        `
+          UPDATE public.stores
+          SET currency = $2,
+              updated_at = now()
+          WHERE store_id = $1::uuid
+        `,
+        [authPayload.store_id, payload.pricing.currency]
+      );
+      storeRecordChanged = true;
     }
     if (
       hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_OPERATIONS_MANAGE)
     ) {
       await upsertConfig(
         client,
+        authPayload.store_id,
         'operations.business_hours',
         payload.operations.business_hours,
         'json',
@@ -837,6 +908,7 @@ router.post('/settings/buyer-config', async (req, res) => {
       );
       await upsertConfig(
         client,
+        authPayload.store_id,
         'fulfillment.pickup_eta',
         payload.fulfillment.pickup_eta,
         'json',
@@ -844,6 +916,7 @@ router.post('/settings/buyer-config', async (req, res) => {
       );
       await upsertConfig(
         client,
+        authPayload.store_id,
         'payment.in_store',
         payload.payment.in_store,
         'json',
@@ -851,8 +924,9 @@ router.post('/settings/buyer-config', async (req, res) => {
       );
     }
     await client.query('COMMIT');
+    if (storeRecordChanged) clearStoreCache();
 
-    const config = await fetchBuyerConfig();
+    const config = await fetchBuyerConfig(client, authPayload.store_id);
     return res.status(200).json({
       success: true,
       config,
@@ -875,7 +949,10 @@ router.get('/settings/order-automation', async (req, res) => {
   if (!authPayload) return;
 
   try {
-    const settings = await getOrderAutomationConfig(pool);
+    const settings = await getOrderAutomationConfig(
+      pool,
+      authPayload.store_id
+    );
     return res.status(200).json({
       success: true,
       scope: {
@@ -918,7 +995,11 @@ router.post('/settings/order-automation', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const savedSettings = await saveOrderAutomationConfig(client, settings);
+    const savedSettings = await saveOrderAutomationConfig(
+      client,
+      settings,
+      authPayload.store_id
+    );
     await client.query('COMMIT');
     return res.status(200).json({ success: true, settings: savedSettings });
   } catch (err) {

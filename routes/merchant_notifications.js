@@ -86,6 +86,8 @@ function normalizeNotification(row) {
   return {
     notification_id: row.notification_id,
     notificationId: row.notification_id,
+    store_id: row.store_id,
+    storeId: row.store_id,
     event_type: row.event_type,
     eventType: row.event_type,
     order_id: orderId,
@@ -124,10 +126,11 @@ router.get('/notifications', async (req, res) => {
   const ownerId = authPayload.merchant_user_id;
   const recipientKeys = merchantRecipientKeys(ownerId);
 
-  const params = [ownerType, ownerId, recipientKeys];
+  const params = [ownerType, ownerId, recipientKeys, authPayload.store_id];
   const whereParts = [
     'n.recipient_key = ANY($3::text[])',
     'd.notification_id IS NULL',
+    'n.store_id = $4::uuid',
   ];
   if (orderId) {
     params.push(orderId);
@@ -150,6 +153,7 @@ router.get('/notifications', async (req, res) => {
       `
         SELECT
           n.notification_id,
+          n.store_id,
           n.recipient_type,
           n.recipient_id,
           n.recipient_key,
@@ -221,9 +225,10 @@ router.get('/notifications/unread-count', async (req, res) => {
          AND d.owner_id = $2::uuid
         WHERE r.read_at IS NULL
           AND n.recipient_key = ANY($3::text[])
+          AND n.store_id = $4::uuid
           AND d.notification_id IS NULL
       `,
-      [ownerType, ownerId, recipientKeys]
+      [ownerType, ownerId, recipientKeys, authPayload.store_id]
     );
 
     return res.status(200).json({
@@ -266,6 +271,7 @@ router.post('/notifications/device-token', async (req, res) => {
       fcmToken: token,
       platform,
       metadata,
+      storeId: authPayload.store_id,
     });
 
     return res.status(200).json({
@@ -296,20 +302,22 @@ router.post('/notifications/read-all', async (req, res) => {
           notification_id,
           owner_type,
           owner_id,
-          read_at
+          read_at,
+          store_id
         )
-        SELECT n.notification_id, $1, $2::uuid, now()
+        SELECT n.notification_id, $1, $2::uuid, now(), n.store_id
         FROM public.notification_outbox n
         LEFT JOIN public.notification_dismissals d
           ON d.notification_id = n.notification_id
          AND d.owner_type = $1
          AND d.owner_id = $2::uuid
         WHERE n.recipient_key = ANY($3::text[])
+          AND n.store_id = $4::uuid
           AND d.notification_id IS NULL
         ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET read_at = EXCLUDED.read_at
       `,
-      [ownerType, ownerId, recipientKeys]
+      [ownerType, ownerId, recipientKeys, authPayload.store_id]
     );
 
     return res.status(200).json({
@@ -341,9 +349,10 @@ router.post('/notifications/delete-read', async (req, res) => {
           notification_id,
           owner_type,
           owner_id,
-          dismissed_at
+          dismissed_at,
+          store_id
         )
-        SELECT n.notification_id, $1, $2::uuid, now()
+        SELECT n.notification_id, $1, $2::uuid, now(), n.store_id
         FROM public.notification_outbox n
         INNER JOIN public.notification_reads r
           ON r.notification_id = n.notification_id
@@ -354,11 +363,12 @@ router.post('/notifications/delete-read', async (req, res) => {
          AND d.owner_type = $1
          AND d.owner_id = $2::uuid
         WHERE n.recipient_key = ANY($3::text[])
+          AND n.store_id = $4::uuid
           AND d.notification_id IS NULL
         ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
       `,
-      [ownerType, ownerId, recipientKeys]
+      [ownerType, ownerId, recipientKeys, authPayload.store_id]
     );
 
     return res.status(200).json({
@@ -386,6 +396,7 @@ router.post('/notifications/test', async (req, res) => {
     await client.query('BEGIN');
     const notification = await recordMerchantNotification(client, {
       eventType: 'merchant_test_notification',
+      storeId: authPayload.store_id,
       dedupeKey: `merchant_test_notification:${authPayload.merchant_user_id}:${Date.now()}`,
       title: normalizeText(req.body.title) || 'SpeedFeast Merchant test',
       body: normalizeText(req.body.body) || 'This is a test notification.',
@@ -443,25 +454,33 @@ router.post('/notifications/:notification_id/delete', async (req, res) => {
     const result = await pool.query(
       `
         WITH target AS (
-          SELECT notification_id
+          SELECT notification_id, store_id
           FROM public.notification_outbox
           WHERE notification_id = $1::uuid
             AND recipient_key = ANY($4::text[])
+            AND store_id = $5::uuid
           LIMIT 1
         )
         INSERT INTO public.notification_dismissals (
           notification_id,
           owner_type,
           owner_id,
-          dismissed_at
+          dismissed_at,
+          store_id
         )
-        SELECT notification_id, $2, $3::uuid, now()
+        SELECT notification_id, $2, $3::uuid, now(), store_id
         FROM target
         ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET dismissed_at = EXCLUDED.dismissed_at
         RETURNING notification_id
       `,
-      [notificationId, ownerType, ownerId, recipientKeys]
+      [
+        notificationId,
+        ownerType,
+        ownerId,
+        recipientKeys,
+        authPayload.store_id,
+      ]
     );
 
     if (result.rowCount === 0) {
@@ -505,9 +524,10 @@ router.post('/notifications/:notification_id/read', async (req, res) => {
         FROM public.notification_outbox
         WHERE notification_id = $1::uuid
           AND recipient_key = ANY($2::text[])
+          AND store_id = $3::uuid
         LIMIT 1
       `,
-      [notificationId, recipientKeys]
+      [notificationId, recipientKeys, authPayload.store_id]
     );
     if (existsResult.rowCount === 0) {
       return res.status(404).json({
@@ -522,13 +542,14 @@ router.post('/notifications/:notification_id/read', async (req, res) => {
           notification_id,
           owner_type,
           owner_id,
-          read_at
+          read_at,
+          store_id
         )
-        VALUES ($1::uuid, $2, $3::uuid, now())
+        VALUES ($1::uuid, $2, $3::uuid, now(), $4::uuid)
         ON CONFLICT (notification_id, owner_type, owner_id)
         DO UPDATE SET read_at = EXCLUDED.read_at
       `,
-      [notificationId, ownerType, ownerId]
+      [notificationId, ownerType, ownerId, authPayload.store_id]
     );
 
     return res.status(200).json({ success: true });

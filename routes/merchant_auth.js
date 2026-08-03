@@ -9,6 +9,7 @@ const {
 const {
   resolveMerchantAuthorization,
 } = require('../services/merchant_authorization');
+const { buildMerchantStoreSession } = require('../services/store_context');
 
 const router = express.Router();
 
@@ -95,6 +96,11 @@ router.post('/auth/login', async (req, res) => {
       merchantUser.merchant_user_id
     );
     const permissions = authorization?.permissions || [];
+    const storeSession = await buildMerchantStoreSession(
+      pool,
+      merchantUser,
+      req.storeContext?.storeId
+    );
     const token = generateJWT(
       {
         merchant_user_id: merchantUser.merchant_user_id,
@@ -112,6 +118,7 @@ router.post('/auth/login', async (req, res) => {
       token,
       merchant_user: normalizeMerchantUser(merchantUser, permissions),
       permissions,
+      ...storeSession,
     });
   } catch (err) {
     console.error('Error during merchant login:', err);
@@ -126,6 +133,12 @@ router.post('/auth/validate', async (req, res) => {
     });
     if (!authPayload) return;
 
+    const storeSession = await buildMerchantStoreSession(
+      pool,
+      authPayload.merchant_user,
+      req.storeContext?.storeId
+    );
+
     return res.status(200).json({
       success: true,
       merchant_user: normalizeMerchantUser(
@@ -133,6 +146,7 @@ router.post('/auth/validate', async (req, res) => {
         authPayload.permissions
       ),
       permissions: authPayload.permissions,
+      ...storeSession,
     });
   } catch (err) {
     console.error('Error validating merchant token:', err);
@@ -208,14 +222,16 @@ router.post('/auth/password/change', async (req, res) => {
     await client.query(
       `
         INSERT INTO public.merchant_user_audit_logs (
+          store_id,
           actor_merchant_user_id,
           target_merchant_user_id,
           action,
           metadata
         )
-        VALUES ($1::uuid, $1::uuid, 'password_changed', $2::jsonb)
+        VALUES ($1::uuid, $2::uuid, $2::uuid, 'password_changed', $3::jsonb)
       `,
       [
+        authPayload.store_id,
         authPayload.merchant_user_id,
         JSON.stringify({ source: 'merchant_self_service' }),
       ]
@@ -228,6 +244,11 @@ router.post('/auth/password/change', async (req, res) => {
       updatedUser.merchant_user_id
     );
     const permissions = authorization?.permissions || [];
+    const storeSession = await buildMerchantStoreSession(
+      pool,
+      updatedUser,
+      req.storeContext?.storeId
+    );
     const token = generateJWT(
       {
         merchant_user_id: updatedUser.merchant_user_id,
@@ -243,6 +264,7 @@ router.post('/auth/password/change', async (req, res) => {
       token,
       merchant_user: normalizeMerchantUser(updatedUser, permissions),
       permissions,
+      ...storeSession,
     });
   } catch (err) {
     await client.query('ROLLBACK');
