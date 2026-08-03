@@ -80,9 +80,41 @@ test('POST signatures use the exact raw JSON body for Dart double values', () =>
   assert.equal(verifySignature2(request), true);
 });
 
-test('Express preserves the signed JSON body before parsing it', async () => {
+test('Express preserves the signed JSON body before parsing it', async (t) => {
   const rawBody = '{"product_id":"product-1","base_price":12.0}';
   const request = buildSignedPostRequest(rawBody);
+  const { pool } = require('../db/pgsql');
+  const { clearStoreCache } = require('../services/store_context');
+  const originalPoolQuery = pool.query;
+
+  clearStoreCache();
+  pool.query = async (statement) => {
+    if (!/FROM public\.stores s/.test(statement)) {
+      throw new Error('Unexpected database query in request signature test');
+    }
+    return {
+      rows: [
+        {
+          store_id: '00000000-0000-4000-8000-000000000001',
+          store_code: 'MAIN',
+          slug: 'main',
+          phone: null,
+          address: {},
+          latitude: null,
+          longitude: null,
+          timezone: 'America/Winnipeg',
+          currency: 'CAD',
+          status: 'active',
+          is_default: true,
+          store_profile: { name: 'Test Store' },
+        },
+      ],
+    };
+  };
+  t.after(() => {
+    pool.query = originalPoolQuery;
+    clearStoreCache();
+  });
 
   await withAppServer(async (baseUrl) => {
     const response = await fetch(
