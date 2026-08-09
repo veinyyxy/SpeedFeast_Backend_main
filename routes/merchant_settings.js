@@ -33,6 +33,21 @@ const {
   normalizePreparationMinutes,
 } = require('../services/order_preparation_timing');
 const { clearStoreCache } = require('../services/store_context');
+const {
+  getBrandingCapabilities,
+} = require('../services/saas/entitlement_service');
+const {
+  readStoreProfile,
+  readStoredTheme,
+  saveTheme,
+} = require('../services/store_branding_service');
+const {
+  BUYER_THEME_KEY,
+  DEFAULT_BUYER_THEME,
+  DEFAULT_MERCHANT_THEME,
+  normalizeBuyerTheme,
+  normalizeMerchantTheme,
+} = require('../services/theme_config');
 
 const router = express.Router();
 
@@ -52,6 +67,7 @@ const CONFIG_KEYS = Object.freeze([
   'operations.business_hours',
   'fulfillment.pickup_eta',
   'payment.in_store',
+  BUYER_THEME_KEY,
 ]);
 
 const IN_STORE_COLLECTION_TIMINGS = new Set([
@@ -488,6 +504,14 @@ function buildDefaultConfig() {
     payment: {
       in_store: buildDefaultInStorePaymentConfig(),
     },
+    branding: {
+      buyer_theme: { ...DEFAULT_BUYER_THEME },
+      merchant_theme: { ...DEFAULT_MERCHANT_THEME },
+      capabilities: {
+        custom_theme_enabled: true,
+        merchant_editable: true,
+      },
+    },
   };
 }
 
@@ -560,8 +584,24 @@ function buildConfigFromRows(rows) {
       );
     }
   }
+  if (values.has(BUYER_THEME_KEY)) {
+    config.branding.buyer_theme = normalizeBuyerTheme(
+      values.get(BUYER_THEME_KEY).config_value
+    );
+  }
 
   return config;
+}
+
+function normalizeOptionalTheme(value, normalize, details) {
+  if (value === undefined) return null;
+  try {
+    return normalize(value);
+  } catch (error) {
+    if (error.details) Object.assign(details, error.details);
+    else details.theme = error.message;
+    return null;
+  }
 }
 
 function normalizeBusinessHours(value, details) {
@@ -615,6 +655,10 @@ function normalizeSettingsPayload(body) {
   const inStorePayment =
     payment.in_store || payment.inStore || body.in_store_payment || body.inStorePayment;
   const tax = pricing.tax || {};
+  const branding =
+    body.branding && typeof body.branding === 'object' && !Array.isArray(body.branding)
+      ? body.branding
+      : null;
 
   const currency = normalizeCurrency(pricing.currency);
   if (currency !== 'CAD') {
@@ -679,6 +723,20 @@ function normalizeSettingsPayload(body) {
     payment: {
       in_store: normalizeInStorePaymentConfig(inStorePayment, details),
     },
+    branding: branding
+      ? {
+          buyer_theme: normalizeOptionalTheme(
+            branding.buyer_theme ?? branding.buyerTheme,
+            normalizeBuyerTheme,
+            details
+          ),
+          merchant_theme: normalizeOptionalTheme(
+            branding.merchant_theme ?? branding.merchantTheme,
+            normalizeMerchantTheme,
+            details
+          ),
+        }
+      : null,
   };
 
   if (Object.keys(details).length > 0) {
@@ -688,7 +746,8 @@ function normalizeSettingsPayload(body) {
 }
 
 async function fetchBuyerConfig(db = pool, storeId = null) {
-  const result = await readSystemConfigRows(db, {
+  const [result, merchantTheme, capabilities] = await Promise.all([
+    readSystemConfigRows(db, {
     appScope: SETTINGS_SCOPE.appScope,
     environment: SETTINGS_SCOPE.environment,
     countryCode: SETTINGS_SCOPE.countryCode,
@@ -697,9 +756,15 @@ async function fetchBuyerConfig(db = pool, storeId = null) {
     storeId,
     configKeys: CONFIG_KEYS,
     environmentFallback: 'dev',
-  });
+    }),
+    readStoredTheme(db, { storeId, appScope: 'merchant_client' }),
+    getBrandingCapabilities(db),
+  ]);
   const rows = await resolveStoreProfileAssets(db, result.rows);
-  return buildConfigFromRows(rows);
+  const config = buildConfigFromRows(rows);
+  config.branding.merchant_theme = merchantTheme || { ...DEFAULT_MERCHANT_THEME };
+  config.branding.capabilities = capabilities;
+  return config;
 }
 
 async function upsertConfig(
@@ -790,10 +855,28 @@ router.post('/settings/buyer-config', async (req, res) => {
   let storeRecordChanged = false;
   try {
     await client.query('BEGIN');
+    const brandingCapabilities = await getBrandingCapabilities(client, {
+      bypassCache: true,
+    });
     if (
       payload.store.profile &&
       hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_STORE_MANAGE)
     ) {
+      if (!brandingCapabilities.merchant_editable) {
+        const currentProfile = await readStoreProfile(
+          client,
+          authPayload.store_id
+        );
+        if (
+          normalizeText(currentProfile?.name) !==
+          normalizeText(payload.store.profile.name)
+        ) {
+          const error = new Error('Store name editing is disabled by the SaaS plan');
+          error.statusCode = 403;
+          error.code = 'SAAS_BRANDING_EDIT_DISABLED';
+          throw error;
+        }
+      }
       const logoAssetId = payload.store.profile.logo?.asset_id || null;
       if (logoAssetId) {
         const logoResult = await client.query(
@@ -923,6 +1006,37 @@ router.post('/settings/buyer-config', async (req, res) => {
         'In-store payment options for dine-in and takeout orders'
       );
     }
+    const brandingUpdateRequested = Boolean(
+      payload.branding?.buyer_theme || payload.branding?.merchant_theme
+    );
+    if (
+      brandingUpdateRequested &&
+      hasMerchantPermission(authPayload, PERMISSIONS.SETTINGS_STORE_MANAGE)
+    ) {
+      if (
+        !brandingCapabilities.custom_theme_enabled ||
+        !brandingCapabilities.merchant_editable
+      ) {
+        const error = new Error('Theme editing is disabled by the SaaS plan');
+        error.statusCode = 403;
+        error.code = 'SAAS_THEME_EDIT_DISABLED';
+        throw error;
+      }
+      if (payload.branding.buyer_theme) {
+        await saveTheme(client, {
+          storeId: authPayload.store_id,
+          appScope: 'order_client',
+          value: payload.branding.buyer_theme,
+        });
+      }
+      if (payload.branding.merchant_theme) {
+        await saveTheme(client, {
+          storeId: authPayload.store_id,
+          appScope: 'merchant_client',
+          value: payload.branding.merchant_theme,
+        });
+      }
+    }
     await client.query('COMMIT');
     if (storeRecordChanged) clearStoreCache();
 
@@ -933,6 +1047,14 @@ router.post('/settings/buyer-config', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        code: err.code || 'SETTINGS_UPDATE_FAILED',
+        error: err.message,
+        ...(err.details ? { details: err.details } : {}),
+      });
+    }
     console.error('Error updating merchant buyer config:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   } finally {

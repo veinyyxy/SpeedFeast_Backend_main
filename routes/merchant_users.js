@@ -7,6 +7,12 @@ const {
   resolveMerchantAuthorization,
 } = require('../services/merchant_authorization');
 const { listActiveStores } = require('../services/store_context');
+const {
+  QuotaExceededError,
+  assertQuotaAllowsIncrement,
+  quotaErrorResponse,
+} = require('../services/saas/quota_service');
+const { lockSaasInstance } = require('../services/saas/entitlement_service');
 
 const router = express.Router();
 const VALID_ROLES = new Set(['owner', 'manager', 'staff']);
@@ -335,6 +341,7 @@ router.post('/users/create', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await assertQuotaAllowsIncrement(client, 'merchant.active_users.max');
     const storeIds = role === 'owner'
       ? []
       : await validateStoreAssignments(
@@ -376,6 +383,9 @@ router.post('/users/create', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err instanceof QuotaExceededError) {
+      return res.status(err.statusCode).json(quotaErrorResponse(err));
+    }
     if (err.code === '23505') {
       return res.status(409).json({ success: false, error: 'Username already exists' });
     }
@@ -417,6 +427,7 @@ router.post('/users/update', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await lockSaasInstance(client);
     const targetResult = await client.query(
       `
         SELECT merchant_user_id, username, display_name, role, active,
@@ -478,6 +489,11 @@ router.post('/users/update', async (req, res) => {
         return res.status(409).json({ success: false, error: 'At least one active owner is required' });
       }
     }
+    if (!target.active && active) {
+      await assertQuotaAllowsIncrement(client, 'merchant.active_users.max', {
+        alreadyLocked: true,
+      });
+    }
 
     // Managers can edit staff details in the active store, but only owners can
     // replace the account's complete cross-store assignment set.
@@ -531,6 +547,9 @@ router.post('/users/update', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err instanceof QuotaExceededError) {
+      return res.status(err.statusCode).json(quotaErrorResponse(err));
+    }
     if (err.statusCode) {
       return res.status(err.statusCode).json({ success: false, error: err.message });
     }

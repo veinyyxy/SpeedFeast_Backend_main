@@ -15,6 +15,9 @@ const {
 validateProductionEnvironment(process.env);
 const { pool } = require('./db/pgsql');
 const { attachStoreContext } = require('./services/store_context');
+const {
+  createBuyerAccessMiddleware,
+} = require('./services/saas/buyer_access_service');
 /*const session = require('express-session');
 const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');*/
@@ -111,15 +114,24 @@ const verificationLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Too many verification attempts' },
 });
+const saasControlLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: positiveIntegerEnvironment('SAAS_RATE_LIMIT_PER_MINUTE', 120),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many SaaS control requests' },
+});
 
 app.use('/api', apiLimiter);
 app.use('/api/users/login', authenticationLimiter);
 app.use('/api/merchant/auth/login', authenticationLimiter);
 app.use('/api/verification', verificationLimiter);
+app.use('/api/saas', saasControlLimiter);
 
 // Every API request resolves to one active store. Single-store deployments
 // transparently use the default store; multi-store clients send X-Store-Id.
 app.use('/api', attachStoreContext);
+app.use('/api', createBuyerAccessMiddleware());
 
 // routes
 app.use('/api', require('./routes/stores.js'));
@@ -133,7 +145,9 @@ app.use('/api', require('./routes/rewards.js'));
 app.use('/api', require('./routes/payments.js'));
 app.use('/api', require('./routes/config.js'));
 app.use('/api', require('./routes/payment_methods.js'));
+app.use('/api/buyer', require('./routes/buyer_access.js'));
 app.use('/api/buyer', require('./routes/buyer_notifications.js'));
+app.use('/api/saas', require('./routes/saas_control.js'));
 app.use('/api/merchant', require('./routes/merchant_auth.js'));
 app.use('/api/merchant', require('./routes/merchant_stores.js'));
 app.use('/api/merchant', require('./routes/merchant_users.js'));

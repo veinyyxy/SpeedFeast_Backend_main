@@ -10,6 +10,8 @@ const {
 const {
   DEFAULT_IN_STORE_PAYMENT_CONFIG,
 } = require('../services/order_operations_config');
+const { readEffectiveTheme } = require('../services/store_branding_service');
+const { themeDefinitionForAppScope } = require('../services/theme_config');
 
 const router = express.Router();
 
@@ -47,6 +49,30 @@ router.get('/config', async (req, res) => {
     const rows = await resolveStoreProfileAssets(undefined, result.rows);
 
     const configs = buildConfigMap(rows);
+    const themeDefinition = themeDefinitionForAppScope(appScope);
+    if (
+      themeDefinition &&
+      (!configKey || configKey === themeDefinition.key)
+    ) {
+      configs[themeDefinition.key] = {
+        value: await readEffectiveTheme(undefined, {
+          storeId,
+          appScope,
+          environment,
+        }),
+        value_type: 'json',
+        scope: {
+          app_scope: appScope,
+          country_code: countryCode,
+          region_code: regionCode,
+          city,
+          store_id: storeId,
+          environment,
+        },
+        version: configs[themeDefinition.key]?.version || 0,
+        description: 'Effective application semantic color theme',
+      };
+    }
     if (
       appScope === 'order_client' &&
       (!configKey || configKey === 'payment.in_store') &&

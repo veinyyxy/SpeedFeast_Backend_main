@@ -17,6 +17,11 @@ const {
 const {
   generateUniqueStoreIdentifiers,
 } = require('../services/store_identifiers');
+const {
+  QuotaExceededError,
+  assertQuotaAllowsIncrement,
+  quotaErrorResponse,
+} = require('../services/saas/quota_service');
 
 const router = express.Router();
 const STORE_PROFILE_SCOPE = Object.freeze({
@@ -166,6 +171,7 @@ router.post('/stores/create', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await assertQuotaAllowsIncrement(client, 'stores.max');
     const { storeCode, slug } = await generateUniqueStoreIdentifiers(client);
     const mainStoreResult = await client.query(
       `
@@ -270,6 +276,9 @@ router.post('/stores/create', async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
+    if (error instanceof QuotaExceededError) {
+      return res.status(error.statusCode).json(quotaErrorResponse(error));
+    }
     if (
       error.code === 'STORE_IDENTIFIER_GENERATION_FAILED' ||
       error.code === '23505'

@@ -1,8 +1,13 @@
 const express = require('express');
-const { query } = require('../db/pgsql');
+const { pool, query } = require('../db/pgsql');
 const { verifySignature2, verifyJWT, isTokenExpired, generateJWT } = require('../secutiry/verify_signature');
 const router = express.Router();
 const bcrypt = require('bcrypt'); // 用于密码哈希，需 npm install bcrypt
+const {
+  QuotaExceededError,
+  assertQuotaAllowsIncrement,
+  quotaErrorResponse,
+} = require('../services/saas/quota_service');
 
 function getBearerToken(req) {
   const authHeader = req.headers['authorization'];
@@ -138,6 +143,8 @@ function normalizeAddress(row) {
 
 // 保存用户信息
 router.post('/users/register', async (req, res) => {
+  let client = null;
+  let transactionStarted = false;
   try {
     if (!verifySignature2(req))
       return res.status(401).send('Invalid signature');
@@ -173,17 +180,28 @@ router.post('/users/register', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Registration token does not match email' });
     }
 
+    const tokenExpiresIn = process.env.JWT_EXPIRES_IN;
+    if (!tokenExpiresIn) {
+      return res.status(500).json({ success: false, error: 'JWT_EXPIRES_IN is not configured' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+
     // cell_phone 存为数组
     //const cellPhoneArr = Array.isArray(cell_phone) ? cell_phone : [cell_phone];
 
     // 检查手机号是否已存在
-    const checkPhone = await query('SELECT 1 FROM public."Users" WHERE cell_phone = $1', [cell_phone]);
+    const checkPhone = await client.query('SELECT 1 FROM public."Users" WHERE cell_phone = $1', [cell_phone]);
     if (checkPhone.rows.length > 0) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(461).json({ success: false, error: 'Cell phone already exists' });
     }
 
-    // 密码哈希
-    const password_hash = await bcrypt.hash(password, 10);
+    await assertQuotaAllowsIncrement(client, 'buyer.accounts.max');
 
     // 插入用户
     const insertSql = `
@@ -191,10 +209,10 @@ router.post('/users/register', async (req, res) => {
       VALUES ($1, $2, $3, $4)
       RETURNING user_id, username, email, cell_phone, created_at
     `;
-    const result = await query(insertSql, [username, password_hash, email, cell_phone]);
+    const result = await client.query(insertSql, [username, password_hash, email, cell_phone]);
     const user = result.rows[0];
 
-    await query(
+    await client.query(
       `
         INSERT INTO public.store_customers (store_id, user_id)
         VALUES ($1::uuid, $2::uuid)
@@ -203,11 +221,8 @@ router.post('/users/register', async (req, res) => {
       `,
       [req.storeContext.storeId, user.user_id]
     );
-
-    const tokenExpiresIn = process.env.JWT_EXPIRES_IN;
-    if (!tokenExpiresIn) {
-      return res.status(500).json({ success: false, error: 'JWT_EXPIRES_IN is not configured' });
-    }
+    await client.query('COMMIT');
+    transactionStarted = false;
 
     const loginToken = generateJWT(
       { user_id: user.user_id, username: user.username, cell_phone: user.cell_phone },
@@ -221,8 +236,19 @@ router.post('/users/register', async (req, res) => {
       user
     });
   } catch (err) {
+    if (transactionStarted && client) {
+      await client.query('ROLLBACK');
+    }
+    if (err instanceof QuotaExceededError) {
+      return res.status(err.statusCode).json(quotaErrorResponse(err));
+    }
+    if (err.code === '23505') {
+      return res.status(461).json({ success: false, error: 'Cell phone already exists' });
+    }
     console.error('Error saving user:', err);
-    res.status(500).json({ success: false, error: 'Internal server error' });
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  } finally {
+    client?.release();
   }
 });
 
