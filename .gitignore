@@ -3,9 +3,20 @@ dist/
 public/out/
 third_parties/
 .env
+.env.*
+**/.env
+**/.env.*
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.key
+*.pem
+*.p12
+*.pfx
 speedfeast-merchant-firebase-adminsdk-fbsvc-cbab886cde.json
 
 # Database migration artifacts can contain production data and credentials.
 migration-artifacts/
 *.dump
 *.backup
+*.manifest.json

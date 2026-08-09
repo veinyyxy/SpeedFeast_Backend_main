@@ -187,6 +187,8 @@ try {
     $archiveHash = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $manifest = [ordered]@{
         format              = "speedfeast-database-migration-manifest/v1"
+        purpose             = "database_transfer"
+        dataPolicy          = "full_copy"
         sourceDatabase      = $configuration["PGDATABASE"]
         generatedAtUtc      = (Get-Date).ToUniversalTime().ToString("o")
         sourceServerVersion = $sourceServerVersion
@@ -217,6 +219,7 @@ try {
     Write-Host "Manifest SHA256: $manifestHash"
     Write-Host "Verified tables: $($afterSnapshot.Count)"
     Write-Host "Verified rows:   $totalRows"
+    Write-Warning "This is a full-data database_transfer export. It is forbidden as a tenant bootstrap baseline."
     Write-Host "Keep both files out of Git and upload them only to the private S3 _migration/ prefix."
 }
 finally {

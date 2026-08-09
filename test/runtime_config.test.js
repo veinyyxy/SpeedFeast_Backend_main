@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { Client } = require('pg');
+
+const PRODUCTION_RDS_ROOT_CERTIFICATE =
+  '/usr/local/share/ca-certificates/aws-rds-global-bundle.pem';
 
 const {
   buildCorsOptions,
@@ -9,6 +13,43 @@ const {
   parseAllowedOrigins,
   validateProductionEnvironment,
 } = require('../services/runtime_config');
+
+function validProductionEnvironment(overrides = {}) {
+  return {
+    NODE_ENV: 'production',
+    APP_IMAGE_REVISION: `sha256:${'a'.repeat(64)}`,
+    AWS_REGION: 'ca-central-1',
+    CORS_ALLOWED_ORIGINS:
+      'https://buyer.sandbox.techlong.cloud,https://merchant.sandbox.techlong.cloud',
+    DATABASE_URL: 'postgresql://runtime.invalid/speedfeast',
+    HMAC_SECRET_KEY: 'test-hmac-secret',
+    IMAGE_PUBLIC_BASE_URL: 'https://downloads.techlong.cloud',
+    IMAGE_S3_BUCKET: 'speedfeast-sandbox-images',
+    IMAGE_STORAGE_PROVIDER: 's3',
+    JWT_SECRET_KEY: 'test-jwt-secret',
+    JWT_EXPIRES_IN: '7d',
+    MERCHANT_JWT_EXPIRES_IN: '12h',
+    PAYMENT_PROVIDER: 'stripe',
+    PGSSLMODE: 'verify-full',
+    PGSSLROOTCERT: PRODUCTION_RDS_ROOT_CERTIFICATE,
+    PGSSL_REJECT_UNAUTHORIZED: 'true',
+    SAAS_CONTROL_PUBLIC_KEY: 'test-public-key',
+    SAAS_INSTANCE_ID: 'app-instance-123',
+    SAAS_JWT_AUDIENCE: 'speedfeast-instance:app-instance-123',
+    SAAS_JWT_ISSUER: 'https://console.techlong.cloud',
+    SAAS_MTLS_PROXY_MODE: 'aws_alb_verify',
+    SAAS_REQUIRE_INSTANCE_CLAIM: 'true',
+    SAAS_REQUIRE_MTLS: 'true',
+    SAAS_TRUST_PROXY_MTLS_HEADER: 'true',
+    SMS_PROVIDER: 'demo',
+    STRIPE_CANCEL_URL: 'https://buyer.sandbox.techlong.cloud/payment-cancel',
+    STRIPE_PUBLISHABLE_KEY: 'pk_test_fixture',
+    STRIPE_SECRET_KEY: 'sk_test_fixture',
+    STRIPE_SUCCESS_URL: 'https://buyer.sandbox.techlong.cloud/payment-success',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test_fixture',
+    ...overrides,
+  };
+}
 
 test('production environment accepts both production and prod names', () => {
   assert.equal(isProductionEnvironment({ NODE_ENV: 'production' }), true);
@@ -27,6 +68,99 @@ test('production validation reports missing configuration without values', () =>
     }
   );
   assert.doesNotThrow(() => validateProductionEnvironment({ NODE_ENV: 'dev' }));
+});
+
+test('production validation accepts the AWS container runtime contract', () => {
+  assert.doesNotThrow(() =>
+    validateProductionEnvironment(validProductionEnvironment())
+  );
+});
+
+test('production validation rejects a mutable image revision', () => {
+  assert.throws(
+    () => validateProductionEnvironment(
+      validProductionEnvironment({ APP_IMAGE_REVISION: 'latest' })
+    ),
+    /immutable sha256 image digest/
+  );
+});
+
+test('production validation enforces instance-bound control tokens', () => {
+  assert.throws(
+    () => validateProductionEnvironment(
+      validProductionEnvironment({ SAAS_JWT_AUDIENCE: 'speedfeast-instance:other' })
+    ),
+    /SAAS_JWT_AUDIENCE/
+  );
+});
+
+test('production validation requires ALB mTLS verification', () => {
+  assert.throws(
+    () => validateProductionEnvironment(
+      validProductionEnvironment({ SAAS_MTLS_PROXY_MODE: 'verified_header' })
+    ),
+    /aws_alb_verify/
+  );
+});
+
+test('production validation locks the bundled AWS RDS root certificate path', () => {
+  assert.throws(
+    () => validateProductionEnvironment(
+      validProductionEnvironment({ PGSSLROOTCERT: __filename })
+    ),
+    /aws-rds-global-bundle\.pem/
+  );
+});
+
+test('production validation rejects DATABASE_URL TLS downgrade parameters', () => {
+  for (const sslmode of [
+    'disable',
+    'allow',
+    'prefer',
+    'require',
+    'verify-ca',
+    'no-verify',
+  ]) {
+    assert.throws(
+      () => validateProductionEnvironment(
+        validProductionEnvironment({
+          DATABASE_URL: `postgresql://runtime.invalid/speedfeast?sslmode=${sslmode}`,
+        })
+      ),
+      /sslmode must be verify-full/
+    );
+  }
+  assert.throws(
+    () => validateProductionEnvironment(
+      validProductionEnvironment({
+        DATABASE_URL: 'postgresql://runtime.invalid/speedfeast?ssl=true',
+      })
+    ),
+    /cannot override TLS/
+  );
+});
+
+test('production validation rejects unsafe PGHOST targets without DATABASE_URL', () => {
+  for (const host of [
+    '127.0.0.1',
+    '::1',
+    '/var/run/postgresql',
+    'db-one.invalid,db-two.invalid',
+    'db internal.invalid',
+    'single-label',
+  ]) {
+    assert.throws(
+      () => validateProductionEnvironment(validProductionEnvironment({
+        DATABASE_URL: '',
+        PGHOST: host,
+        PGPORT: '5432',
+        PGDATABASE: 'speedfeast',
+        PGUSER: 'tenant_app',
+        PGPASSWORD: 'test-only-password',
+      })),
+      /fully qualified DNS hostname/
+    );
+  }
 });
 
 async function withAppServer(run) {
@@ -137,6 +271,88 @@ test('PostgreSQL verify-full loads the configured root certificate', () => {
 
   assert.equal(config.ssl.rejectUnauthorized, true);
   assert.equal(config.ssl.ca, fs.readFileSync(__filename, 'utf8'));
+});
+
+test('PostgreSQL final client SSL cannot be downgraded by DATABASE_URL', () => {
+  const expectedCa = fs.readFileSync(__filename, 'utf8');
+  const originalReadFileSync = fs.readFileSync;
+  fs.readFileSync = (filename, ...args) =>
+    filename === PRODUCTION_RDS_ROOT_CERTIFICATE
+      ? expectedCa
+      : originalReadFileSync(filename, ...args);
+  let config;
+  let client;
+  try {
+    config = buildPostgresConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL:
+        'postgresql://runtime.invalid/speedfeast?sslmode=verify-full',
+      PGSSLMODE: 'verify-full',
+      PGSSLROOTCERT: PRODUCTION_RDS_ROOT_CERTIFICATE,
+      PGSSL_REJECT_UNAUTHORIZED: 'true',
+    });
+    client = new Client(config);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+  }
+
+  assert.doesNotMatch(config.connectionString, /sslmode/i);
+  assert.equal(client.connectionParameters.ssl.rejectUnauthorized, true);
+  assert.equal(client.connectionParameters.ssl.ca, expectedCa);
+  assert.equal(client.connectionParameters.application_name, 'speedfeast-backend');
+  assert.equal(client.connectionParameters.host, 'runtime.invalid');
+  assert.equal(client.connectionParameters.database, 'speedfeast');
+});
+
+test('production node-postgres rejects URL target and TLS identity overrides', () => {
+  const productionDatabaseEnv = (databaseUrl) => ({
+    NODE_ENV: 'production',
+    DATABASE_URL: databaseUrl,
+    PGSSLMODE: 'verify-full',
+    PGSSLROOTCERT: PRODUCTION_RDS_ROOT_CERTIFICATE,
+    PGSSL_REJECT_UNAUTHORIZED: 'true',
+  });
+  for (const query of [
+    'host=attacker.invalid',
+    'HOSTADDR=127.0.0.1',
+    'port=6543',
+    'service=unreviewed',
+    'sslservername=attacker.invalid',
+    'ssl_min_protocol_version=TLSv1',
+    'channel_binding=disable',
+    'options=-c%20search_path%3Dattacker',
+  ]) {
+    assert.throws(
+      () => new Client(buildPostgresConfig(productionDatabaseEnv(
+        `postgresql://runtime.invalid/speedfeast?${query}`
+      ))),
+      /cannot override|not permitted/
+    );
+  }
+
+  for (const databaseUrl of [
+    'postgresql://127.0.0.1/speedfeast',
+    'postgresql://[::1]/speedfeast',
+    'postgresql://2130706433/speedfeast',
+  ]) {
+    assert.throws(
+      () => new Client(buildPostgresConfig(productionDatabaseEnv(databaseUrl))),
+      /fully qualified DNS hostname/
+    );
+  }
+});
+
+test('PostgreSQL config rejects weak URL sslmode before creating a client', () => {
+  assert.throws(
+    () => buildPostgresConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://runtime.invalid/speedfeast?sslmode=require',
+      PGSSLMODE: 'verify-full',
+      PGSSLROOTCERT: __filename,
+      PGSSL_REJECT_UNAUTHORIZED: 'true',
+    }),
+    /sslmode must be verify-full/
+  );
 });
 
 test('PostgreSQL config rejects invalid numeric settings', () => {

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-# Match the destination RDS major version. PostgreSQL 18 pg_restore can read
-# the custom-format dump produced by the local PostgreSQL 15 pg_dump client.
-FROM postgres:18.4-bookworm
+# Match the Aurora PostgreSQL 16.14 sandbox baseline. PostgreSQL 16 pg_restore
+# can read the custom-format dump produced by the local PostgreSQL 15 client.
+FROM postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -13,14 +13,19 @@ RUN apt-get update \
     && curl --fail --silent --show-error --location \
         https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
         --output /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
+    && echo "e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3  /usr/local/share/ca-certificates/aws-rds-global-bundle.pem" \
+        | sha256sum --check --strict \
     && grep -q "BEGIN CERTIFICATE" /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
     && chmod 0444 /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=0555 scripts/run-rds-migration.sh /usr/local/bin/run-rds-migration
+COPY --chmod=0444 scripts/render_tenant_baseline_verification.py \
+    /usr/local/lib/speedfeast/render_tenant_baseline_verification.py
 
 ENV PGPORT=5432 \
     PGSSLMODE=verify-full \
+    PGSSL_REJECT_UNAUTHORIZED=true \
     PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 
 USER postgres

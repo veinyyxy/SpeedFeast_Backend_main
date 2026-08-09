@@ -13,9 +13,43 @@ require_env() {
   [[ -n "${!name:-}" ]] || fail "Required environment variable ${name} is missing"
 }
 
+# libpq reads these variables independently of command-line connection flags.
+# Reject (and clear) every inherited override that could select another target,
+# service definition, authentication policy, or TLS identity. PGPASSFILE is the
+# sole exception: it is replaced below with a task-private file before psql runs.
+for name in \
+  PGSERVICE \
+  PGSERVICEFILE \
+  PGOPTIONS \
+  PGSYSCONFDIR \
+  PGHOSTADDR \
+  PGTARGETSESSIONATTRS \
+  PGLOADBALANCEHOSTS \
+  PGCHANNELBINDING \
+  PGREQUIREAUTH \
+  PGSSLCERT \
+  PGSSLKEY \
+  PGSSLCRL \
+  PGSSLCRLDIR \
+  PGSSLSNI \
+  PGSSLNEGOTIATION \
+  PGSSLCOMPRESSION \
+  PGSSLMINPROTOCOLVERSION \
+  PGSSLMAXPROTOCOLVERSION \
+  PGGSSENCMODE \
+  PGGSSLIB \
+  PGKRBSRVNAME \
+  PGREQUIREPEER; do
+  if [[ -v "${name}" ]]; then
+    unset "${name}"
+    fail "Inherited libpq override ${name} is not permitted"
+  fi
+done
+
 for name in \
   MIGRATION_S3_URI \
   MIGRATION_SHA256 \
+  APPROVED_TENANT_BASELINE_SHA256 \
   MIGRATION_MANIFEST_S3_URI \
   MIGRATION_MANIFEST_SHA256 \
   MIGRATION_CONFIRM_SOURCE_DATABASE \
@@ -26,14 +60,41 @@ for name in \
   PGDATABASE \
   PGUSER \
   PGPASSWORD \
+  PGSSLMODE \
+  PGSSLROOTCERT \
+  PGSSL_REJECT_UNAUTHORIZED \
   APP_DB_USER \
   APP_DB_PASSWORD; do
   require_env "${name}"
 done
 
 export PGPORT="${PGPORT:-5432}"
-export PGSSLMODE="${PGSSLMODE:-verify-full}"
-export PGSSLROOTCERT="${PGSSLROOTCERT:-/usr/local/share/ca-certificates/aws-rds-global-bundle.pem}"
+rds_root_certificate="/usr/local/share/ca-certificates/aws-rds-global-bundle.pem"
+rds_root_certificate_sha256="e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3"
+maximum_dump_bytes=$((500 * 1024 * 1024))
+maximum_manifest_bytes=$((1 * 1024 * 1024))
+
+[[ "${PGHOST}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$ ]] || \
+  fail "PGHOST must be one DNS hostname"
+[[ "${PGHOST}" == *.* ]] || \
+  fail "PGHOST must be a fully qualified DNS hostname"
+[[ "${PGPORT}" =~ ^[1-9][0-9]{0,4}$ ]] && (( PGPORT <= 65535 )) || \
+  fail "PGPORT must be an integer between 1 and 65535"
+[[ "${PGDATABASE}" =~ ^[A-Za-z_][A-Za-z0-9_$]{0,62}$ ]] || \
+  fail "PGDATABASE must be a simple PostgreSQL database name"
+[[ "${PGUSER}" =~ ^[A-Za-z_][A-Za-z0-9_$]{0,62}$ ]] || \
+  fail "PGUSER must be a simple PostgreSQL role name"
+[[ "${PGSSLMODE}" == "verify-full" ]] || \
+  fail "PGSSLMODE must be verify-full"
+[[ "${PGSSL_REJECT_UNAUTHORIZED,,}" == "true" ]] || \
+  fail "PGSSL_REJECT_UNAUTHORIZED must be true"
+[[ "${PGSSLROOTCERT}" == "${rds_root_certificate}" ]] || \
+  fail "PGSSLROOTCERT must use the image-bundled AWS RDS global certificate"
+[[ -r "${PGSSLROOTCERT}" ]] || \
+  fail "PGSSLROOTCERT must reference a readable CA bundle"
+actual_root_certificate_sha256="$(sha256sum "${PGSSLROOTCERT}" | awk '{print $1}')"
+[[ "${actual_root_certificate_sha256}" == "${rds_root_certificate_sha256}" ]] || \
+  fail "The image-bundled AWS RDS root certificate failed SHA-256 verification"
 
 [[ "${MIGRATION_CONFIRM_HOST}" == "${PGHOST}" ]] || \
   fail "MIGRATION_CONFIRM_HOST must exactly match PGHOST"
@@ -49,11 +110,21 @@ export PGSSLROOTCERT="${PGSSLROOTCERT:-/usr/local/share/ca-certificates/aws-rds-
   fail "APP_DB_USER must be a simple lowercase PostgreSQL role name"
 [[ "${APP_DB_USER}" != "${PGUSER}" ]] || \
   fail "APP_DB_USER must not be the RDS administrator role"
+case "${APP_DB_USER}" in
+  pg_*|rds*|postgres|public|current_role|current_user|session_user|none)
+    fail "APP_DB_USER uses a PostgreSQL or RDS reserved role name"
+    ;;
+esac
 
 expected_sha256="$(printf '%s' "${MIGRATION_SHA256}" | tr '[:upper:]' '[:lower:]')"
+approved_sha256="$(printf '%s' "${APPROVED_TENANT_BASELINE_SHA256}" | tr '[:upper:]' '[:lower:]')"
 expected_manifest_sha256="$(printf '%s' "${MIGRATION_MANIFEST_SHA256}" | tr '[:upper:]' '[:lower:]')"
 [[ "${expected_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
   fail "MIGRATION_SHA256 must contain exactly 64 hexadecimal characters"
+[[ "${approved_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
+  fail "APPROVED_TENANT_BASELINE_SHA256 must contain exactly 64 hexadecimal characters"
+[[ "${expected_sha256}" == "${approved_sha256}" ]] || \
+  fail "MIGRATION_SHA256 is not the independently approved tenant baseline digest"
 [[ "${expected_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
   fail "MIGRATION_MANIFEST_SHA256 must contain exactly 64 hexadecimal characters"
 
@@ -62,6 +133,7 @@ dump_path="${work_dir}/speedfeast.dump"
 manifest_path="${work_dir}/speedfeast.manifest.json"
 restore_sql_path="${work_dir}/restore.sql"
 verification_sql_path="${work_dir}/verify.sql"
+toc_path="${work_dir}/restore.toc"
 pgpass_path="${work_dir}/pgpass"
 cleanup() {
   rm -rf -- "${work_dir}"
@@ -93,139 +165,138 @@ PY
 export PGPASSFILE="${pgpass_path}"
 unset PGPASSWORD
 
+target_psql() {
+  PGPASSFILE="${PGPASSFILE}" \
+  PGSSLMODE="${PGSSLMODE}" \
+  PGSSLROOTCERT="${PGSSLROOTCERT}" \
+    command psql \
+      --host="${PGHOST}" \
+      --port="${PGPORT}" \
+      --dbname="${PGDATABASE}" \
+      --username="${PGUSER}" \
+      "$@"
+}
+
+target_vacuumdb() {
+  PGPASSFILE="${PGPASSFILE}" \
+  PGSSLMODE="${PGSSLMODE}" \
+  PGSSLROOTCERT="${PGSSLROOTCERT}" \
+    command vacuumdb \
+      --host="${PGHOST}" \
+      --port="${PGPORT}" \
+      --dbname="${PGDATABASE}" \
+      --username="${PGUSER}" \
+      "$@"
+}
+
+# These pg_restore invocations only inspect/render a custom archive and must
+# never connect. A clean environment prevents an inherited libpq setting from
+# turning an offline validation step into an unintended database operation.
+offline_pg_restore() {
+  env -i PATH="${PATH}" LC_ALL=C pg_restore "$@"
+}
+
 echo "Downloading the encrypted migration archive and manifest from S3"
 aws s3 cp "${MIGRATION_S3_URI}" "${dump_path}" --only-show-errors
+dump_size_bytes="$(stat --format='%s' "${dump_path}")"
+[[ "${dump_size_bytes}" =~ ^[0-9]+$ ]] && (( dump_size_bytes <= maximum_dump_bytes )) || \
+  fail "Migration archive exceeds the 500 MiB tenant baseline limit"
+
 aws s3 cp "${MIGRATION_MANIFEST_S3_URI}" "${manifest_path}" --only-show-errors
+manifest_size_bytes="$(stat --format='%s' "${manifest_path}")"
+[[ "${manifest_size_bytes}" =~ ^[0-9]+$ ]] && (( manifest_size_bytes <= maximum_manifest_bytes )) || \
+  fail "Migration manifest exceeds the 1 MiB tenant baseline limit"
 
 actual_sha256="$(sha256sum "${dump_path}" | awk '{print $1}')"
 actual_manifest_sha256="$(sha256sum "${manifest_path}" | awk '{print $1}')"
 [[ "${actual_sha256}" == "${expected_sha256}" ]] || \
   fail "Migration archive SHA-256 does not match MIGRATION_SHA256"
+[[ "${actual_sha256}" == "${approved_sha256}" ]] || \
+  fail "Migration archive SHA-256 is not the independently approved tenant baseline digest"
 [[ "${actual_manifest_sha256}" == "${expected_manifest_sha256}" ]] || \
   fail "Migration manifest SHA-256 does not match MIGRATION_MANIFEST_SHA256"
 
 echo "Validating the PostgreSQL custom-format archive"
-pg_restore --list "${dump_path}" >/dev/null
+offline_pg_restore --list "${dump_path}" >"${toc_path}"
 
-python3 - \
+# This gate deliberately runs before any target-database inspection or restore.
+# A generic local export, even when its hashes are valid, is never a tenant
+# baseline unless its manifest declares the restricted tenant-bootstrap policy.
+python3 /usr/local/lib/speedfeast/render_tenant_baseline_verification.py \
   "${manifest_path}" \
   "${actual_sha256}" \
   "${MIGRATION_CONFIRM_SOURCE_DATABASE}" \
-  "${verification_sql_path}" <<'PY'
-import json
-import pathlib
-import sys
+  "${toc_path}" \
+  "${verification_sql_path}"
 
-
-manifest_path, archive_sha256, source_database_name, output_path = sys.argv[1:]
-manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
-
-if manifest.get("format") != "speedfeast-database-migration-manifest/v1":
-    raise SystemExit("Unsupported migration manifest format")
-if manifest.get("sourceDatabase") != source_database_name:
-    raise SystemExit("Manifest sourceDatabase does not match MIGRATION_CONFIRM_SOURCE_DATABASE")
-if manifest.get("archiveSha256", "").lower() != archive_sha256:
-    raise SystemExit("Manifest archiveSha256 does not match the downloaded archive")
-
-tables = manifest.get("tables")
-if not isinstance(tables, list) or not tables:
-    raise SystemExit("Migration manifest does not contain any tables")
-
-
-def sql_identifier(value: str) -> str:
-    if not isinstance(value, str) or not value or "\x00" in value:
-        raise SystemExit("Manifest contains an invalid PostgreSQL identifier")
-    return '"' + value.replace('"', '""') + '"'
-
-
-def sql_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
-
-
-normalized = []
-seen = set()
-for table in tables:
-    if not isinstance(table, dict):
-        raise SystemExit("Manifest tables must be objects")
-    schema = table.get("schema")
-    name = table.get("table")
-    rows = table.get("rows")
-    sql_identifier(schema)
-    sql_identifier(name)
-    if isinstance(rows, bool) or not isinstance(rows, int) or rows < 0 or rows > 9223372036854775807:
-        raise SystemExit(f"Manifest contains an invalid row count for {schema}.{name}")
-    key = (schema, name)
-    if key in seen:
-        raise SystemExit(f"Manifest contains a duplicate table: {schema}.{name}")
-    seen.add(key)
-    normalized.append((schema, name, rows))
-
-normalized.sort(key=lambda item: (item[0], item[1]))
-values = ",\n    ".join(
-    f"({sql_literal(schema)}, {sql_literal(name)})" for schema, name, _ in normalized
-)
-
-parts = [
-    "DO $speedfeast_verify_tables$\n",
-    "DECLARE\n  mismatch text;\n",
-    "BEGIN\n",
-    "  WITH expected(schema_name, table_name) AS (\n    VALUES\n    ",
-    values,
-    "\n  ),\n",
-    "  actual(schema_name, table_name) AS (\n",
-    "    SELECT schemaname, tablename\n",
-    "    FROM pg_tables\n",
-    "    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')\n",
-    "      AND schemaname NOT LIKE 'pg_toast%'\n",
-    "  ),\n",
-    "  differences AS (\n",
-    "    SELECT 'missing' AS kind, schema_name, table_name FROM (TABLE expected EXCEPT TABLE actual) AS missing\n",
-    "    UNION ALL\n",
-    "    SELECT 'unexpected' AS kind, schema_name, table_name FROM (TABLE actual EXCEPT TABLE expected) AS unexpected\n",
-    "  )\n",
-    "  SELECT string_agg(kind || ':' || quote_ident(schema_name) || '.' || quote_ident(table_name), ', ')\n",
-    "  INTO mismatch\n",
-    "  FROM differences;\n",
-    "\n",
-    "  IF mismatch IS NOT NULL THEN\n",
-    "    RAISE EXCEPTION 'Restored table set differs from the manifest: %', mismatch;\n",
-    "  END IF;\n",
-    "END\n",
-    "$speedfeast_verify_tables$;\n\n",
-]
-
-for schema, name, expected_rows in normalized:
-    parts.extend(
-        [
-            "DO $speedfeast_verify_rows$\n",
-            "DECLARE\n  actual_rows bigint;\n",
-            "BEGIN\n",
-            f"  SELECT count(*) INTO actual_rows FROM {sql_identifier(schema)}.{sql_identifier(name)};\n",
-            f"  IF actual_rows <> {expected_rows} THEN\n",
-            "    RAISE EXCEPTION 'Row count mismatch for %.%: expected %, got %', ",
-            f"{sql_literal(schema)}, {sql_literal(name)}, {expected_rows}, actual_rows;\n",
-            "  END IF;\n",
-            "END\n",
-            "$speedfeast_verify_rows$;\n\n",
-        ]
-    )
-
-pathlib.Path(output_path).write_text("".join(parts), encoding="utf-8")
-PY
-
-server_version_num="$(psql --no-psqlrc --tuples-only --no-align --command='SHOW server_version_num')"
-[[ "${server_version_num}" =~ ^18[0-9]{4}$ ]] || \
-  fail "Destination must be PostgreSQL 18; server_version_num=${server_version_num}"
+server_version_num="$(target_psql --no-psqlrc --tuples-only --no-align --command='SHOW server_version_num')"
+[[ "${server_version_num}" =~ ^16[0-9]{4}$ ]] || \
+  fail "Destination must be PostgreSQL 16; server_version_num=${server_version_num}"
 
 target_identity="$(
-  psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 \
-    --command="SELECT current_database() || '|' || current_user"
+  target_psql --no-psqlrc --tuples-only --no-align --field-separator='|' \
+    --set=ON_ERROR_STOP=1 --command="
+      SELECT
+        current_database(),
+        current_user,
+        inet_server_addr()::text,
+        inet_server_port()::text,
+        EXISTS (
+          SELECT 1
+          FROM pg_stat_ssl
+          WHERE pid = pg_backend_pid() AND ssl
+        )::text
+    "
 )"
-[[ "${target_identity}" == "${PGDATABASE}|${PGUSER}" ]] || \
-  fail "Connected database identity does not match the confirmed target"
+IFS='|' read -r connected_database connected_user connected_address connected_port connected_ssl \
+  <<<"${target_identity}"
+[[ "${connected_database}" == "${PGDATABASE}" ]] || \
+  fail "Connected database does not match the confirmed target"
+[[ "${connected_user}" == "${PGUSER}" ]] || \
+  fail "Connected user does not match the confirmed administrator"
+[[ "${connected_port}" == "${PGPORT}" ]] || \
+  fail "Connected server port does not match PGPORT"
+[[ -n "${connected_address}" ]] || \
+  fail "Connected server did not report inet_server_addr()"
+[[ "${connected_ssl}" == "true" ]] || \
+  fail "Connected PostgreSQL session is not using SSL"
+
+python3 - "${PGHOST}" "${PGPORT}" "${connected_address}" <<'PY'
+import ipaddress
+import socket
+import sys
+
+host, port, connected = sys.argv[1:]
+try:
+    connected_ip = ipaddress.ip_address(connected)
+    resolved = {
+        ipaddress.ip_address(item[4][0])
+        for item in socket.getaddrinfo(host, int(port), type=socket.SOCK_STREAM)
+    }
+except (OSError, ValueError) as error:
+    raise SystemExit(f"Target DNS/address verification failed: {error}")
+if connected_ip not in resolved:
+    raise SystemExit(
+        f"Connected server address {connected_ip} is not a current address for {host}"
+    )
+PY
+
+app_role_state="$(
+  target_psql --no-psqlrc --tuples-only --no-align --field-separator='|' \
+    --set=ON_ERROR_STOP=1 --set="app_role=${app_db_user}" <<'SQL'
+SELECT
+  EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_role')::text,
+  EXISTS (
+    SELECT 1 FROM pg_get_keywords()
+    WHERE word = lower(:'app_role') AND catcode = 'R'
+  )::text;
+SQL
+)"
+[[ "${app_role_state}" == "false|false" ]] || \
+  fail "APP_DB_USER already exists or is a reserved PostgreSQL keyword; refusing role takeover"
 
 existing_object_summary="$(
-  psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 <<'SQL'
+  target_psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 <<'SQL'
 WITH object_counts AS (
   SELECT
     (SELECT count(*)
@@ -270,7 +341,7 @@ SQL
   fail "Destination database contains user objects (${existing_object_summary}); restore was not started"
 
 echo "Rendering the archive into an atomic restore script"
-pg_restore \
+offline_pg_restore \
   --file="${restore_sql_path}" \
   --no-owner \
   --no-privileges \
@@ -288,10 +359,10 @@ echo "Restoring, validating every table, and granting application access in one 
 \getenv app_password APP_DB_PASSWORD
 
 SELECT format(
-  'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
-  :'app_role'
+  'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
+  :'app_role',
+  :'app_password'
 )
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_role')
 \gexec
 
 SELECT format('ALTER ROLE %I SET search_path = public', :'app_role')
@@ -339,26 +410,19 @@ SELECT format(
 )
 \gexec
 
-SELECT format(
-  'ALTER ROLE %I WITH LOGIN PASSWORD %L',
-  :'app_role',
-  :'app_password'
-)
-\gexec
-
 COMMIT;
 SQL
 } | APP_DB_USER="${app_db_user}" APP_DB_PASSWORD="${app_db_password}" \
-  psql --no-psqlrc --set=ON_ERROR_STOP=1
+  target_psql --no-psqlrc --set=ON_ERROR_STOP=1
 
 unset app_db_password
 
-if ! vacuumdb --dbname="${PGDATABASE}" --analyze-in-stages --quiet; then
+if ! target_vacuumdb --analyze-in-stages --quiet; then
   echo "WARNING: restore succeeded, but planner statistics could not be refreshed; run ANALYZE later" >&2
 fi
 
 restored_table_count="$(
-  psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 <<'SQL'
+  target_psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 <<'SQL'
 SELECT count(*)
 FROM pg_tables
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema')

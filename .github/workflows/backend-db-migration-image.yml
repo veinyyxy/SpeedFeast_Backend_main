@@ -54,10 +54,13 @@ jobs:
         shell: bash
         run: bash -n scripts/run-rds-migration.sh
 
+      - name: Check tenant bootstrap manifest policy
+        run: python3 test/tenant_baseline_manifest_test.py
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.18.0"
           cache: npm
 
       - name: Install dependencies

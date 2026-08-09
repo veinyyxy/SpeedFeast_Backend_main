@@ -15,7 +15,7 @@
     "dev": "concurrently \"tsc --watch\" \"cross-env NODE_ENV=dev HOST=0.0.0.0 nodemon ./bin/www\""
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22 <25"
   },
   "keywords": [],
   "author": "",

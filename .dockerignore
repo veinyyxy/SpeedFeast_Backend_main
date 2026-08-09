@@ -5,11 +5,16 @@
 .codex
 .codex-manual-cache
 .vscode
+__pycache__
+**/__pycache__
+*.py[cod]
 
 node_modules
 npm-debug.log*
+*.log
 coverage
 public/out
+.DS_Store
 
 .env
 .env.*
@@ -38,4 +43,5 @@ test
 *.tgz
 *.dump
 *.backup
+*.manifest.json
 migration-artifacts

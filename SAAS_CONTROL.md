@@ -38,6 +38,10 @@ their previous capacity until the SaaS platform assigns limits.
 
 ## Install
 
+For the immutable image, health probes, runtime variables and database
+bootstrap order, see [`CONTAINER_RUNTIME.md`](./CONTAINER_RUNTIME.md). The web
+container does not run migrations during startup.
+
 Apply the normal application schema first, then run:
 
 ```powershell

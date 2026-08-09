@@ -23,7 +23,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.18.0"
           cache: npm
 
       - name: Install dependencies
@@ -31,6 +31,12 @@ jobs:
 
       - name: Check and test
         run: npm run check
+
+      - name: Check migration script syntax
+        run: bash -n scripts/run-rds-migration.sh
+
+      - name: Check tenant bootstrap manifest policy
+        run: python3 test/tenant_baseline_manifest_test.py
 
   docker:
     runs-on: ubuntu-latest
@@ -61,6 +67,7 @@ jobs:
             --env JWT_EXPIRES_IN=1h \
             --env MERCHANT_JWT_EXPIRES_IN=1h \
             --env DATABASE_URL=postgresql://ci:ci@database.invalid/speedfeast \
+            --env APP_IMAGE_REVISION=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
             --env PAYMENT_PROVIDER=stripe \
             --env STRIPE_SECRET_KEY=sk_test_ci \
             --env STRIPE_PUBLISHABLE_KEY=pk_test_ci \
@@ -72,6 +79,14 @@ jobs:
             --env IMAGE_S3_BUCKET=ci-images \
             --env IMAGE_PUBLIC_BASE_URL=https://images.example.invalid \
             --env AWS_REGION=ca-central-1 \
+            --env SAAS_CONTROL_PUBLIC_KEY=ci-only-public-key \
+            --env SAAS_INSTANCE_ID=ci-app-instance \
+            --env SAAS_JWT_AUDIENCE=speedfeast-instance:ci-app-instance \
+            --env SAAS_JWT_ISSUER=https://console.example.invalid \
+            --env SAAS_MTLS_PROXY_MODE=aws_alb_verify \
+            --env SAAS_REQUIRE_INSTANCE_CLAIM=true \
+            --env SAAS_REQUIRE_MTLS=true \
+            --env SAAS_TRUST_PROXY_MTLS_HEADER=true \
             speedfeast-backend:ci)
 
           cleanup() {

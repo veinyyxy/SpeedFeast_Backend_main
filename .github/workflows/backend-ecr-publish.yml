@@ -18,6 +18,11 @@ jobs:
     timeout-minutes: 30
     environment: production
 
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
+      image_repository: ${{ steps.image.outputs.repository }}
+      image_digest: ${{ steps.push.outputs.digest }}
+
     env:
       AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
       AWS_REGION: ${{ vars.AWS_REGION }}
@@ -42,7 +47,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.18.0"
           cache: npm
 
       - name: Install dependencies
@@ -71,8 +76,10 @@ jobs:
         run: |
           short_sha="${GITHUB_SHA:0:12}"
           image_tag="sha-${short_sha}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          image_uri="${ECR_REGISTRY}/${ECR_REPOSITORY}:${image_tag}"
+          image_repository="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+          image_uri="${image_repository}:${image_tag}"
           echo "tag=${image_tag}" >> "${GITHUB_OUTPUT}"
+          echo "repository=${image_repository}" >> "${GITHUB_OUTPUT}"
           echo "uri=${image_uri}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Docker Buildx
@@ -97,6 +104,7 @@ jobs:
         shell: bash
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
           IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           {
@@ -104,5 +112,6 @@ jobs:
             echo
             echo "- Image: \`${IMAGE_URI}\`"
             echo "- Digest: \`${IMAGE_DIGEST}\`"
+            echo "- Pinned reference: \`${IMAGE_REPOSITORY}@${IMAGE_DIGEST}\`"
             echo "- Platform: \`linux/amd64\`"
           } >> "${GITHUB_STEP_SUMMARY}"
