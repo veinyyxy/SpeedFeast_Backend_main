@@ -11,20 +11,33 @@ function readRepositoryFile(filename) {
 
 test('application image is pinned, non-root and checks database readiness', () => {
   const dockerfile = readRepositoryFile('Dockerfile');
-  const expectedImage =
+  const expectedNodeImage =
     'node:24.18.0-bookworm-slim@sha256:' +
     '6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d';
+  const expectedRuntimeImage =
+    'gcr.io/distroless/cc-debian12:nonroot@sha256:' +
+    'fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e';
   const fromImages = Array.from(
     dockerfile.matchAll(/^FROM\s+(\S+)\s+AS\s+\S+$/gm),
     (match) => match[1]
   );
+  const runtimeStage = dockerfile.slice(
+    dockerfile.indexOf(`FROM ${expectedRuntimeImage} AS runtime`)
+  );
 
   assert.equal(fromImages.length, 4);
-  assert.deepEqual(fromImages, Array(4).fill(expectedImage));
-  assert.match(dockerfile, /\nUSER node\r?\n/);
+  assert.deepEqual(fromImages.slice(0, 3), Array(3).fill(expectedNodeImage));
+  assert.equal(fromImages[3], expectedRuntimeImage);
+  assert.match(runtimeStage, /COPY --from=production-dependencies \/usr\/local\/bin\/node/);
+  assert.match(runtimeStage, /\nUSER 65532:65532\r?\n/);
+  assert.match(runtimeStage, /ENTRYPOINT \[\]/);
+  assert.match(runtimeStage, /process\.version !== 'v24\.18\.0'/);
+  assert.match(runtimeStage, /require\('bcrypt'\)/);
+  assert.doesNotMatch(runtimeStage, /^RUN\s+(?:npm|apt-get|apk|yum|dnf)\b/im);
+  assert.doesNotMatch(runtimeStage, /^COPY[^\r\n]*(?:\/npm|\/yarn|perl)/im);
   assert.match(dockerfile, /HEALTHCHECK[^\n]*[\s\S]*127\.0\.0\.1:3000\/ready/);
   assert.doesNotMatch(dockerfile, /HEALTHCHECK[^\n]*[\s\S]*127\.0\.0\.1:3000\/health/);
-  assert.match(dockerfile, /CMD \["node", "\.\/bin\/www"\]/);
+  assert.match(dockerfile, /CMD \["\/usr\/local\/bin\/node", "\.\/bin\/www"\]/);
   assert.doesNotMatch(dockerfile, /CMD[^\n]*(migrat|npm run)/i);
   assert.match(
     dockerfile,

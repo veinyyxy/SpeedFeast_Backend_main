@@ -7,9 +7,13 @@ in runtime configuration, secrets, resource sizing, and routing.
 
 ## Image invariants
 
-- The runtime is pinned to the official Node.js `24.18.0-bookworm-slim`
-  multi-platform digest.
-- The final process runs as the built-in unprivileged `node` user.
+- Build and dependency stages are pinned to the official Node.js
+  `24.18.0-bookworm-slim` multi-platform digest. The exact Node binary is copied
+  into a pinned `distroless/cc-debian12:nonroot` final stage so build and runtime
+  keep the same Debian/glibc ABI.
+- The final process runs as the distroless unprivileged uid/gid `65532:65532`.
+- The final image has no shell, package manager, npm/Yarn or Perl. Build tools
+  and certificate-download tools remain in disposable build stages only.
 - The image contains production dependencies and compiled verification assets,
   but no `.env`, test fixtures, database dumps, private keys, or uploaded images.
 - `CMD` starts only `node ./bin/www`. Application startup never runs a schema
@@ -112,9 +116,10 @@ Database changes are deliberately separate from web-process startup:
    `Dockerfile.migration`. It accepts an encrypted private-S3 dump plus a
    manifest and SHA-256 values, rejects a non-empty destination, restores in a
    transaction, verifies table row counts, and creates the application role.
-3. Run the application image once with command `npm run migrate:saas`. This
-   applies `db/saas_control.sql` and `db/theme_config.sql` in one transaction;
-   both scripts are idempotent.
+3. Run the application image once with command
+   `/usr/local/bin/node db/apply_saas_control.js`. This applies
+   `db/saas_control.sql` and `db/theme_config.sql` in one transaction; both
+   scripts are idempotent. The final image deliberately does not contain npm.
 4. Start the ECS service only after both one-shot tasks succeed and `/ready`
    returns HTTP 200.
 
@@ -195,9 +200,11 @@ separate review process.
 
 ## Local verification
 
-The repository test suite statically verifies the image pin, non-root runtime,
-readiness health check, migration major version, ignore rules, and production
-environment validation:
+The repository test suite statically verifies both image pins, the shell-less
+non-root runtime, readiness health check, migration major version, ignore rules,
+and production environment validation. It also exercises `bcrypt`, whose
+production dependency includes a Linux glibc prebuild compatible with the
+distroless Debian runtime:
 
 ```powershell
 npm run check

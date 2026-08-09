@@ -6,7 +6,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && install --directory --mode=0755 --owner=65532 --group=65532 /runtime-images
 
 
 FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS build
@@ -35,7 +36,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 
-FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e AS runtime
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -46,30 +47,35 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node package.json package-lock.json app.js ./
-COPY --chown=node:node bin ./bin
-COPY --chown=node:node db ./db
-COPY --chown=node:node public ./public
-COPY --chown=node:node routes ./routes
-COPY --chown=node:node secutiry ./secutiry
-COPY --chown=node:node services ./services
-COPY --chown=node:node views ./views
-COPY --from=build --chown=node:node /app/public/out ./public/out
+COPY --from=production-dependencies /usr/local/bin/node /usr/local/bin/node
+COPY --from=production-dependencies --chown=65532:65532 /app/node_modules ./node_modules
+COPY --chown=65532:65532 package.json package-lock.json app.js ./
+COPY --chown=65532:65532 bin ./bin
+COPY --chown=65532:65532 db ./db
+COPY --chown=65532:65532 public ./public
+COPY --chown=65532:65532 routes ./routes
+COPY --chown=65532:65532 secutiry ./secutiry
+COPY --chown=65532:65532 services ./services
+COPY --chown=65532:65532 views ./views
+COPY --from=build --chown=65532:65532 /app/public/out ./public/out
 COPY --from=rds-certificates /aws-rds-global-bundle.pem /usr/local/share/ca-certificates/aws-rds-global-bundle.pem
+COPY --from=production-dependencies --chown=65532:65532 /runtime-images/ ./images/
 
-# Keep the legacy static/upload path writable without baking uploaded files
-# into the immutable image.
-RUN mkdir -p /app/images \
-    && chown node:node /app/images
+# The pinned distroless nonroot identity is uid/gid 65532. The final image has
+# no shell, package manager, npm/Yarn or Perl; migrations run with node directly.
+USER 65532:65532
 
-USER node
+# Fail the image build if the copied binary is not the reviewed Node release or
+# if the only native production dependency cannot load on distroless/glibc.
+RUN ["/usr/local/bin/node", "-e", "if (process.version !== 'v24.18.0') throw new Error('unexpected Node runtime'); const bcrypt = require('bcrypt'); const hash = bcrypt.hashSync('runtime-smoke', 4); if (!bcrypt.compareSync('runtime-smoke', hash)) throw new Error('bcrypt runtime smoke test failed');"]
 
 EXPOSE 3000
 
 STOPSIGNAL SIGTERM
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD ["node", "-e", "fetch('http://127.0.0.1:3000/ready').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+    CMD ["/usr/local/bin/node", "-e", "fetch('http://127.0.0.1:3000/ready').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
 
-CMD ["node", "./bin/www"]
+ENTRYPOINT []
+
+CMD ["/usr/local/bin/node", "./bin/www"]
