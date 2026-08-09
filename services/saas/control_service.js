@@ -26,6 +26,7 @@ const {
 } = require('./quota_service');
 const { verifyLicenseToken } = require('./saas_auth');
 
+const CONTROL_API_VERSION = '1.1';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -65,11 +66,135 @@ function sha256Json(value) {
     .digest('hex');
 }
 
+function imageRevision(env = process.env) {
+  return (
+    normalizeText(env.APP_IMAGE_REVISION) ||
+    normalizeText(env.IMAGE_REVISION) ||
+    normalizeText(env.GIT_SHA) ||
+    null
+  );
+}
+
+function effectiveConfigurationSnapshot(instance, entitlements, stores) {
+  return {
+    instance: {
+      external_instance_id: instance?.external_instance_id || null,
+      status: instance?.status || null,
+    },
+    entitlements: { ...(entitlements || {}) },
+    stores: [...(stores || [])]
+      .map((store) => ({
+        store_id: store.store_id,
+        status: store.status,
+        store_name: store.branding?.store_name || store.name || '',
+        buyer_theme: store.branding?.buyer_theme || null,
+        merchant_theme: store.branding?.merchant_theme || null,
+      }))
+      .sort((left, right) => String(left.store_id).localeCompare(String(right.store_id))),
+  };
+}
+
 function actorFields(actor) {
   return {
     actorSubject: normalizeText(actor?.subject) || 'unknown-saas-actor',
     actorTokenId: normalizeText(actor?.tokenId) || null,
   };
+}
+
+function assertProvisioningInstanceIdentity(request, actor, instance = null) {
+  const requestedInstanceId = request.instance.externalInstanceId;
+  const actorInstanceId = normalizeText(actor?.claims?.instance_id) || null;
+  if (actorInstanceId && !requestedInstanceId) {
+    const error = new Error(
+      'instance.external_instance_id is required for an instance-scoped token'
+    );
+    error.statusCode = 400;
+    error.code = 'SAAS_INSTANCE_ID_REQUIRED';
+    throw error;
+  }
+  if (actorInstanceId && actorInstanceId !== requestedInstanceId) {
+    const error = new Error('Provisioning request targets another service instance');
+    error.statusCode = 409;
+    error.code = 'SAAS_INSTANCE_ID_MISMATCH';
+    throw error;
+  }
+  if (
+    instance?.external_instance_id &&
+    requestedInstanceId &&
+    instance.external_instance_id !== requestedInstanceId
+  ) {
+    const error = new Error('Service instance identity cannot be changed');
+    error.statusCode = 409;
+    error.code = 'SAAS_INSTANCE_ID_MISMATCH';
+    throw error;
+  }
+}
+
+async function claimProvisioningOperation(
+  db,
+  { idempotencyKey, instanceId, requestHash, actorSubject }
+) {
+  const inserted = await db.query(
+    `
+      INSERT INTO public.saas_provisioning_operations (
+        idempotency_key,
+        instance_id,
+        request_sha256,
+        actor_subject,
+        status
+      )
+      VALUES ($1, $2::uuid, $3, $4, 'processing')
+      ON CONFLICT (idempotency_key) DO NOTHING
+      RETURNING idempotency_key
+    `,
+    [idempotencyKey, instanceId, requestHash, actorSubject]
+  );
+  if (inserted.rowCount > 0) return { claimed: true };
+
+  const previousResult = await db.query(
+    `
+      SELECT request_sha256, status, result
+      FROM public.saas_provisioning_operations
+      WHERE idempotency_key = $1
+      FOR UPDATE
+    `,
+    [idempotencyKey]
+  );
+  const operation = previousResult.rows[0];
+  if (!operation) {
+    const error = new Error('Provisioning operation could not be claimed');
+    error.statusCode = 503;
+    error.code = 'SAAS_PROVISIONING_UNAVAILABLE';
+    throw error;
+  }
+  if (operation.request_sha256 !== requestHash) {
+    const error = new Error('Idempotency-Key was already used for another request');
+    error.statusCode = 409;
+    error.code = 'IDEMPOTENCY_KEY_REUSED';
+    throw error;
+  }
+  if (operation.status === 'completed') {
+    return { claimed: false, replayed: true, result: operation.result };
+  }
+  if (operation.status === 'failed') {
+    await db.query(
+      `
+        UPDATE public.saas_provisioning_operations
+        SET status = 'processing',
+            error_code = NULL,
+            completed_at = NULL,
+            started_at = now()
+        WHERE idempotency_key = $1
+      `,
+      [idempotencyKey]
+    );
+    return { claimed: true, retried: true };
+  }
+
+  const error = new Error('Provisioning operation is already in progress');
+  error.statusCode = 409;
+  error.code = 'SAAS_PROVISIONING_IN_PROGRESS';
+  throw error;
 }
 
 function normalizeFirstOwner(value) {
@@ -236,41 +361,16 @@ async function provisionInstance(
   try {
     await client.query('BEGIN');
     const instance = await lockSaasInstance(client);
-    const previousOperation = await client.query(
-      `
-        SELECT request_sha256, status, result
-        FROM public.saas_provisioning_operations
-        WHERE idempotency_key = $1
-        FOR UPDATE
-      `,
-      [normalizedKey]
-    );
-    if (previousOperation.rows[0]) {
-      const operation = previousOperation.rows[0];
-      if (operation.request_sha256 !== requestHash) {
-        const error = new Error('Idempotency-Key was already used for another request');
-        error.statusCode = 409;
-        error.code = 'IDEMPOTENCY_KEY_REUSED';
-        throw error;
-      }
-      if (operation.status === 'completed') {
-        await client.query('COMMIT');
-        return { replayed: true, ...operation.result };
-      }
-    } else {
-      await client.query(
-        `
-          INSERT INTO public.saas_provisioning_operations (
-            idempotency_key,
-            instance_id,
-            request_sha256,
-            actor_subject,
-            status
-          )
-          VALUES ($1, $2::uuid, $3, $4, 'processing')
-        `,
-        [normalizedKey, instance.instance_id, requestHash, actorInfo.actorSubject]
-      );
+    assertProvisioningInstanceIdentity(request, actor, instance);
+    const operation = await claimProvisioningOperation(client, {
+      idempotencyKey: normalizedKey,
+      instanceId: instance.instance_id,
+      requestHash,
+      actorSubject: actorInfo.actorSubject,
+    });
+    if (operation.replayed) {
+      await client.query('COMMIT');
+      return { replayed: true, ...operation.result };
     }
 
     await client.query(
@@ -412,6 +512,17 @@ async function updateInstance(values, { actor, dbPool = pool } = {}) {
     values.external_instance_id === null
       ? null
       : normalizeText(values.external_instance_id ?? values.externalInstanceId) || undefined;
+  const actorInstanceId = normalizeText(actor?.claims?.instance_id) || null;
+  if (
+    actorInstanceId &&
+    externalId !== undefined &&
+    externalId !== actorInstanceId
+  ) {
+    const error = new Error('Instance-scoped token cannot change service identity');
+    error.statusCode = 409;
+    error.code = 'SAAS_INSTANCE_ID_MISMATCH';
+    throw error;
+  }
   const metadata = values.metadata;
   if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) {
     const error = new Error('Instance metadata must be an object');
@@ -425,6 +536,16 @@ async function updateInstance(values, { actor, dbPool = pool } = {}) {
   try {
     await client.query('BEGIN');
     const before = await lockSaasInstance(client);
+    if (
+      actorInstanceId &&
+      before.external_instance_id &&
+      before.external_instance_id !== actorInstanceId
+    ) {
+      const error = new Error('SaaS bearer token belongs to another service instance');
+      error.statusCode = 409;
+      error.code = 'SAAS_INSTANCE_ID_MISMATCH';
+      throw error;
+    }
     const result = await client.query(
       `
         UPDATE public.saas_instances
@@ -658,7 +779,10 @@ async function installLicense(licenseToken, { actor, env = process.env, dbPool =
   }
 }
 
-async function getControlSummary(db = pool) {
+async function getControlSummary(
+  db = pool,
+  { env = process.env, brandingReader = readStoreBranding } = {}
+) {
   const [instance, entitlements, usage, storesResult, auditResult] = await Promise.all([
     getSaasInstanceState(db),
     getEntitlementValues(db),
@@ -695,18 +819,43 @@ async function getControlSummary(db = pool) {
       `
     ),
   ]);
+  const stores = await Promise.all(
+    storesResult.rows.map(async (store) => {
+      const branding = await brandingReader(db, store.store_id);
+      return {
+        ...store,
+        name: branding.store_name || store.name || store.store_code,
+        branding,
+      };
+    })
+  );
+  const configuration = effectiveConfigurationSnapshot(
+    instance,
+    entitlements,
+    stores
+  );
   return {
+    control_api_version: CONTROL_API_VERSION,
+    image_revision: imageRevision(env),
+    configuration_hash: sha256Json(configuration),
+    desired_configuration_hash:
+      normalizeText(instance?.metadata?.configuration_hash) || null,
     instance,
     catalog: entitlementCatalog(),
     entitlements,
     usage,
-    stores: storesResult.rows,
+    stores,
     recent_audit: auditResult.rows,
   };
 }
 
 module.exports = {
+  CONTROL_API_VERSION,
+  assertProvisioningInstanceIdentity,
+  claimProvisioningOperation,
+  effectiveConfigurationSnapshot,
   getControlSummary,
+  imageRevision,
   installLicense,
   normalizeProvisioningRequest,
   provisionInstance,

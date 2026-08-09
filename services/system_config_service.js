@@ -9,6 +9,11 @@ const APP_SCOPES = new Set([
 ]);
 
 const VALID_ENVIRONMENTS = new Set(['dev', 'test', 'staging', 'prod']);
+const ENVIRONMENT_ALIASES = new Map([
+  ['development', 'dev'],
+  ['testing', 'test'],
+  ['production', 'prod'],
+]);
 
 const COUNTRY_ALIASES = new Map([
   ['CANADA', 'CA'],
@@ -42,7 +47,8 @@ function normalizeAppScope(value, fallback = 'all') {
 }
 
 function normalizeEnvironment(value, fallback = 'prod') {
-  const normalized = normalizeText(value) || fallback;
+  const raw = (normalizeText(value) || fallback).toLowerCase();
+  const normalized = ENVIRONMENT_ALIASES.get(raw) || raw;
   return VALID_ENVIRONMENTS.has(normalized) ? normalized : fallback;
 }
 

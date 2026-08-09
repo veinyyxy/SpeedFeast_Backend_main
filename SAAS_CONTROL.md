@@ -51,10 +51,24 @@ Configure the control-plane authentication variables shown in `.env.example`.
 Control tokens must be asymmetrically signed, contain the configured issuer and
 audience, include a `sub`, and grant the `speedfeast:control` scope.
 
+Set `SAAS_INSTANCE_ID` to the SaaS platform application-instance identifier and
+use a unique audience such as `speedfeast-instance:<app-instance-id>`. With
+`SAAS_REQUIRE_INSTANCE_CLAIM=true`, every control token must contain an exact
+matching `instance_id` claim. Initial provisioning also requires
+`instance.external_instance_id` to match that claim, and an identity already
+stored by the service cannot be replaced.
+
 In production, keep `SAAS_REQUIRE_MTLS=true`. When TLS terminates at a trusted
 reverse proxy, the proxy must remove any client-supplied verification header,
 validate the client certificate, and then set the configured header to
 `SUCCESS`. Do not expose the backend directly when proxy-header trust is on.
+
+For an AWS Application Load Balancer HTTPS listener using mTLS `verify` mode,
+set `SAAS_MTLS_PROXY_MODE=aws_alb_verify`. The middleware then requires the ALB
+generated serial-number, issuer, subject, and validity headers. This mode is
+safe only when the ECS task security group accepts application traffic solely
+from the trusted ALB security group. The public listener should reject
+`/api/saas/*`; route it only through the mTLS listener.
 
 Buyer and merchant JWTs cannot call the control API. Every endpoint under
 `/api/saas` requires the dedicated SaaS bearer token and, when configured,
@@ -62,8 +76,11 @@ verified mTLS.
 
 ## API
 
-- `GET /api/saas/control` returns instance state, catalog, effective values,
-  current usage, stores, and recent audit entries.
+- `GET /api/saas/control` returns the control API version, image revision,
+  effective configuration hash, instance state, catalog, effective values,
+  current usage, stores with complete buyer and merchant branding, and recent
+  audit entries. `desired_configuration_hash` reflects the hash supplied in
+  provisioning instance metadata when present.
 - `PUT /api/saas/entitlements` updates an allowlisted set of entitlement keys.
 - `PUT /api/saas/instance` activates or suspends the service instance.
 - `POST /api/saas/license` verifies and installs a signed license token.
@@ -115,9 +132,26 @@ Initial provisioning requires an `Idempotency-Key` header. Example body:
 }
 ```
 
+Use a deterministic key such as
+`provision:<app-instance-id>:<configuration-hash>`. Claiming that key uses an
+atomic `INSERT ... ON CONFLICT` operation. A completed request with the same
+normalized body is replayed; reusing the key for a different body returns
+`IDEMPOTENCY_KEY_REUSED`. After a network timeout, retry with exactly the same
+key and body.
+
+`configuration_hash` in the control summary is calculated from effective
+instance state, entitlement values, store names, and complete buyer/merchant
+themes. It deliberately excludes timestamps, audit entries, and image
+revision, so a configuration-only reconciliation produces a stable hash.
+`APP_IMAGE_REVISION` should contain the immutable image digest or source
+revision injected by the deployment pipeline.
+
 The first owner is only created when no active owner exists and is marked
 `must_change_password=true`. The legacy `db/create_merchant_user.js` script is
 limited to non-production development and still enforces the active-user quota.
+
+Runtime environment names are normalized before reading or writing branding:
+`development` maps to `dev`, `testing` to `test`, and `production` to `prod`.
 
 ## Buyer Access
 

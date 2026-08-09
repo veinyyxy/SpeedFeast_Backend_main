@@ -2,6 +2,13 @@ const jwt = require('jsonwebtoken');
 
 const ALLOWED_ALGORITHMS = new Set(['RS256', 'RS384', 'RS512', 'ES256', 'ES384']);
 const REQUIRED_SCOPE = 'speedfeast:control';
+const PROXY_MTLS_MODES = new Set(['verified_header', 'aws_alb_verify']);
+const AWS_ALB_MTLS_HEADERS = Object.freeze([
+  'x-amzn-mtls-clientcert-serial-number',
+  'x-amzn-mtls-clientcert-issuer',
+  'x-amzn-mtls-clientcert-subject',
+  'x-amzn-mtls-clientcert-validity',
+]);
 
 class SaasAuthenticationError extends Error {
   constructor(message, code = 'SAAS_AUTHENTICATION_REQUIRED', statusCode = 401) {
@@ -38,7 +45,18 @@ function readBoolean(value, fallback = false) {
   throw new Error('SaaS boolean environment values must be true or false');
 }
 
+function readProxyMtlsMode(value) {
+  const mode = String(value || 'verified_header').trim().toLowerCase();
+  if (!PROXY_MTLS_MODES.has(mode)) {
+    throw new Error(
+      'SAAS_MTLS_PROXY_MODE must be verified_header or aws_alb_verify'
+    );
+  }
+  return mode;
+}
+
 function buildSaasAuthConfig(env = process.env) {
+  const instanceId = String(env.SAAS_INSTANCE_ID || '').trim();
   return {
     publicKey: normalizePem(env.SAAS_CONTROL_PUBLIC_KEY),
     issuer: String(env.SAAS_JWT_ISSUER || '').trim(),
@@ -49,9 +67,15 @@ function buildSaasAuthConfig(env = process.env) {
     algorithms: parseAlgorithms(env.SAAS_JWT_ALGORITHMS),
     requireMtls: readBoolean(env.SAAS_REQUIRE_MTLS, false),
     trustProxyMtlsHeader: readBoolean(env.SAAS_TRUST_PROXY_MTLS_HEADER, false),
+    proxyMtlsMode: readProxyMtlsMode(env.SAAS_MTLS_PROXY_MODE),
     mtlsHeader: String(
       env.SAAS_MTLS_VERIFIED_HEADER || 'x-saas-client-cert-verified'
     ).trim().toLowerCase(),
+    instanceId,
+    requireInstanceClaim: readBoolean(
+      env.SAAS_REQUIRE_INSTANCE_CLAIM,
+      Boolean(instanceId)
+    ),
   };
 }
 
@@ -60,6 +84,9 @@ function requireConfigured(config) {
   if (!config.publicKey) missing.push('SAAS_CONTROL_PUBLIC_KEY');
   if (!config.issuer) missing.push('SAAS_JWT_ISSUER');
   if (!config.audience) missing.push('SAAS_JWT_AUDIENCE');
+  if (config.requireInstanceClaim && !config.instanceId) {
+    missing.push('SAAS_INSTANCE_ID');
+  }
   if (missing.length > 0) {
     throw new SaasAuthenticationError(
       `SaaS control authentication is not configured: ${missing.join(', ')}`,
@@ -84,10 +111,18 @@ function tokenScopes(payload) {
 function assertMtls(req, config) {
   if (!config.requireMtls) return;
   const socketVerified = req.socket?.authorized === true;
-  const proxyVerified =
-    config.trustProxyMtlsHeader &&
-    String(req.headers?.[config.mtlsHeader] || '').trim().toUpperCase() ===
-      'SUCCESS';
+  let proxyVerified = false;
+  if (config.trustProxyMtlsHeader) {
+    if (config.proxyMtlsMode === 'aws_alb_verify') {
+      proxyVerified = AWS_ALB_MTLS_HEADERS.every(
+        (header) => String(req.headers?.[header] || '').trim().length > 0
+      );
+    } else {
+      proxyVerified =
+        String(req.headers?.[config.mtlsHeader] || '').trim().toUpperCase() ===
+        'SUCCESS';
+    }
+  }
   if (!socketVerified && !proxyVerified) {
     throw new SaasAuthenticationError(
       'A verified SaaS client certificate is required',
@@ -119,6 +154,23 @@ function verifyControlToken(token, config) {
       'SAAS_CONTROL_SCOPE_REQUIRED',
       403
     );
+  }
+  if (config.requireInstanceClaim) {
+    const tokenInstanceId = String(payload.instance_id || '').trim();
+    if (!tokenInstanceId) {
+      throw new SaasAuthenticationError(
+        'SaaS instance claim is required',
+        'SAAS_INSTANCE_CLAIM_REQUIRED',
+        403
+      );
+    }
+    if (tokenInstanceId !== config.instanceId) {
+      throw new SaasAuthenticationError(
+        'SaaS bearer token belongs to another service instance',
+        'SAAS_INSTANCE_CLAIM_MISMATCH',
+        403
+      );
+    }
   }
   return payload;
 }
@@ -179,6 +231,7 @@ module.exports = {
   createSaasAuthMiddleware,
   normalizePem,
   parseAlgorithms,
+  readProxyMtlsMode,
   verifyControlToken,
   verifyLicenseToken,
 };
