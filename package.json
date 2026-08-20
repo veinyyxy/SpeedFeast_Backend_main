@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build",
     "test": "node --test \"test/*.test.js\"",
+    "test:integration:postgres": "node scripts/run-postgres-integration-tests.js",
+    "test:tenant-lifecycle": "node --test test/tenant_lifecycle.test.js",
     "check": "npm run typecheck && npm test",
     "test:sms": "npm run build && node --test test/sms_provider.test.js",
     "migrate:saas": "node db/apply_saas_control.js",

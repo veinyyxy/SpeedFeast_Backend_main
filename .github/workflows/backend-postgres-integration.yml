@@ -1,0 +1,46 @@
+name: Backend PostgreSQL 16.14 integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.14-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: b5g-ci-only-password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      SPEEDFEAST_B5G_PG_INTEGRATION: I_UNDERSTAND_THIS_CREATES_AND_DROPS_A_DISPOSABLE_DATABASE
+      SPEEDFEAST_B5G_PG_ADMIN_URL: postgresql://postgres:b5g-ci-only-password@127.0.0.1:5432/postgres?sslmode=disable
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run disposable PostgreSQL integration tests
+        run: npm run test:integration:postgres

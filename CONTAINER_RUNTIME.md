@@ -136,9 +136,9 @@ inspecting or changing the destination. `APP_DB_USER` must be a new,
 non-reserved cluster role; an existing role is a hard failure and is never
 adopted or assigned a new password.
 
-### B5-F one-shot integration status
+### B5-G ARN-native lifecycle contract
 
-The SaaS platform now has an offline, SDK-free boundary for injected ECS
+The SaaS platform has an offline, SDK-free boundary for injected ECS
 `RunTask`, exact `startedBy` recovery, `DescribeTasks`, and `StopTask`. Its
 reviewed request contract carries only a generation-bound runtime Secret ARN,
 fixed code-owned command, active external-operation epoch, and—where
@@ -146,14 +146,54 @@ required—an independently approved baseline digest. The corresponding Secret
 must be physically named under `/runtime/gN` and contain exactly
 `database_url`, `hmac_secret_key`, `jwt_secret_key`, `stripe_secret_key`, and
 `stripe_webhook_secret`.
+The `database_url` must name a concrete PostgreSQL database and contain exactly
+one `sslmode=verify-full` query parameter; host, TLS and libpq compatibility
+overrides are rejected before the lifecycle database provider is called.
 
-This repository does not yet provide the ARN-native tenant lifecycle helper or
-task image expected by that boundary. In particular, the current migration
-image and `db/apply_saas_control.js` do not resolve the five-key Secret from a
-passed ARN, so they must not be wired to the new one-shot contract as-is. The
-platform also has no real AWS SDK provider or Worker root wiring. B5-F did not
-build or deploy an image, run an ECS task, contact AWS/Neon, or apply the new
-SaaS control SQL.
+This repository now provides the offline ARN-native task entrypoint
+`db/tenant_lifecycle.js` and an injected lifecycle service for exactly six
+code-owned operations: `inspect`, `prepare_empty_database`,
+`restore_approved_baseline`, `migrate_saas`, `verify`, and `destroy`. It accepts
+only the Secret ARN, generation/ownership fence, active external epoch, and the
+approved baseline digest where required. Direct `DATABASE_URL`, PostgreSQL
+password, Stripe/JWT/HMAC values, baseline S3 locations, arbitrary command, and
+Secret JSON inputs are rejected. The injected Secret provider must return
+exactly the five reviewed keys inside a scoped callback; no Secret value is
+written to a task result or error.
+
+The lifecycle service builds and validates a durable marker containing stable
+identity, generation, ownership marker, provision epoch/marker/hash, baseline
+digest, migration contract, and lifecycle state. A PostgreSQL provider must
+persist that marker with database and role ownership metadata, conditionally
+match the full prior observation under one database lock, and install the next
+marker with the associated action. This contract makes a replay after a lost
+task response return `already_applied`, rejects older epochs, rejects
+same-epoch marker/hash drift, and refuses foreign identity or generation
+adoption.
+
+`destroy` additionally requires the exact immediately preceding provision
+epoch, marker, and operation hash. Missing predecessor fields are rejected
+before Secret resolution or database inspection. A real provider must compare
+those fields with its durable generation record before its first destructive
+write and retain only a non-secret tombstone for idempotent retry.
+
+The entrypoint deliberately installs disabled Secret and PostgreSQL providers.
+The synthetic tests exercise the state machine without connecting to AWS or a
+database, but the following production pieces remain blocked: an AWS SDK
+Secrets Manager resolver, a PostgreSQL 16 admin/locking implementation, a
+reviewed empty baseline artifact, a lifecycle-capable restore image, ECS receipt
+collection, and platform Worker root wiring. The legacy
+`scripts/run-rds-migration.sh` and direct `db/apply_saas_control.js` commands do
+not persist this lifecycle marker and must not be treated as the B5-G task
+provider. No image was built or deployed, no ECS task ran, no AWS/Neon endpoint
+was contacted, and no SQL was applied in B5-G.
+
+The CLI currently emits only one deterministic, secret-free operation result.
+It does not claim an ECS task ARN or construct the platform's final receipt. A
+future bounded receipt transport must independently bind that raw result to an
+exact DescribeTasks observation and reviewed request, then let the platform
+construct `requestHash`, `outputHash`, and `receiptHash`. Until that reader is
+implemented and exercised, a real ECS canary remains prohibited.
 
 ### Tenant baseline data policy
 
