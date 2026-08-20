@@ -202,9 +202,9 @@ requires all three controlled values:
 - `TENANT_RECEIPT_EXPECTED_BUCKET_OWNER`, exactly matching the account in the
   generation-bound runtime Secret ARN; and
 - `TENANT_RECEIPT_KEY`, exactly
-  `tenant-lifecycle/v1/<stable-hash>/g<generation>/<idempotency-sha256>.json`,
-  with the stable hash and generation cross-checked against the lifecycle
-  ownership marker.
+  `tenant-lifecycle/v1/<32-char-stable-identity-hash-prefix>/g<generation>/<idempotency-sha256>.json`,
+  with the 32-character prefix and generation cross-checked against the
+  lifecycle ownership marker.
 
 After a successful lifecycle operation, the injected publisher constructs one
 canonical UTF-8 JSON line of at most 4096 bytes. Its exact fields are

@@ -299,6 +299,35 @@ function sha256Base64(value) {
   return crypto.createHash('sha256').update(value).digest('base64');
 }
 
+function mayHaveCommittedReceiptWrite(error) {
+  if (error instanceof TenantLifecycleReceiptError) {
+    return false;
+  }
+  const metadata =
+    error && typeof error === 'object' && error.$metadata &&
+    typeof error.$metadata === 'object'
+      ? error.$metadata
+      : {};
+  const status = Number(metadata.httpStatusCode || 0);
+  const name =
+    error && typeof error === 'object' && typeof error.name === 'string'
+      ? error.name
+      : '';
+  const code =
+    error && typeof error === 'object' && typeof error.code === 'string'
+      ? error.code
+      : '';
+  return (
+    status === 408 ||
+    status === 412 ||
+    status >= 500 ||
+    Boolean(error && typeof error === 'object' && error.$retryable) ||
+    /(?:Abort|Timeout|RequestTimeout|Networking|ECONNRESET|ETIMEDOUT|EPIPE)/i.test(
+      `${name} ${code}`,
+    )
+  );
+}
+
 function decodeExistingReceipt({ existing, input, expectedEnvelope = null }) {
   if (
     !existing ||
@@ -446,7 +475,10 @@ class TenantLifecycleReceiptPublisher {
         checksumSha256,
         byteLength: body.length,
       });
-    } catch {
+    } catch (error) {
+      if (!mayHaveCommittedReceiptWrite(error)) {
+        throw error;
+      }
       let existing;
       try {
         existing = await this.objectStore.getExact({

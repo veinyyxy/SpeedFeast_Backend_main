@@ -9,6 +9,7 @@ const {
   RAW_RECEIPT_KEYS,
   AwsSdkTenantLifecycleReceiptObjectStore,
   DisabledTenantLifecycleReceiptPublisher,
+  TenantLifecycleReceiptError,
   TenantLifecycleReceiptPublisher,
   TenantLifecycleReceiptNotFoundError,
   buildRawTenantLifecycleReceipt,
@@ -223,7 +224,10 @@ test('publishes once with immutable headers and returns only a bounded summary',
 
 test('recovers response loss or precondition failure only from exact canonical bytes', async () => {
   for (const putError of [
-    new Error('synthetic response loss'),
+    Object.assign(new Error('synthetic response loss'), {
+      name: 'TimeoutError',
+      $retryable: true,
+    }),
     Object.assign(new Error('synthetic precondition failure'), {
       name: 'PreconditionFailed',
       $metadata: { httpStatusCode: 412 },
@@ -250,6 +254,33 @@ test('recovers response loss or precondition failure only from exact canonical b
   }
 });
 
+test('deterministic local put errors are never masked by an existing receipt', async () => {
+  const store = new RecordingObjectStore();
+  const built = buildRawTenantLifecycleReceipt({
+    input: parsedInput(),
+    output: inspectOutput(),
+  });
+  store.existing = {
+    body: built.body,
+    checksumSha256: sha256Base64(built.body),
+  };
+  store.putError = new TenantLifecycleReceiptError(
+    'TENANT_LIFECYCLE_RECEIPT_TARGET_INVALID',
+    'synthetic deterministic target error',
+  );
+  const publisher = new TenantLifecycleReceiptPublisher({ objectStore: store });
+
+  await assert.rejects(
+    publisher.publish({
+      input: parsedInput(),
+      output: inspectOutput(),
+      target: target(),
+    }),
+    (error) => error.code === 'TENANT_LIFECYCLE_RECEIPT_TARGET_INVALID',
+  );
+  assert.equal(store.gets.length, 0);
+});
+
 test('fails closed on an immutable collision, noncanonical bytes, or checksum drift', async () => {
   const expected = buildRawTenantLifecycleReceipt({
     input: parsedInput(),
@@ -266,7 +297,10 @@ test('fails closed on an immutable collision, noncanonical bytes, or checksum dr
     { body: pretty, checksumSha256: sha256Base64(pretty) },
   ]) {
     const store = new RecordingObjectStore();
-    store.putError = new Error('synthetic put uncertainty');
+    store.putError = Object.assign(new Error('synthetic put uncertainty'), {
+      name: 'TimeoutError',
+      $retryable: true,
+    });
     store.existing = existing;
     const publisher = new TenantLifecycleReceiptPublisher({ objectStore: store });
     await assert.rejects(
@@ -652,7 +686,10 @@ test('a rejected put can retry missing storage and first-write the already-appli
   const counters = { secret: 0, database: 0, apply: 0 };
   const providers = statefulPrepareProviders(counters);
   const store = new RecordingObjectStore();
-  store.putError = new Error('synthetic put rejected before acceptance');
+  store.putError = Object.assign(
+    new Error('synthetic put rejected before acceptance'),
+    { name: 'TimeoutError', $retryable: true },
+  );
   const publisher = new TenantLifecycleReceiptPublisher({ objectStore: store });
   const environment = taskEnvironment({
     TENANT_DATABASE_OPERATION: 'prepare_empty_database',
@@ -710,7 +747,10 @@ test('a put accepted before response loss is reused on retry without database re
         body: Buffer.from(request.body),
         checksumSha256: request.checksumSha256,
       };
-      throw new Error('synthetic put response loss after acceptance');
+      throw Object.assign(
+        new Error('synthetic put response loss after acceptance'),
+        { name: 'TimeoutError', $retryable: true },
+      );
     }
   }
 
