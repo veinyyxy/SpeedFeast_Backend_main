@@ -332,11 +332,11 @@ function validateTaskInput(rawInput, command) {
       Number(predecessorMatch[2]) !== generation ||
       Number(predecessorMatch[3]) !== predecessorEpoch ||
       !SHA256_PATTERN.test(String(rawInput.provisionPredecessor.operationHash || '')) ||
-      predecessorEpoch + 1 !== externalEpoch
+      predecessorEpoch >= externalEpoch
     ) {
       throw new TenantLifecycleContractError(
         'TENANT_DATABASE_CLEANUP_PREDECESSOR_MISMATCH',
-        'Cleanup predecessor is not the immediately preceding provision fence.',
+        'Cleanup predecessor must be an exact, older provision fence in the same generation.',
       );
     }
     provisionPredecessor = {

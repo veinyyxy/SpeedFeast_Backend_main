@@ -177,23 +177,67 @@ before Secret resolution or database inspection. A real provider must compare
 those fields with its durable generation record before its first destructive
 write and retain only a non-secret tombstone for idempotent retry.
 
-The entrypoint deliberately installs disabled Secret and PostgreSQL providers.
-The synthetic tests exercise the state machine without connecting to AWS or a
-database, but the following production pieces remain blocked: an AWS SDK
-Secrets Manager resolver, a PostgreSQL 16 admin/locking implementation, a
-reviewed empty baseline artifact, a lifecycle-capable restore image, ECS receipt
-collection, and platform Worker root wiring. The legacy
+The entrypoint deliberately installs disabled Secret, PostgreSQL, and raw
+receipt publishers. The synthetic tests exercise the state machine and receipt
+contract without connecting to AWS or a database, but the following production
+pieces remain blocked: an AWS SDK Secrets Manager resolver, a PostgreSQL 16
+admin/locking implementation, a reviewed empty baseline artifact, a
+lifecycle-capable restore image, and platform Worker root wiring. The legacy
 `scripts/run-rds-migration.sh` and direct `db/apply_saas_control.js` commands do
-not persist this lifecycle marker and must not be treated as the B5-G task
+not persist this lifecycle marker and must not be treated as the B5-H task
 provider. No image was built or deployed, no ECS task ran, no AWS/Neon endpoint
-was contacted, and no SQL was applied in B5-G.
+was contacted, and no SQL was applied in B5-H.
 
-The CLI currently emits only one deterministic, secret-free operation result.
-It does not claim an ECS task ARN or construct the platform's final receipt. A
-future bounded receipt transport must independently bind that raw result to an
-exact DescribeTasks observation and reviewed request, then let the platform
-construct `requestHash`, `outputHash`, and `receiptHash`. Until that reader is
-implemented and exercised, a real ECS canary remains prohibited.
+The B5-H CLI validates an immutable receipt destination and asks the injected
+publisher for the exact existing object before any Secret or database access.
+An exact existing envelope returns its frozen operation output immediately. A
+disabled/incomplete publisher, S3 permission or timeout error, corrupt object,
+or foreign fence therefore fails before lifecycle work; only a strict S3
+`NoSuchKey` permits Secret resolution and database access. The destination
+requires all three controlled values:
+
+- `TENANT_RECEIPT_BUCKET`, exactly
+  `techlong-sandbox-<account>-<region>-tenant-receipts`, derived from the
+  generation-bound runtime Secret ARN;
+- `TENANT_RECEIPT_EXPECTED_BUCKET_OWNER`, exactly matching the account in the
+  generation-bound runtime Secret ARN; and
+- `TENANT_RECEIPT_KEY`, exactly
+  `tenant-lifecycle/v1/<stable-hash>/g<generation>/<idempotency-sha256>.json`,
+  with the stable hash and generation cross-checked against the lifecycle
+  ownership marker.
+
+After a successful lifecycle operation, the injected publisher constructs one
+canonical UTF-8 JSON line of at most 4096 bytes. Its exact fields are
+`schemaVersion`, `operation`, `resourceGeneration`, `ownershipMarker`,
+`externalEpoch`, `externalMarker`, `externalOperationHash`, `output`, and
+`outputHash`. Operation output has its own strict allowlist, so database URLs,
+credentials, and arbitrary provider data cannot enter the object. The raw
+envelope deliberately does not claim an ECS task ARN, platform request hash, or
+final receipt hash.
+
+The AWS SDK v3 object-store adapter is dependency-injected and checks the S3
+client region against the Secret ARN region. It writes with
+`ExpectedBucketOwner`, `Content-Type: application/json`, `If-None-Match: *`, a
+full-object SHA-256 checksum, and `AES256` server-side encryption. If S3 reports
+a precondition failure or the response is lost, it reads the exact key with
+checksum mode enabled and accepts the retry only when owner enforcement,
+content type, encryption, checksum, and canonical bytes all match. A collision
+fails closed. The default CLI wires only the disabled publisher and emits a
+fixed status line rather than treating logs as a second receipt channel.
+
+The read-before-work rule also closes the response-loss replay gap. If a write
+was never accepted, a later `NoSuchKey` retry may safely execute the idempotent
+database transition and publish its `already_applied`/`already_missing` output.
+If S3 accepted the original bytes but both responses were lost, the next task
+returns the original immutable `applied`/`deleted` output without touching the
+Secret or database. It never guesses that two different lifecycle outputs are
+equivalent.
+
+The platform must still independently bind this raw envelope to the reviewed
+request and exact `DescribeTasks` observation before it constructs
+`requestHash`, the final receipt hash, or accepts an ECS task. Until that reader
+and production providers are wired and exercised, a real ECS canary remains
+prohibited.
 
 ### Tenant baseline data policy
 

@@ -536,6 +536,27 @@ test('destroy requires the stored provision predecessor and is idempotent after 
   assert.equal(databasePort.destroyWrites, 1);
 });
 
+test('destroy accepts an exact older provision predecessor across a failed epoch gap', async () => {
+  const { databasePort, service } = harness();
+  await service.execute(input('prepare_empty_database'));
+
+  const deleted = await service.execute(
+    input('destroy', {
+      TENANT_EXTERNAL_OPERATION_EPOCH: '3',
+      TENANT_EXTERNAL_OPERATION_MARKER:
+        `tl_epoch_${OWNERSHIP_PREFIX.slice(0, 24)}_g1_e3`,
+      TENANT_EXTERNAL_OPERATION_HASH: CLEANUP_HASH,
+      TENANT_PREDECESSOR_PROVISION_EPOCH: '1',
+      TENANT_PREDECESSOR_PROVISION_MARKER:
+        `tl_epoch_${OWNERSHIP_PREFIX.slice(0, 24)}_g1_e1`,
+      TENANT_PREDECESSOR_PROVISION_OPERATION_HASH: PROVISION_HASH,
+    }),
+  );
+
+  assert.equal(deleted.outcome, 'deleted');
+  assert.equal(databasePort.destroyWrites, 1);
+});
+
 test('standalone entrypoint remains fail closed with disabled real providers', async () => {
   await assert.rejects(
     runTenantLifecycleTask({
