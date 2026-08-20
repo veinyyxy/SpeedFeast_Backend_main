@@ -77,6 +77,12 @@ router.post('/provision', async (req, res) => {
     const result = await provisionInstance(req.body || {}, {
       idempotencyKey:
         req.headers['idempotency-key'] || req.body?.idempotency_key,
+      externalOperation: {
+        epoch: req.headers['x-techlong-external-operation-epoch'],
+        intent: req.headers['x-techlong-external-operation-intent'],
+        marker: req.headers['x-techlong-external-operation-marker'],
+        operationHash: req.headers['x-techlong-external-operation-hash'],
+      },
       actor: req.saasActor,
     });
     return res.status(result.replayed ? 200 : 201).json(result);

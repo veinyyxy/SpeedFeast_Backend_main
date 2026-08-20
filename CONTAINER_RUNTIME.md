@@ -136,6 +136,25 @@ inspecting or changing the destination. `APP_DB_USER` must be a new,
 non-reserved cluster role; an existing role is a hard failure and is never
 adopted or assigned a new password.
 
+### B5-F one-shot integration status
+
+The SaaS platform now has an offline, SDK-free boundary for injected ECS
+`RunTask`, exact `startedBy` recovery, `DescribeTasks`, and `StopTask`. Its
+reviewed request contract carries only a generation-bound runtime Secret ARN,
+fixed code-owned command, active external-operation epoch, and—where
+required—an independently approved baseline digest. The corresponding Secret
+must be physically named under `/runtime/gN` and contain exactly
+`database_url`, `hmac_secret_key`, `jwt_secret_key`, `stripe_secret_key`, and
+`stripe_webhook_secret`.
+
+This repository does not yet provide the ARN-native tenant lifecycle helper or
+task image expected by that boundary. In particular, the current migration
+image and `db/apply_saas_control.js` do not resolve the five-key Secret from a
+passed ARN, so they must not be wired to the new one-shot contract as-is. The
+platform also has no real AWS SDK provider or Worker root wiring. B5-F did not
+build or deploy an image, run an ECS task, contact AWS/Neon, or apply the new
+SaaS control SQL.
+
 ### Tenant baseline data policy
 
 Hash verification alone does not make a database export safe for a new

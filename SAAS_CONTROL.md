@@ -6,11 +6,13 @@ tables.
 
 ## Architecture
 
-- `saas_instances` stores the local instance identity and operational state.
+- `saas_instances` stores the local instance identity, operational state, and
+  the latest accepted external-operation epoch.
 - `saas_entitlements` stores typed, allowlisted quota, feature, and policy keys.
 - `saas_licenses` stores signed license metadata and only a SHA-256 token hash.
 - `saas_access_leases` tracks active buyer devices by a SHA-256 device hash.
-- `saas_provisioning_operations` makes initial provisioning idempotent.
+- `saas_provisioning_operations` makes initial provisioning idempotent inside
+  the same transaction as the external-epoch compare-and-set.
 - `saas_audit_logs` records every control-plane mutation.
 - Store names and app themes remain store-scoped in `system_config`.
 
@@ -99,7 +101,13 @@ Initial provisioning requires an `Idempotency-Key` header. Example body:
 {
   "instance": {
     "external_instance_id": "merchant-123",
-    "metadata": { "plan": "growth" }
+    "metadata": {
+      "plan": "growth",
+      "external_operation_epoch": 7,
+      "external_operation_intent": "provision",
+      "external_operation_marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+      "external_operation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
   },
   "entitlements": {
     "buyer.accounts.max": 500,
@@ -135,6 +143,55 @@ Initial provisioning requires an `Idempotency-Key` header. Example body:
   }
 }
 ```
+
+The request must also carry the exact same fence in these authenticated mTLS
+request headers:
+
+```text
+X-Techlong-External-Operation-Epoch: 7
+X-Techlong-External-Operation-Intent: provision
+X-Techlong-External-Operation-Marker: tl_epoch_0123456789abcdef01234567_g1_e7
+X-Techlong-External-Operation-Hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+All four values are mandatory. The service locks the singleton
+`saas_instances` row and compares the headers to the normalized body metadata.
+It accepts an unadopted instance or a strictly greater epoch. The same epoch is
+idempotent only when its intent, marker, operation hash, and complete normalized
+request hash all match. An older epoch returns
+`SAAS_EXTERNAL_OPERATION_STALE`; same-epoch drift returns
+`SAAS_EXTERNAL_OPERATION_CONFLICT`. Extra metadata cannot bypass this check
+because it is included in the normalized request hash.
+
+The epoch CAS, provisioning mutation, idempotency claim, and both stored
+receipts commit in one PostgreSQL transaction. A failure rolls all of them
+back. Successful and replayed `POST /api/saas/provision` responses expose these
+root fields exactly:
+
+```json
+{
+  "external_operation_epoch": 7,
+  "external_operation_intent": "provision",
+  "external_operation_marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+  "external_operation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
+```
+
+`GET /api/saas/control` returns the same four root fields. They are `null` on
+an upgraded database until the first fenced provision request explicitly
+adopts an epoch. This fail-closed behavior avoids inventing ownership for a
+legacy instance.
+
+This fence is currently implemented only for `POST /api/saas/provision`.
+`PUT /api/saas/entitlements`, `PUT /api/saas/instance`,
+`POST /api/saas/license`, and the store-branding write endpoint do not yet
+consume an external-operation epoch and must not be exposed as deployment
+reconciliation writes until they receive an equivalent reviewed fence.
+
+These control API v1.2 changes and the idempotent SQL migration are source
+artifacts in this repository. They have not been applied to a tenant database,
+built into a promoted image, or deployed by the B5-F offline work. Until that
+happens, a running v1.1 service does not provide this CAS guarantee.
 
 Use a deterministic key such as
 `provision:<app-instance-id>:<configuration-hash>`. Claiming that key uses an

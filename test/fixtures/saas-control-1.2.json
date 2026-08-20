@@ -1,0 +1,62 @@
+{
+  "fixture_version": 1,
+  "request": {
+    "app_instance_id": "app-instance-contract-001",
+    "idempotency_seed": "contract-fixture-provision-key",
+    "idempotency_key": "tlctl-fe03330e543ddd17c0753fba2c687a97-e7-aaaaaaaaaaaaaaaa",
+    "headers": {
+      "x-techlong-external-operation-epoch": "7",
+      "x-techlong-external-operation-intent": "provision",
+      "x-techlong-external-operation-marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+      "x-techlong-external-operation-hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "metadata": {
+      "configuration_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "external_operation_epoch": 7,
+      "external_operation_intent": "provision",
+      "external_operation_marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+      "external_operation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "provision_first": {
+    "http_status": 201,
+    "body": {
+      "success": true,
+      "replayed": false,
+      "external_operation_epoch": 7,
+      "external_operation_intent": "provision",
+      "external_operation_marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+      "external_operation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "provision_replay": {
+    "http_status": 200,
+    "body": {
+      "success": true,
+      "replayed": true,
+      "external_operation_epoch": 7,
+      "external_operation_intent": "provision",
+      "external_operation_marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+      "external_operation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "control_get": {
+    "http_status": 200,
+    "body": {
+      "success": true,
+      "control": {
+        "control_api_version": "1.2",
+        "desired_configuration_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "image_revision": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "external_operation_epoch": 7,
+        "external_operation_intent": "provision",
+        "external_operation_marker": "tl_epoch_0123456789abcdef01234567_g1_e7",
+        "external_operation_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "instance": {
+          "external_instance_id": "app-instance-contract-001",
+          "status": "active"
+        }
+      }
+    }
+  }
+}

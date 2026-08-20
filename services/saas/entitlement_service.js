@@ -79,6 +79,10 @@ async function lockSaasInstance(db) {
   const result = await db.query(
     `
       SELECT instance_id, external_instance_id, status, metadata,
+             external_operation_epoch, external_operation_intent,
+             external_operation_marker, external_operation_hash,
+             external_operation_request_sha256, external_operation_result,
+             external_operation_updated_at,
              provisioned_at, created_at, updated_at
       FROM public.saas_instances
       WHERE singleton_key = TRUE
@@ -98,6 +102,13 @@ async function getSaasInstanceState(db = pool) {
              instances.external_instance_id,
              instances.status,
              instances.metadata,
+             instances.external_operation_epoch,
+             instances.external_operation_intent,
+             instances.external_operation_marker,
+             instances.external_operation_hash,
+             instances.external_operation_request_sha256,
+             instances.external_operation_result,
+             instances.external_operation_updated_at,
              instances.provisioned_at,
              instances.created_at,
              instances.updated_at,

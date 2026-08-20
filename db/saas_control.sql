@@ -7,10 +7,100 @@ CREATE TABLE IF NOT EXISTS public.saas_instances (
   status text NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'suspended')),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  external_operation_epoch bigint,
+  external_operation_intent text,
+  external_operation_marker text,
+  external_operation_hash char(64),
+  external_operation_request_sha256 char(64),
+  external_operation_result jsonb,
+  external_operation_updated_at timestamptz,
   provisioned_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ck_saas_instances_external_operation_epoch
+    CHECK (
+      num_nonnulls(
+        external_operation_epoch,
+        external_operation_intent,
+        external_operation_marker,
+        external_operation_hash,
+        external_operation_request_sha256,
+        external_operation_updated_at
+      ) = 0
+      OR (
+        num_nonnulls(
+          external_operation_epoch,
+          external_operation_intent,
+          external_operation_marker,
+          external_operation_hash,
+          external_operation_request_sha256,
+          external_operation_updated_at
+        ) = 6
+        AND external_operation_epoch >= 1
+        AND external_operation_intent = 'provision'
+        AND external_operation_marker ~
+          '^tl_epoch_[0-9a-f]{24}_g[1-9][0-9]*_e[1-9][0-9]*$'
+        AND external_operation_marker LIKE
+          ('%_e' || external_operation_epoch::text)
+        AND external_operation_hash ~ '^[0-9a-f]{64}$'
+        AND external_operation_request_sha256 ~ '^[0-9a-f]{64}$'
+      )
+    )
 );
+
+-- Upgrade existing installations without replacing the singleton row. The
+-- columns remain NULL until the first fenced provision request explicitly
+-- adopts an epoch; migration itself never invents provider ownership.
+ALTER TABLE public.saas_instances
+  ADD COLUMN IF NOT EXISTS external_operation_epoch bigint,
+  ADD COLUMN IF NOT EXISTS external_operation_intent text,
+  ADD COLUMN IF NOT EXISTS external_operation_marker text,
+  ADD COLUMN IF NOT EXISTS external_operation_hash char(64),
+  ADD COLUMN IF NOT EXISTS external_operation_request_sha256 char(64),
+  ADD COLUMN IF NOT EXISTS external_operation_result jsonb,
+  ADD COLUMN IF NOT EXISTS external_operation_updated_at timestamptz;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'public.saas_instances'::regclass
+      AND conname = 'ck_saas_instances_external_operation_epoch'
+  ) THEN
+    ALTER TABLE public.saas_instances
+      ADD CONSTRAINT ck_saas_instances_external_operation_epoch
+      CHECK (
+        num_nonnulls(
+          external_operation_epoch,
+          external_operation_intent,
+          external_operation_marker,
+          external_operation_hash,
+          external_operation_request_sha256,
+          external_operation_updated_at
+        ) = 0
+        OR (
+          num_nonnulls(
+            external_operation_epoch,
+            external_operation_intent,
+            external_operation_marker,
+            external_operation_hash,
+            external_operation_request_sha256,
+            external_operation_updated_at
+          ) = 6
+          AND external_operation_epoch >= 1
+          AND external_operation_intent = 'provision'
+          AND external_operation_marker ~
+            '^tl_epoch_[0-9a-f]{24}_g[1-9][0-9]*_e[1-9][0-9]*$'
+          AND external_operation_marker LIKE
+            ('%_e' || external_operation_epoch::text)
+          AND external_operation_hash ~ '^[0-9a-f]{64}$'
+          AND external_operation_request_sha256 ~ '^[0-9a-f]{64}$'
+        )
+      );
+  END IF;
+END
+$$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_saas_instances_singleton
   ON public.saas_instances(singleton_key);

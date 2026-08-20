@@ -26,9 +26,12 @@ const {
 } = require('./quota_service');
 const { verifyLicenseToken } = require('./saas_auth');
 
-const CONTROL_API_VERSION = '1.1';
+const CONTROL_API_VERSION = '1.2';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const EXTERNAL_OPERATION_MARKER_PATTERN =
+  /^tl_epoch_[0-9a-f]{24}_g[1-9][0-9]*_e([1-9][0-9]*)$/;
 
 function normalizeText(value) {
   if (value === undefined || value === null) return '';
@@ -99,6 +102,190 @@ function actorFields(actor) {
     actorSubject: normalizeText(actor?.subject) || 'unknown-saas-actor',
     actorTokenId: normalizeText(actor?.tokenId) || null,
   };
+}
+
+function externalOperationError(message, code, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
+function normalizeProvisioningExternalOperation(metadata, input = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    throw externalOperationError(
+      'instance.metadata must contain the external operation fence',
+      'SAAS_EXTERNAL_OPERATION_REQUIRED'
+    );
+  }
+  const rawHeaderEpoch = input.epoch;
+  if (
+    typeof rawHeaderEpoch !== 'string' ||
+    !/^[1-9][0-9]*$/.test(rawHeaderEpoch)
+  ) {
+    throw externalOperationError(
+      'External operation epoch header must be a canonical positive integer',
+      'SAAS_EXTERNAL_OPERATION_REQUIRED'
+    );
+  }
+  const epoch = Number(rawHeaderEpoch);
+  if (!Number.isSafeInteger(epoch) || epoch < 1) {
+    throw externalOperationError(
+      'External operation epoch exceeds the supported integer range',
+      'SAAS_EXTERNAL_OPERATION_INVALID'
+    );
+  }
+  if (input.intent !== 'provision') {
+    throw externalOperationError(
+      'External operation intent must be provision',
+      'SAAS_EXTERNAL_OPERATION_INVALID'
+    );
+  }
+  const marker = typeof input.marker === 'string' ? input.marker : '';
+  const markerMatch = marker.match(EXTERNAL_OPERATION_MARKER_PATTERN);
+  if (!markerMatch || markerMatch[1] !== String(epoch)) {
+    throw externalOperationError(
+      'External operation marker is invalid for the supplied epoch',
+      'SAAS_EXTERNAL_OPERATION_INVALID'
+    );
+  }
+  const operationHash = typeof input.operationHash === 'string'
+    ? input.operationHash
+    : '';
+  if (!SHA256_PATTERN.test(operationHash)) {
+    throw externalOperationError(
+      'External operation hash must be a lowercase SHA-256 digest',
+      'SAAS_EXTERNAL_OPERATION_INVALID'
+    );
+  }
+
+  if (
+    metadata.external_operation_epoch !== epoch ||
+    metadata.external_operation_intent !== 'provision' ||
+    metadata.external_operation_marker !== marker ||
+    metadata.external_operation_hash !== operationHash
+  ) {
+    throw externalOperationError(
+      'External operation headers and instance metadata must match exactly',
+      'SAAS_EXTERNAL_OPERATION_MISMATCH',
+      409
+    );
+  }
+  return { epoch, intent: 'provision', marker, operationHash };
+}
+
+function externalOperationReceipt(externalOperation) {
+  return {
+    external_operation_epoch: externalOperation.epoch,
+    external_operation_intent: externalOperation.intent,
+    external_operation_marker: externalOperation.marker,
+    external_operation_hash: externalOperation.operationHash,
+  };
+}
+
+function assertStoredProvisioningResult(result, externalOperation) {
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    Array.isArray(result) ||
+    result.success !== true ||
+    result.external_operation_epoch !== externalOperation.epoch ||
+    result.external_operation_intent !== externalOperation.intent ||
+    result.external_operation_marker !== externalOperation.marker ||
+    result.external_operation_hash !== externalOperation.operationHash
+  ) {
+    throw externalOperationError(
+      'Stored provisioning receipt does not match the active external epoch',
+      'SAAS_EXTERNAL_OPERATION_RECEIPT_INVALID',
+      503
+    );
+  }
+  return result;
+}
+
+function persistedEpoch(value) {
+  if (value === undefined || value === null) return null;
+  const epoch = typeof value === 'number' ? value : Number(value);
+  if (!Number.isSafeInteger(epoch) || epoch < 1) {
+    throw externalOperationError(
+      'Stored external operation epoch is invalid',
+      'SAAS_EXTERNAL_OPERATION_STATE_INVALID',
+      503
+    );
+  }
+  return epoch;
+}
+
+async function claimProvisioningExternalEpoch(
+  db,
+  { instance, externalOperation, requestHash }
+) {
+  const currentEpoch = persistedEpoch(instance.external_operation_epoch);
+  if (currentEpoch !== null && externalOperation.epoch < currentEpoch) {
+    throw externalOperationError(
+      'Provisioning request uses an older external operation epoch',
+      'SAAS_EXTERNAL_OPERATION_STALE',
+      409
+    );
+  }
+  if (currentEpoch === externalOperation.epoch) {
+    const exactMatch =
+      instance.external_operation_intent === externalOperation.intent &&
+      normalizeText(instance.external_operation_marker) === externalOperation.marker &&
+      normalizeText(instance.external_operation_hash) === externalOperation.operationHash &&
+      normalizeText(instance.external_operation_request_sha256) === requestHash;
+    if (!exactMatch) {
+      throw externalOperationError(
+        'The external operation epoch is already bound to another request',
+        'SAAS_EXTERNAL_OPERATION_CONFLICT',
+        409
+      );
+    }
+    return {
+      advanced: false,
+      replayResult: instance.external_operation_result
+        ? assertStoredProvisioningResult(
+            instance.external_operation_result,
+            externalOperation
+          )
+        : null,
+    };
+  }
+
+  const updated = await db.query(
+    `
+      UPDATE public.saas_instances
+      SET external_operation_epoch = $2,
+          external_operation_intent = $3,
+          external_operation_marker = $4,
+          external_operation_hash = $5,
+          external_operation_request_sha256 = $6,
+          external_operation_result = NULL,
+          external_operation_updated_at = now(),
+          updated_at = now()
+      WHERE instance_id = $1::uuid
+        AND (
+          external_operation_epoch IS NULL
+          OR external_operation_epoch < $2
+        )
+    `,
+    [
+      instance.instance_id,
+      externalOperation.epoch,
+      externalOperation.intent,
+      externalOperation.marker,
+      externalOperation.operationHash,
+      requestHash,
+    ]
+  );
+  if (updated.rowCount !== 1) {
+    throw externalOperationError(
+      'External operation epoch could not be advanced atomically',
+      'SAAS_EXTERNAL_OPERATION_CAS_FAILED',
+      409
+    );
+  }
+  return { advanced: true, replayResult: null };
 }
 
 function assertProvisioningInstanceIdentity(request, actor, instance = null) {
@@ -195,6 +382,26 @@ async function claimProvisioningOperation(
   error.statusCode = 409;
   error.code = 'SAAS_PROVISIONING_IN_PROGRESS';
   throw error;
+}
+
+async function completeProvisioningOperation(db, idempotencyKey, result) {
+  const completed = await db.query(
+    `
+      UPDATE public.saas_provisioning_operations
+      SET status = 'completed',
+          result = $2::jsonb,
+          completed_at = now()
+      WHERE idempotency_key = $1
+        AND status = 'processing'
+    `,
+    [idempotencyKey, JSON.stringify(result)]
+  );
+  if (completed.rowCount !== 1) {
+    const error = new Error('Provisioning operation could not be completed');
+    error.statusCode = 503;
+    error.code = 'SAAS_PROVISIONING_UNAVAILABLE';
+    throw error;
+  }
 }
 
 function normalizeFirstOwner(value) {
@@ -342,7 +549,7 @@ async function createFirstOwner(db, owner, { actorSubject }) {
 
 async function provisionInstance(
   body,
-  { idempotencyKey, actor, dbPool = pool } = {}
+  { idempotencyKey, externalOperation, actor, dbPool = pool } = {}
 ) {
   const normalizedKey = normalizeText(idempotencyKey);
   if (!/^[A-Za-z0-9._:-]{8,128}$/.test(normalizedKey)) {
@@ -355,6 +562,10 @@ async function provisionInstance(
   }
   const request = normalizeProvisioningRequest(body);
   const requestHash = sha256Json(request);
+  const operationFence = normalizeProvisioningExternalOperation(
+    request.instance.metadata,
+    externalOperation
+  );
   const actorInfo = actorFields(actor);
   const client = await dbPool.connect();
   let storeChanged = false;
@@ -362,6 +573,11 @@ async function provisionInstance(
     await client.query('BEGIN');
     const instance = await lockSaasInstance(client);
     assertProvisioningInstanceIdentity(request, actor, instance);
+    const epochClaim = await claimProvisioningExternalEpoch(client, {
+      instance,
+      externalOperation: operationFence,
+      requestHash,
+    });
     const operation = await claimProvisioningOperation(client, {
       idempotencyKey: normalizedKey,
       instanceId: instance.instance_id,
@@ -369,11 +585,21 @@ async function provisionInstance(
       actorSubject: actorInfo.actorSubject,
     });
     if (operation.replayed) {
+      assertStoredProvisioningResult(operation.result, operationFence);
       await client.query('COMMIT');
-      return { replayed: true, ...operation.result };
+      return { ...operation.result, replayed: true };
+    }
+    if (epochClaim.replayResult) {
+      await completeProvisioningOperation(
+        client,
+        normalizedKey,
+        epochClaim.replayResult
+      );
+      await client.query('COMMIT');
+      return { ...epochClaim.replayResult, replayed: true };
     }
 
-    await client.query(
+    const instanceUpdate = await client.query(
       `
         UPDATE public.saas_instances
         SET external_instance_id = COALESCE($1, external_instance_id),
@@ -382,13 +608,30 @@ async function provisionInstance(
             provisioned_at = COALESCE(provisioned_at, now()),
             updated_at = now()
         WHERE instance_id = $3::uuid
+          AND external_operation_epoch = $4
+          AND external_operation_intent = $5
+          AND external_operation_marker = $6
+          AND external_operation_hash = $7
+          AND external_operation_request_sha256 = $8
       `,
       [
         request.instance.externalInstanceId,
         JSON.stringify(request.instance.metadata),
         instance.instance_id,
+        operationFence.epoch,
+        operationFence.intent,
+        operationFence.marker,
+        operationFence.operationHash,
+        requestHash,
       ]
     );
+    if (instanceUpdate.rowCount !== 1) {
+      throw externalOperationError(
+        'Provisioning lost the active external operation epoch',
+        'SAAS_EXTERNAL_OPERATION_CAS_FAILED',
+        409
+      );
+    }
 
     if (Object.keys(request.entitlements).length > 0) {
       await upsertEntitlements(client, request.entitlements, {
@@ -425,6 +668,7 @@ async function provisionInstance(
     });
     const result = {
       success: true,
+      ...externalOperationReceipt(operationFence),
       instance_id: instance.instance_id,
       store_id: storeId,
       entitlements: await getEntitlementValues(client, { bypassCache: true }),
@@ -441,19 +685,44 @@ async function provisionInstance(
         store_id: storeId,
         entitlements: request.entitlements,
         first_owner_created: Boolean(firstOwner?.created),
+        ...externalOperationReceipt(operationFence),
       },
-      metadata: { idempotency_key: normalizedKey },
+      metadata: {
+        idempotency_key: normalizedKey,
+        ...externalOperationReceipt(operationFence),
+      },
     });
-    await client.query(
+    const receiptUpdate = await client.query(
       `
-        UPDATE public.saas_provisioning_operations
-        SET status = 'completed',
-            result = $2::jsonb,
-            completed_at = now()
-        WHERE idempotency_key = $1
+        UPDATE public.saas_instances
+        SET external_operation_result = $2::jsonb,
+            external_operation_updated_at = now(),
+            updated_at = now()
+        WHERE instance_id = $1::uuid
+          AND external_operation_epoch = $3
+          AND external_operation_intent = $4
+          AND external_operation_marker = $5
+          AND external_operation_hash = $6
+          AND external_operation_request_sha256 = $7
       `,
-      [normalizedKey, JSON.stringify(result)]
+      [
+        instance.instance_id,
+        JSON.stringify(result),
+        operationFence.epoch,
+        operationFence.intent,
+        operationFence.marker,
+        operationFence.operationHash,
+        requestHash,
+      ]
     );
+    if (receiptUpdate.rowCount !== 1) {
+      throw externalOperationError(
+        'Provisioning receipt lost the active external operation epoch',
+        'SAAS_EXTERNAL_OPERATION_CAS_FAILED',
+        409
+      );
+    }
+    await completeProvisioningOperation(client, normalizedKey, result);
     await client.query('COMMIT');
     clearEntitlementCache();
     if (storeChanged) clearStoreCache();
@@ -836,6 +1105,15 @@ async function getControlSummary(
   );
   return {
     control_api_version: CONTROL_API_VERSION,
+    external_operation_epoch: persistedEpoch(
+      instance?.external_operation_epoch
+    ),
+    external_operation_intent:
+      normalizeText(instance?.external_operation_intent) || null,
+    external_operation_marker:
+      normalizeText(instance?.external_operation_marker) || null,
+    external_operation_hash:
+      normalizeText(instance?.external_operation_hash) || null,
     image_revision: imageRevision(env),
     configuration_hash: sha256Json(configuration),
     desired_configuration_hash:
@@ -851,12 +1129,15 @@ async function getControlSummary(
 
 module.exports = {
   CONTROL_API_VERSION,
+  claimProvisioningExternalEpoch,
   assertProvisioningInstanceIdentity,
+  completeProvisioningOperation,
   claimProvisioningOperation,
   effectiveConfigurationSnapshot,
   getControlSummary,
   imageRevision,
   installLicense,
+  normalizeProvisioningExternalOperation,
   normalizeProvisioningRequest,
   provisionInstance,
   sha256Json,
