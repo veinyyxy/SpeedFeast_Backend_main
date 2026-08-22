@@ -7,6 +7,8 @@ const PRODUCTION_RDS_ROOT_CERTIFICATE =
   '/usr/local/share/ca-certificates/aws-rds-global-bundle.pem';
 
 const {
+  SANDBOX_EPHEMERAL_CANARY_MODE,
+  allowsSandboxEphemeralImageStorage,
   buildCorsOptions,
   buildPostgresConfig,
   isProductionEnvironment,
@@ -74,6 +76,41 @@ test('production validation accepts the AWS container runtime contract', () => {
   assert.doesNotThrow(() =>
     validateProductionEnvironment(validProductionEnvironment())
   );
+});
+
+test('production local image storage requires both exact sandbox canary gates', () => {
+  const localCanary = validProductionEnvironment({
+    APP_RUNTIME_MODE: SANDBOX_EPHEMERAL_CANARY_MODE,
+    ALLOW_EPHEMERAL_IMAGE_STORAGE: 'true',
+    IMAGE_STORAGE_PROVIDER: 'local',
+    IMAGE_PUBLIC_BASE_URL: '',
+    IMAGE_S3_BUCKET: '',
+  });
+
+  assert.equal(allowsSandboxEphemeralImageStorage(localCanary), true);
+  assert.doesNotThrow(() => validateProductionEnvironment(localCanary));
+
+  for (const overrides of [
+    { APP_RUNTIME_MODE: '', ALLOW_EPHEMERAL_IMAGE_STORAGE: 'true' },
+    {
+      APP_RUNTIME_MODE: SANDBOX_EPHEMERAL_CANARY_MODE,
+      ALLOW_EPHEMERAL_IMAGE_STORAGE: '',
+    },
+    {
+      APP_RUNTIME_MODE: SANDBOX_EPHEMERAL_CANARY_MODE,
+      ALLOW_EPHEMERAL_IMAGE_STORAGE: 'TRUE',
+    },
+    {
+      APP_RUNTIME_MODE: SANDBOX_EPHEMERAL_CANARY_MODE,
+      ALLOW_EPHEMERAL_IMAGE_STORAGE: 'true ',
+    },
+    { APP_RUNTIME_MODE: 'production', ALLOW_EPHEMERAL_IMAGE_STORAGE: 'true' },
+  ]) {
+    assert.throws(
+      () => validateProductionEnvironment({ ...localCanary, ...overrides }),
+      /APP_RUNTIME_MODE=aws_sandbox_ephemeral_canary.*ALLOW_EPHEMERAL_IMAGE_STORAGE=true/
+    );
+  }
 });
 
 test('production validation rejects a mutable image revision', () => {

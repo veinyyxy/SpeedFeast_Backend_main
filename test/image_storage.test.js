@@ -38,6 +38,36 @@ test('production requires an explicit image storage provider', () => {
   );
 });
 
+test('production local storage is fail-closed outside the exact ephemeral canary', () => {
+  assert.throws(
+    () => resolveImageStorageConfig({
+      NODE_ENV: 'production',
+      IMAGE_STORAGE_PROVIDER: 'local',
+    }),
+    /exact sandbox ephemeral canary gates/
+  );
+  assert.throws(
+    () => resolveImageStorageConfig({
+      NODE_ENV: 'production',
+      IMAGE_STORAGE_PROVIDER: 'local',
+      APP_RUNTIME_MODE: 'aws_sandbox_ephemeral_canary',
+      ALLOW_EPHEMERAL_IMAGE_STORAGE: 'true ',
+    }),
+    /exact sandbox ephemeral canary gates/
+  );
+  assert.deepEqual(resolveImageStorageConfig({
+    NODE_ENV: 'production',
+    IMAGE_STORAGE_PROVIDER: 'local',
+    APP_RUNTIME_MODE: 'aws_sandbox_ephemeral_canary',
+    ALLOW_EPHEMERAL_IMAGE_STORAGE: 'true',
+  }), {
+    provider: 'local',
+    bucket: null,
+    region: null,
+    publicBaseUrl: '/images',
+  });
+});
+
 test('S3 storage requires bucket, region, and public base URL', () => {
   assert.throws(
     () => resolveImageStorageConfig({ IMAGE_STORAGE_PROVIDER: 's3' }),

@@ -74,14 +74,26 @@ Values below are names and sources only; no secret value belongs in Git.
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Secrets Manager | Test keys in Sandbox, live keys only in production |
 | `STRIPE_PUBLISHABLE_KEY` | deployment configuration | Must match the selected Stripe environment |
 | `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL` | deployment configuration | HTTPS tenant buyer URLs |
-| `IMAGE_STORAGE_PROVIDER` | task environment | `s3` |
-| `IMAGE_S3_BUCKET`, `IMAGE_PUBLIC_BASE_URL`, `AWS_REGION` | Cell/deployment configuration | Tenant prefix and HTTPS public base URL |
+| `IMAGE_STORAGE_PROVIDER` | task environment | `s3`; the single-tenant Sandbox canary may temporarily use `local` only with both gates below |
+| `APP_RUNTIME_MODE`, `ALLOW_EPHEMERAL_IMAGE_STORAGE` | task environment | Exact values `aws_sandbox_ephemeral_canary` and `true` are required together for production-mode local storage |
+| `IMAGE_S3_BUCKET`, `IMAGE_PUBLIC_BASE_URL`, `AWS_REGION` | Cell/deployment configuration | Bucket/base URL are required for S3; `AWS_REGION` remains required by the container contract |
 | `SMS_PROVIDER` | deployment configuration | `demo` in Sandbox; configured provider in production |
 
 The task security group must accept application traffic only from the Cell ALB
 security group when proxy mTLS headers are trusted. The public listener must
 reject `/api/saas` and `/api/saas/*`; only the separate mTLS listener may route
 those paths.
+
+> **Sandbox canary only — uploaded files are disposable.** The controlled
+> single-tenant canary uses local `/app/images` storage so it can run before a
+> per-tenant S3 TaskRole design expands IAM. The distroless container runs as
+> uid/gid `65532` and owns that directory, but it is only task-local Fargate
+> storage: a task restart, replacement, deployment, or stack cleanup permanently
+> removes every uploaded image and can leave stale database URLs. Do not upload
+> real customer material, do not use this mode to test asset durability, and do
+> not treat a successful canary as production readiness. Any production runtime
+> outside the exact two-gate canary mode still fails startup unless image storage
+> is S3.
 
 The RDS global CA bundle is part of the immutable image at
 `/usr/local/share/ca-certificates/aws-rds-global-bundle.pem`. Both Dockerfiles

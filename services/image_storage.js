@@ -1,4 +1,7 @@
 const path = require('path');
+const {
+  allowsSandboxEphemeralImageStorage,
+} = require('./runtime_config');
 
 const SUPPORTED_IMAGE_MIMES = Object.freeze({
   'image/jpeg': '.jpg',
@@ -19,6 +22,16 @@ function normalizeProvider(value, env) {
   const provider = (value || 'local').toString().trim().toLowerCase();
   if (provider !== 'local' && provider !== 's3') {
     throw new Error('IMAGE_STORAGE_PROVIDER must be either "local" or "s3"');
+  }
+  if (
+    provider === 'local' &&
+    isProductionEnvironment(env) &&
+    !allowsSandboxEphemeralImageStorage(env)
+  ) {
+    throw new Error(
+      'IMAGE_STORAGE_PROVIDER=local in production requires the exact ' +
+      'sandbox ephemeral canary gates'
+    );
   }
   return provider;
 }

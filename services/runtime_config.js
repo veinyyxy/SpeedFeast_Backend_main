@@ -3,6 +3,7 @@ const net = require('node:net');
 
 const PRODUCTION_ENVS = new Set(['prod', 'production']);
 const IMAGE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const SANDBOX_EPHEMERAL_CANARY_MODE = 'aws_sandbox_ephemeral_canary';
 const PRODUCTION_RDS_ROOT_CERTIFICATE =
   '/usr/local/share/ca-certificates/aws-rds-global-bundle.pem';
 const DATABASE_URL_TLS_PARAMETERS = new Set([
@@ -38,16 +39,24 @@ function isProductionEnvironment(env = process.env) {
   return PRODUCTION_ENVS.has(String(env.NODE_ENV || '').trim().toLowerCase());
 }
 
+function allowsSandboxEphemeralImageStorage(env = process.env) {
+  return isProductionEnvironment(env) &&
+    String(env.APP_RUNTIME_MODE || '') ===
+      SANDBOX_EPHEMERAL_CANARY_MODE &&
+    String(env.ALLOW_EPHEMERAL_IMAGE_STORAGE || '') === 'true';
+}
+
 function validateProductionEnvironment(env = process.env) {
   if (!isProductionEnvironment(env)) return;
 
+  const imageStorageProvider = String(
+    env.IMAGE_STORAGE_PROVIDER || ''
+  ).trim().toLowerCase();
   const required = [
     'APP_IMAGE_REVISION',
     'AWS_REGION',
     'CORS_ALLOWED_ORIGINS',
     'HMAC_SECRET_KEY',
-    'IMAGE_PUBLIC_BASE_URL',
-    'IMAGE_S3_BUCKET',
     'IMAGE_STORAGE_PROVIDER',
     'JWT_SECRET_KEY',
     'JWT_EXPIRES_IN',
@@ -66,6 +75,10 @@ function validateProductionEnvironment(env = process.env) {
     'SAAS_TRUST_PROXY_MTLS_HEADER',
     'SMS_PROVIDER',
   ];
+
+  if (imageStorageProvider === 's3') {
+    required.push('IMAGE_PUBLIC_BASE_URL', 'IMAGE_S3_BUCKET');
+  }
 
   if (!env.DATABASE_URL) {
     required.push('PGHOST', 'PGDATABASE', 'PGUSER', 'PGPASSWORD');
@@ -122,10 +135,23 @@ function validateProductionEnvironment(env = process.env) {
   } else {
     assertProductionDatabaseHostname(env.PGHOST, 'PGHOST');
   }
-  if (String(env.IMAGE_STORAGE_PROVIDER).trim().toLowerCase() !== 's3') {
-    throw new Error('IMAGE_STORAGE_PROVIDER must be s3 in production');
+  if (imageStorageProvider === 'local') {
+    if (!allowsSandboxEphemeralImageStorage(env)) {
+      throw new Error(
+        'IMAGE_STORAGE_PROVIDER=local in production requires ' +
+        'APP_RUNTIME_MODE=aws_sandbox_ephemeral_canary and ' +
+        'ALLOW_EPHEMERAL_IMAGE_STORAGE=true'
+      );
+    }
+  } else if (imageStorageProvider !== 's3') {
+    throw new Error(
+      'IMAGE_STORAGE_PROVIDER must be s3 in production unless the exact ' +
+      'sandbox ephemeral canary gates are enabled'
+    );
   }
-  assertHttpsUrl(env.IMAGE_PUBLIC_BASE_URL, 'IMAGE_PUBLIC_BASE_URL');
+  if (imageStorageProvider === 's3') {
+    assertHttpsUrl(env.IMAGE_PUBLIC_BASE_URL, 'IMAGE_PUBLIC_BASE_URL');
+  }
   assertHttpsUrl(env.SAAS_JWT_ISSUER, 'SAAS_JWT_ISSUER');
 
   const instanceId = String(env.SAAS_INSTANCE_ID).trim();
@@ -424,6 +450,8 @@ function buildCorsOptions(env = process.env) {
 }
 
 module.exports = {
+  SANDBOX_EPHEMERAL_CANARY_MODE,
+  allowsSandboxEphemeralImageStorage,
   buildCorsOptions,
   buildPostgresConfig,
   isProductionEnvironment,
