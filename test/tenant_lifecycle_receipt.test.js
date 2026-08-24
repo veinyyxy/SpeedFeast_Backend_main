@@ -33,11 +33,31 @@ const RECEIPT_KEY =
 const SECRET_ARN =
   `arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:` +
   'secret:techlong/sandbox/tenant/tenant_one_123/runtime/g1-ABC123';
+const MANAGEMENT_ENDPOINT =
+  `techlong-sandbox-cell-sandbox-1.cluster-abcdefghijkl.${REGION}.` +
+  'rds.amazonaws.com';
+const DATABASE_NAME = 'tenant_abc123_db';
+const ROLE_NAME = 'tenant_abc123_role';
 
 function taskEnvironment(overrides = {}) {
   return {
     TENANT_DATABASE_OPERATION: 'inspect',
     TENANT_RUNTIME_SECRET_ARN: SECRET_ARN,
+    TENANT_CELL_ID: 'cell-sandbox-1',
+    TENANT_CELL_CLUSTER_ARN:
+      `arn:aws:ecs:${REGION}:${ACCOUNT_ID}:cluster/cell-sandbox-1`,
+    TENANT_DATABASE_CLUSTER_IDENTIFIER:
+      'techlong-sandbox-cell-sandbox-1',
+    TENANT_DATABASE_MANAGEMENT_ENDPOINT: MANAGEMENT_ENDPOINT,
+    TENANT_DATABASE_MANAGEMENT_PORT: '5432',
+    TENANT_DATABASE_MANAGEMENT_SECRET_ARN:
+      `arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:` +
+      'secret:rds!cluster-ABCDEFGHIJKLMNOPQRSTUV-ABC123',
+    TENANT_DATABASE_MANAGEMENT_DATABASE: 'cell_admin',
+    TENANT_DATABASE_MANAGEMENT_USERNAME: 'cell_admin',
+    TENANT_DATABASE_NAME: DATABASE_NAME,
+    TENANT_DATABASE_ROLE_NAME: ROLE_NAME,
+    TENANT_SHARED_CELL_EVIDENCE_SHA256: '8'.repeat(64),
     TENANT_RESOURCE_GENERATION: '1',
     TENANT_OWNERSHIP_MARKER: OWNERSHIP_MARKER,
     TENANT_EXTERNAL_OPERATION_EPOCH: '1',
@@ -517,7 +537,8 @@ test('bounded receipt body reading honors cancellation between chunks', async ()
 function runtimeSecret() {
   return {
     database_url:
-      'postgresql://tenant:placeholder@db.example.invalid/tenant?sslmode=verify-full',
+      `postgresql://${ROLE_NAME}:placeholder@${MANAGEMENT_ENDPOINT}:5432/` +
+      `${DATABASE_NAME}?sslmode=verify-full`,
     hmac_secret_key: 'test-hmac-placeholder',
     jwt_secret_key: 'test-jwt-placeholder',
     stripe_secret_key: 'sk_test_placeholder',
@@ -784,7 +805,7 @@ test('a put accepted before response loss is reused on retry without database re
   assert.equal(store.puts.length, 1);
 });
 
-test('the CLI-default disabled publisher cannot create an AWS client or receipt', async () => {
+test('an explicitly disabled publisher cannot create an AWS client or receipt', async () => {
   const counters = { secret: 0, database: 0 };
   await assert.rejects(
     runTenantLifecycleTaskWithReceipt({

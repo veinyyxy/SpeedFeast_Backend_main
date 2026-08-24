@@ -19,6 +19,14 @@ const OWNERSHIP_MARKER = `tl_owner_${OWNERSHIP_PREFIX}_g1`;
 const SECRET_ARN =
   'arn:aws:secretsmanager:ca-central-1:402010193138:' +
   'secret:techlong/sandbox/tenant/tenant_one_123/runtime/g1-ABC123';
+const MANAGEMENT_ENDPOINT =
+  'techlong-sandbox-cell-sandbox-1.cluster-abcdefghijkl.' +
+  'ca-central-1.rds.amazonaws.com';
+const MANAGEMENT_SECRET_ARN =
+  'arn:aws:secretsmanager:ca-central-1:402010193138:' +
+  'secret:rds!cluster-ABCDEFGHIJKLMNOPQRSTUV-ABC123';
+const DATABASE_NAME = 'tenant_abc123_db';
+const ROLE_NAME = 'tenant_abc123_role';
 
 function environment(operation, overrides = {}) {
   const needsBaseline = [
@@ -29,6 +37,19 @@ function environment(operation, overrides = {}) {
   return {
     TENANT_DATABASE_OPERATION: operation,
     TENANT_RUNTIME_SECRET_ARN: SECRET_ARN,
+    TENANT_CELL_ID: 'cell-sandbox-1',
+    TENANT_CELL_CLUSTER_ARN:
+      'arn:aws:ecs:ca-central-1:402010193138:cluster/cell-sandbox-1',
+    TENANT_DATABASE_CLUSTER_IDENTIFIER:
+      'techlong-sandbox-cell-sandbox-1',
+    TENANT_DATABASE_MANAGEMENT_ENDPOINT: MANAGEMENT_ENDPOINT,
+    TENANT_DATABASE_MANAGEMENT_PORT: '5432',
+    TENANT_DATABASE_MANAGEMENT_SECRET_ARN: MANAGEMENT_SECRET_ARN,
+    TENANT_DATABASE_MANAGEMENT_DATABASE: 'cell_admin',
+    TENANT_DATABASE_MANAGEMENT_USERNAME: 'cell_admin',
+    TENANT_DATABASE_NAME: DATABASE_NAME,
+    TENANT_DATABASE_ROLE_NAME: ROLE_NAME,
+    TENANT_SHARED_CELL_EVIDENCE_SHA256: '8'.repeat(64),
     TENANT_RESOURCE_GENERATION: '1',
     TENANT_OWNERSHIP_MARKER: OWNERSHIP_MARKER,
     TENANT_EXTERNAL_OPERATION_EPOCH: '1',
@@ -61,7 +82,8 @@ function input(operation, overrides = {}) {
 function runtimeSecret(overrides = {}) {
   return {
     database_url:
-      'postgresql://tenant:placeholder@db.example.invalid/tenant?sslmode=verify-full',
+      `postgresql://${ROLE_NAME}:placeholder@${MANAGEMENT_ENDPOINT}:5432/` +
+      `${DATABASE_NAME}?sslmode=verify-full`,
     hmac_secret_key: 'test-hmac-placeholder',
     jwt_secret_key: 'test-jwt-placeholder',
     stripe_secret_key: 'sk_test_placeholder',
@@ -236,6 +258,7 @@ test('accepts an exact JSON reference input but rejects mixed input channels', (
     schemaVersion: 1,
     operation: parsed.operation,
     runtimeSecretArn: parsed.runtimeSecretArn,
+    managementTarget: parsed.managementTarget,
     resourceGeneration: parsed.resourceGeneration,
     ownershipMarker: parsed.ownershipMarker,
     externalOperationEpoch: parsed.externalOperationEpoch,
@@ -332,6 +355,32 @@ test('requires exactly the five runtime Secret keys before any database call', a
     assert.deepEqual(Object.keys(secret).sort(), [...Object.keys(secret)].sort());
   }
   assert.deepEqual([...SECRET_KEYS].sort(), Object.keys(runtimeSecret()).sort());
+});
+
+test('binds the runtime database URL to exact target host, port, database, and role', async () => {
+  for (const databaseUrl of [
+    `postgresql://${ROLE_NAME}:placeholder@foreign.cluster.invalid:5432/` +
+      `${DATABASE_NAME}?sslmode=verify-full`,
+    `postgresql://${ROLE_NAME}:placeholder@${MANAGEMENT_ENDPOINT}:5433/` +
+      `${DATABASE_NAME}?sslmode=verify-full`,
+    `postgresql://${ROLE_NAME}:placeholder@${MANAGEMENT_ENDPOINT}:5432/` +
+      'another_database?sslmode=verify-full',
+    `postgresql://another_role:placeholder@${MANAGEMENT_ENDPOINT}:5432/` +
+      `${DATABASE_NAME}?sslmode=verify-full`,
+    `postgresql://${ROLE_NAME}@${MANAGEMENT_ENDPOINT}:5432/` +
+      `${DATABASE_NAME}?sslmode=verify-full`,
+  ]) {
+    const { databasePort, service } = harness(
+      runtimeSecret({ database_url: databaseUrl }),
+    );
+    await assert.rejects(
+      service.execute(input('inspect')),
+      (error) =>
+        error.code === 'TENANT_RUNTIME_SECRET_TARGET_MISMATCH' ||
+        error.code === 'TENANT_RUNTIME_SECRET_INVALID',
+    );
+    assert.equal(databasePort.inspectCalls, 0);
+  }
 });
 
 test('exposes only database_url to the lifecycle database provider', async () => {
@@ -557,7 +606,7 @@ test('destroy accepts an exact older provision predecessor across a failed epoch
   assert.equal(databasePort.destroyWrites, 1);
 });
 
-test('standalone entrypoint remains fail closed with disabled real providers', async () => {
+test('injected disabled Secret providers remain fail closed', async () => {
   await assert.rejects(
     runTenantLifecycleTask({
       command: 'inspect',

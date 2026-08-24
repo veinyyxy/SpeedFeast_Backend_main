@@ -9,7 +9,7 @@
     "pretest": "npm run build",
     "test": "node --test \"test/*.test.js\"",
     "test:integration:postgres": "node scripts/run-postgres-integration-tests.js",
-    "test:tenant-lifecycle": "node --test test/tenant_lifecycle.test.js",
+    "test:tenant-lifecycle": "node --test test/tenant_lifecycle.test.js test/tenant_lifecycle_production.test.js",
     "test:tenant-lifecycle-receipt": "node --test test/tenant_lifecycle_receipt.test.js",
     "check": "npm run typecheck && npm test",
     "test:sms": "npm run build && node --test test/sms_provider.test.js",
@@ -25,6 +25,7 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1091.0",
+    "@aws-sdk/client-secrets-manager": "^3.1091.0",
     "@sendgrid/mail": "^8.1.6",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",

@@ -34,6 +34,7 @@ const INPUT_KEYS = Object.freeze([
   'schemaVersion',
   'operation',
   'runtimeSecretArn',
+  'managementTarget',
   'resourceGeneration',
   'ownershipMarker',
   'externalOperationEpoch',
@@ -41,6 +42,20 @@ const INPUT_KEYS = Object.freeze([
   'externalOperationHash',
   'approvedBaselineDigest',
   'provisionPredecessor',
+]);
+
+const MANAGEMENT_TARGET_KEYS = Object.freeze([
+  'cellId',
+  'clusterArn',
+  'databaseClusterIdentifier',
+  'managementEndpoint',
+  'managementPort',
+  'managementSecretArn',
+  'managementDatabase',
+  'managementUsername',
+  'targetDatabaseName',
+  'targetRoleName',
+  'sharedCellEvidenceHash',
 ]);
 
 const PREDECESSOR_KEYS = Object.freeze(['epoch', 'marker', 'operationHash']);
@@ -76,6 +91,12 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const OWNERSHIP_MARKER_PATTERN = /^tl_owner_([a-f0-9]{32})_g([1-9][0-9]*)$/;
 const EXTERNAL_MARKER_PATTERN = /^tl_epoch_([a-f0-9]{24})_g([1-9][0-9]*)_e([1-9][0-9]*)$/;
 const SECRET_ARN_PATTERN = /^arn:aws:secretsmanager:([a-z]{2}(?:-gov)?-[a-z]+-\d):(\d{12}):secret:(techlong\/sandbox\/tenant\/([a-z0-9][a-z0-9_-]{2,63})\/runtime\/g([1-9][0-9]*))-([A-Za-z0-9]{6})$/;
+const MANAGED_SECRET_ARN_PATTERN =
+  /^arn:aws:secretsmanager:([a-z]{2}(?:-gov)?-[a-z]+-\d):(\d{12}):secret:(rds!cluster-[A-Za-z0-9/_+=.@!-]{7,512})$/;
+const TENANT_DATABASE_NAME_PATTERN = /^tenant_([a-z0-9]{1,16})_db$/;
+const TENANT_ROLE_NAME_PATTERN = /^tenant_([a-z0-9]{1,16})_role$/;
+const DNS_NAME_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
 const FORBIDDEN_DIRECT_SECRET_ENVIRONMENT = Object.freeze([
   'DATABASE_URL',
@@ -177,6 +198,25 @@ function inputFromEnvironment(environment) {
     schemaVersion: TASK_INPUT_SCHEMA_VERSION,
     operation: environment.TENANT_DATABASE_OPERATION,
     runtimeSecretArn: environment.TENANT_RUNTIME_SECRET_ARN,
+    managementTarget: {
+      cellId: environment.TENANT_CELL_ID,
+      clusterArn: environment.TENANT_CELL_CLUSTER_ARN,
+      databaseClusterIdentifier:
+        environment.TENANT_DATABASE_CLUSTER_IDENTIFIER,
+      managementEndpoint:
+        environment.TENANT_DATABASE_MANAGEMENT_ENDPOINT,
+      managementPort: environment.TENANT_DATABASE_MANAGEMENT_PORT,
+      managementSecretArn:
+        environment.TENANT_DATABASE_MANAGEMENT_SECRET_ARN,
+      managementDatabase:
+        environment.TENANT_DATABASE_MANAGEMENT_DATABASE,
+      managementUsername:
+        environment.TENANT_DATABASE_MANAGEMENT_USERNAME,
+      targetDatabaseName: environment.TENANT_DATABASE_NAME,
+      targetRoleName: environment.TENANT_DATABASE_ROLE_NAME,
+      sharedCellEvidenceHash:
+        environment.TENANT_SHARED_CELL_EVIDENCE_SHA256,
+    },
     resourceGeneration: environment.TENANT_RESOURCE_GENERATION,
     ownershipMarker: environment.TENANT_OWNERSHIP_MARKER,
     externalOperationEpoch: environment.TENANT_EXTERNAL_OPERATION_EPOCH,
@@ -206,6 +246,17 @@ function parseJsonInput(environment) {
   const duplicateNames = [
     'TENANT_DATABASE_OPERATION',
     'TENANT_RUNTIME_SECRET_ARN',
+    'TENANT_CELL_ID',
+    'TENANT_CELL_CLUSTER_ARN',
+    'TENANT_DATABASE_CLUSTER_IDENTIFIER',
+    'TENANT_DATABASE_MANAGEMENT_ENDPOINT',
+    'TENANT_DATABASE_MANAGEMENT_PORT',
+    'TENANT_DATABASE_MANAGEMENT_SECRET_ARN',
+    'TENANT_DATABASE_MANAGEMENT_DATABASE',
+    'TENANT_DATABASE_MANAGEMENT_USERNAME',
+    'TENANT_DATABASE_NAME',
+    'TENANT_DATABASE_ROLE_NAME',
+    'TENANT_SHARED_CELL_EVIDENCE_SHA256',
     'TENANT_RESOURCE_GENERATION',
     'TENANT_OWNERSHIP_MARKER',
     'TENANT_EXTERNAL_OPERATION_EPOCH',
@@ -230,6 +281,78 @@ function parseJsonInput(environment) {
       'TENANT_DATABASE_TASK_INPUT_JSON is not valid JSON.',
     );
   }
+}
+
+function validateManagementTarget(rawTarget, secret) {
+  assertExactKeys(
+    rawTarget,
+    MANAGEMENT_TARGET_KEYS,
+    'Tenant lifecycle management target',
+  );
+  const managementPort = parsePositiveInteger(
+    rawTarget.managementPort,
+    'TENANT_DATABASE_MANAGEMENT_PORT',
+  );
+  const managedSecretMatch = MANAGED_SECRET_ARN_PATTERN.exec(
+    String(rawTarget.managementSecretArn || ''),
+  );
+  const expectedCellId = 'cell-sandbox-1';
+  const expectedDatabaseClusterIdentifier =
+    `techlong-sandbox-${expectedCellId}`;
+  const expectedCellClusterArn =
+    `arn:aws:ecs:${secret.region}:${secret.accountId}:cluster/${expectedCellId}`;
+  const expectedEndpointPrefix =
+    `${expectedDatabaseClusterIdentifier}.cluster-`;
+  const expectedEndpointSuffix = `.${secret.region}.rds.amazonaws.com`;
+  const endpoint = String(rawTarget.managementEndpoint || '');
+  const endpointToken = endpoint.slice(
+    expectedEndpointPrefix.length,
+    endpoint.length - expectedEndpointSuffix.length,
+  );
+  const databaseNameMatch = TENANT_DATABASE_NAME_PATTERN.exec(
+    String(rawTarget.targetDatabaseName || ''),
+  );
+  const roleNameMatch = TENANT_ROLE_NAME_PATTERN.exec(
+    String(rawTarget.targetRoleName || ''),
+  );
+  if (
+    rawTarget.cellId !== expectedCellId ||
+    rawTarget.clusterArn !== expectedCellClusterArn ||
+    rawTarget.databaseClusterIdentifier !==
+      expectedDatabaseClusterIdentifier ||
+    managementPort !== 5432 ||
+    rawTarget.managementDatabase !== 'cell_admin' ||
+    rawTarget.managementUsername !== 'cell_admin' ||
+    !managedSecretMatch ||
+    managedSecretMatch[1] !== secret.region ||
+    managedSecretMatch[2] !== secret.accountId ||
+    !endpoint.startsWith(expectedEndpointPrefix) ||
+    !endpoint.endsWith(expectedEndpointSuffix) ||
+    !/^[a-z0-9-]{6,63}$/.test(endpointToken) ||
+    !DNS_NAME_PATTERN.test(endpoint) ||
+    !databaseNameMatch ||
+    !roleNameMatch ||
+    databaseNameMatch[1] !== roleNameMatch[1] ||
+    !SHA256_PATTERN.test(String(rawTarget.sharedCellEvidenceHash || ''))
+  ) {
+    throw new TenantLifecycleContractError(
+      'TENANT_DATABASE_MANAGEMENT_TARGET_INVALID',
+      'The lifecycle management target is not exact reviewed Shared Cell evidence.',
+    );
+  }
+  return Object.freeze({
+    cellId: rawTarget.cellId,
+    clusterArn: rawTarget.clusterArn,
+    databaseClusterIdentifier: rawTarget.databaseClusterIdentifier,
+    managementEndpoint: endpoint,
+    managementPort,
+    managementSecretArn: rawTarget.managementSecretArn,
+    managementDatabase: rawTarget.managementDatabase,
+    managementUsername: rawTarget.managementUsername,
+    targetDatabaseName: rawTarget.targetDatabaseName,
+    targetRoleName: rawTarget.targetRoleName,
+    sharedCellEvidenceHash: rawTarget.sharedCellEvidenceHash,
+  });
 }
 
 function parseSecretArn(value, generation) {
@@ -294,6 +417,11 @@ function validateTaskInput(rawInput, command) {
     );
   }
   const secret = parseSecretArn(rawInput.runtimeSecretArn, generation);
+  const managementTarget = validateManagementTarget(
+    rawInput.managementTarget,
+    secret,
+  );
+  const managementTargetHash = sha256Hex(managementTarget);
 
   const requiresBaseline = [
     'restore_approved_baseline',
@@ -364,6 +492,10 @@ function validateTaskInput(rawInput, command) {
     region: secret.region,
     logicalSecretName: secret.logicalSecretName,
     stableIdentityHashPrefix,
+    cellId: managementTarget.cellId,
+    databaseClusterIdentifier: managementTarget.databaseClusterIdentifier,
+    targetDatabaseName: managementTarget.targetDatabaseName,
+    targetRoleName: managementTarget.targetRoleName,
   });
   return Object.freeze({
     schemaVersion: TASK_INPUT_SCHEMA_VERSION,
@@ -379,6 +511,8 @@ function validateTaskInput(rawInput, command) {
     externalIntent: operation === 'destroy' ? 'cleanup' : 'provision',
     approvedBaselineDigest: requiresBaseline ? approvedBaselineDigest : null,
     provisionPredecessor,
+    managementTarget,
+    managementTargetHash,
     aws: Object.freeze(secret),
   });
 }
@@ -401,7 +535,7 @@ function parseTenantLifecycleTaskInput({ command, environment }) {
   return validateTaskInput(rawInput, command);
 }
 
-function assertRuntimeSecret(secret) {
+function assertRuntimeSecret(secret, input) {
   assertExactKeys(secret, SECRET_KEYS, 'Tenant runtime Secret');
   for (const key of SECRET_KEYS) {
     const value = secret[key];
@@ -433,6 +567,7 @@ function assertRuntimeSecret(secret) {
   const sslModes = databaseUrl.searchParams.getAll('sslmode');
   if (
     !databaseUrl.username ||
+    !databaseUrl.password ||
     !databaseUrl.hostname ||
     databaseUrl.pathname.length <= 1 ||
     databaseUrl.hash ||
@@ -443,6 +578,19 @@ function assertRuntimeSecret(secret) {
     throw new TenantLifecycleContractError(
       'TENANT_RUNTIME_SECRET_INVALID',
       'Tenant runtime Secret database reference must identify a database and require verify-full TLS without URL overrides.',
+    );
+  }
+  const target = input?.managementTarget;
+  if (
+    !target ||
+    databaseUrl.hostname !== target.managementEndpoint ||
+    databaseUrl.port !== String(target.managementPort) ||
+    databaseUrl.pathname !== `/${target.targetDatabaseName}` ||
+    databaseUrl.username !== target.targetRoleName
+  ) {
+    throw new TenantLifecycleContractError(
+      'TENANT_RUNTIME_SECRET_TARGET_MISMATCH',
+      'Tenant runtime Secret database reference does not match the exact management target.',
     );
   }
   // The lifecycle database provider needs only the database reference. Keep
@@ -669,6 +817,7 @@ function safeInspection(input, observation) {
       schemaVersion: 1,
       stableIdentity: input.stableIdentity,
       resourceGeneration: input.resourceGeneration,
+      managementTargetHash: input.managementTargetHash,
       ...outputWithoutHash,
       persistedProvisionEpoch: marker ? marker.provisionExternalEpoch : null,
       persistedProvisionMarker: marker ? marker.provisionExternalMarker : null,
@@ -768,7 +917,7 @@ function markerForTransition(input, target) {
 
 /**
  * Secret-provider contract:
- *   useRuntimeSecret({ secretArn, signal, use }) fetches the exact ARN and
+ *   useRuntimeSecret({ input, secretArn, signal, use }) fetches the exact ARN and
  *   invokes `use` once with the five-key Secret. It must never log or return
  *   the Secret outside that callback.
  *
@@ -809,11 +958,12 @@ class TenantLifecycleService {
       );
     }
     return this.secretProvider.useRuntimeSecret({
+      input,
       secretArn: input.runtimeSecretArn,
       signal,
       use: async (runtimeSecret) => {
         signal.throwIfAborted();
-        const databaseRuntimeSecret = assertRuntimeSecret(runtimeSecret);
+        const databaseRuntimeSecret = assertRuntimeSecret(runtimeSecret, input);
         if (input.operation === 'destroy') {
           return this.#destroy(input, databaseRuntimeSecret, signal);
         }
@@ -905,6 +1055,7 @@ class TenantLifecycleService {
         schemaVersion: 1,
         stableIdentity: input.stableIdentity,
         resourceGeneration: input.resourceGeneration,
+        managementTargetHash: input.managementTargetHash,
         ownershipMarker: input.ownershipMarker,
         cleanupEpoch: input.externalOperationEpoch,
         cleanupMarker: input.externalOperationMarker,
@@ -952,12 +1103,14 @@ module.exports = {
   COMMAND_TO_OPERATION,
   FORBIDDEN_DIRECT_SECRET_ENVIRONMENT,
   MIGRATION_CONTRACT,
+  MANAGEMENT_TARGET_KEYS,
   OPERATIONS,
   SECRET_KEYS,
   DisabledTenantLifecycleDatabasePort,
   DisabledTenantRuntimeSecretProvider,
   TenantLifecycleContractError,
   TenantLifecycleService,
+  assertRuntimeSecret,
   buildMarker,
   canonicalJson,
   parseTenantLifecycleTaskInput,

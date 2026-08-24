@@ -150,11 +150,12 @@ adopted or assigned a new password.
 
 ### B5-G ARN-native lifecycle contract
 
-The SaaS platform has an offline, SDK-free boundary for injected ECS
+The SaaS platform has an SDK-free request boundary for injected ECS
 `RunTask`, exact `startedBy` recovery, `DescribeTasks`, and `StopTask`. Its
-reviewed request contract carries only a generation-bound runtime Secret ARN,
-fixed code-owned command, active external-operation epoch, and—where
-required—an independently approved baseline digest. The corresponding Secret
+reviewed request contract carries a generation-bound runtime Secret ARN, a
+hash-bound exact Shared Cell management target, a fixed code-owned command,
+an active external-operation epoch, and—where required—an independently
+approved baseline digest. The corresponding runtime Secret
 must be physically named under `/runtime/gN` and contain exactly
 `database_url`, `hmac_secret_key`, `jwt_secret_key`, `stripe_secret_key`, and
 `stripe_webhook_secret`.
@@ -162,7 +163,18 @@ The `database_url` must name a concrete PostgreSQL database and contain exactly
 one `sslmode=verify-full` query parameter; host, TLS and libpq compatibility
 overrides are rejected before the lifecycle database provider is called.
 
-This repository now provides the offline ARN-native task entrypoint
+The management target is an exact object populated from trusted live Shared
+Cell evidence. It binds `cell-sandbox-1`, its ECS cluster ARN, Aurora cluster
+identifier and writer endpoint, port `5432`, the RDS-managed master Secret ARN,
+the `cell_admin` management database/user, the planned tenant database/role,
+and the Shared Cell evidence SHA-256. Account and region are cross-checked with
+the generation-bound runtime Secret ARN. Target names are safe PostgreSQL
+identifiers using the planner-owned pair `tenant_<1-16 lowercase alphanumeric
+stem>_db` and `tenant_<same stem>_role`; arbitrary hosts, ports, roles,
+databases, Cell names, or non-RDS-managed Secret ARNs fail before any provider
+call.
+
+This repository provides the ARN-native task entrypoint
 `db/tenant_lifecycle.js` and an injected lifecycle service for exactly six
 code-owned operations: `inspect`, `prepare_empty_database`,
 `restore_approved_baseline`, `migrate_saas`, `verify`, and `destroy`. It accepts
@@ -189,16 +201,32 @@ before Secret resolution or database inspection. A real provider must compare
 those fields with its durable generation record before its first destructive
 write and retain only a non-secret tombstone for idempotent retry.
 
-The entrypoint deliberately installs disabled Secret, PostgreSQL, and raw
-receipt publishers. The synthetic tests exercise the state machine and receipt
-contract without connecting to AWS or a database, but the following production
-pieces remain blocked: an AWS SDK Secrets Manager resolver, a PostgreSQL 16
-admin/locking implementation, a reviewed empty baseline artifact, a
-lifecycle-capable restore image, and platform Worker root wiring. The legacy
+The production entrypoint now enables only `/usr/local/bin/node
+db/tenant_lifecycle.js inspect` and requires the exact runtime mode
+`APP_RUNTIME_MODE=aws_sandbox_tenant_lifecycle_inspect`. Missing/extra argv and
+all five mutating commands fail before an AWS or PostgreSQL provider call. It
+uses AWS SDK `GetSecretValue` for the exact `AWSCURRENT` runtime and
+RDS-managed management Secret ARNs, keeps both Secret values callback-scoped,
+connects to PostgreSQL using only explicit target fields plus the image-bundled
+RDS CA with certificate verification and read-only session options, and reads
+database/role comments through parameterized catalog queries. The raw result
+continues to use the immutable S3 receipt publisher.
+
+Future mutation code must write both shared-object comments as one-line
+canonical JSON with exactly `schemaVersion`, `kind`, `ownershipMarker`, and
+`marker`. Database kind is `techlong_tenant_database`; role kind is
+`techlong_tenant_role`; both copies of `marker` must be identical. Inspect
+rejects noncanonical, oversized, incomplete, or disagreeing metadata rather
+than adopting it.
+
+The remaining production pieces are the PostgreSQL locking/mutation provider,
+a reviewed empty baseline artifact, a lifecycle-capable restore image, and
+platform Worker live-readback/runtime wiring. `prepare_empty_database`,
+`restore_approved_baseline`, `migrate_saas`, `verify`, and `destroy` remain hard
+disabled in the production composition. The legacy
 `scripts/run-rds-migration.sh` and direct `db/apply_saas_control.js` commands do
 not persist this lifecycle marker and must not be treated as the B5-H task
-provider. No image was built or deployed, no ECS task ran, no AWS/Neon endpoint
-was contacted, and no SQL was applied in B5-H.
+provider.
 
 The B5-H CLI validates an immutable receipt destination and asks the injected
 publisher for the exact existing object before any Secret or database access.
