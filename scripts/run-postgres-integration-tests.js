@@ -13,6 +13,9 @@ const {
 
 const EXPECTED_POSTGRES_VERSION_NUM = 160014;
 const GUARD_TABLE = 'public.speedfeast_b5g_disposable_database_guard';
+const LIFECYCLE_ROLE = 'cell_admin';
+const LIFECYCLE_ROLE_COMMENT_PREFIX =
+  'speedfeast-b5g-disposable-lifecycle-role:';
 
 function safeErrorMessage(error) {
   const raw = String(error?.message || error || 'unknown error');
@@ -104,6 +107,11 @@ function runNodeTests(env) {
         '--test',
         '--test-concurrency=1',
         path.join('test', 'integration', 'saas_control.postgres.test.js'),
+        path.join(
+          'test',
+          'integration',
+          'tenant_lifecycle_registry.postgres.test.js'
+        ),
       ],
       {
         cwd: path.join(__dirname, '..'),
@@ -139,6 +147,7 @@ async function main(env = process.env) {
   });
   let databaseCreated = false;
   let markerCreated = false;
+  let lifecycleRoleCreated = false;
   let testExitCode = 1;
 
   await admin.connect();
@@ -163,6 +172,28 @@ async function main(env = process.env) {
     databaseCreated = true;
     await createGuardMarker(targetUrl, databaseName, runnerToken);
     markerCreated = true;
+
+    const lifecycleRoleCollision = await admin.query(
+      'SELECT 1 FROM pg_roles WHERE rolname = $1',
+      [LIFECYCLE_ROLE]
+    );
+    if (lifecycleRoleCollision.rowCount !== 0) {
+      throw Object.assign(
+        new Error('The disposable lifecycle role already exists'),
+        { code: 'B5G_PG_LIFECYCLE_ROLE_COLLISION' }
+      );
+    }
+    const lifecycleRoleMarker =
+      `${LIFECYCLE_ROLE_COMMENT_PREFIX}${hashRunnerToken(runnerToken)}`;
+    await admin.query(`
+      CREATE ROLE cell_admin
+      NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOINHERIT NOREPLICATION NOBYPASSRLS
+    `);
+    await admin.query(
+      `COMMENT ON ROLE cell_admin IS '${lifecycleRoleMarker}'`
+    );
+    lifecycleRoleCreated = true;
 
     testExitCode = await runNodeTests({
       ...env,
@@ -199,6 +230,28 @@ async function main(env = process.env) {
         );
         await admin.query(`DROP DATABASE ${quotedDatabaseName}`);
         databaseCreated = false;
+      }
+      if (!databaseCreated && lifecycleRoleCreated) {
+        const lifecycleRole = await admin.query(
+          `SELECT pg_catalog.shobj_description(oid, 'pg_authid') AS marker
+           FROM pg_catalog.pg_roles
+           WHERE rolname = $1`,
+          [LIFECYCLE_ROLE]
+        );
+        const expectedMarker =
+          `${LIFECYCLE_ROLE_COMMENT_PREFIX}${hashRunnerToken(runnerToken)}`;
+        if (
+          lifecycleRole.rowCount !== 1 ||
+          lifecycleRole.rows[0].marker !== expectedMarker
+        ) {
+          const error = new Error(
+            'Refusing to drop the disposable lifecycle role: its marker changed'
+          );
+          error.code = 'B5G_PG_LIFECYCLE_ROLE_MARKER_MISMATCH';
+          throw error;
+        }
+        await admin.query('DROP ROLE cell_admin');
+        lifecycleRoleCreated = false;
       }
     } finally {
       await admin.end();

@@ -1036,8 +1036,9 @@ class TenantLifecycleService {
       typeof result.databaseDeleted !== 'boolean' ||
       typeof result.roleDeleted !== 'boolean' ||
       result.predecessorMatched !== true ||
-      (result.outcome === 'already_missing' &&
-        (result.databaseDeleted || result.roleDeleted))
+      (result.outcome === 'deleted'
+        ? result.databaseDeleted !== true || result.roleDeleted !== true
+        : result.databaseDeleted !== false || result.roleDeleted !== false)
     ) {
       throw new TenantLifecycleContractError(
         'TENANT_DATABASE_DESTROY_UNVERIFIED',
@@ -1110,6 +1111,7 @@ module.exports = {
   DisabledTenantRuntimeSecretProvider,
   TenantLifecycleContractError,
   TenantLifecycleService,
+  assertMarkerShape,
   assertRuntimeSecret,
   buildMarker,
   canonicalJson,

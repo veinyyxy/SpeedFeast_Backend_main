@@ -585,6 +585,36 @@ test('destroy requires the stored provision predecessor and is idempotent after 
   assert.equal(databasePort.destroyWrites, 1);
 });
 
+test('destroy accepts only the two exact cleanup outcome combinations', async () => {
+  const cleanupInput = () => input('destroy', {
+    TENANT_EXTERNAL_OPERATION_EPOCH: '2',
+    TENANT_EXTERNAL_OPERATION_MARKER:
+      `tl_epoch_${OWNERSHIP_PREFIX.slice(0, 24)}_g1_e2`,
+    TENANT_EXTERNAL_OPERATION_HASH: CLEANUP_HASH,
+    TENANT_PREDECESSOR_PROVISION_EPOCH: '1',
+    TENANT_PREDECESSOR_PROVISION_MARKER:
+      `tl_epoch_${OWNERSHIP_PREFIX.slice(0, 24)}_g1_e1`,
+    TENANT_PREDECESSOR_PROVISION_OPERATION_HASH: PROVISION_HASH,
+  });
+  for (const invalidResult of [
+    { outcome: 'deleted', databaseDeleted: true, roleDeleted: false },
+    { outcome: 'deleted', databaseDeleted: false, roleDeleted: true },
+    { outcome: 'deleted', databaseDeleted: false, roleDeleted: false },
+    { outcome: 'already_missing', databaseDeleted: true, roleDeleted: true },
+  ]) {
+    const { databasePort, service } = harness();
+    await service.execute(input('prepare_empty_database'));
+    databasePort.destroy = async () => ({
+      ...invalidResult,
+      predecessorMatched: true,
+    });
+    await assert.rejects(
+      service.execute(cleanupInput()),
+      (error) => error.code === 'TENANT_DATABASE_DESTROY_UNVERIFIED',
+    );
+  }
+});
+
 test('destroy accepts an exact older provision predecessor across a failed epoch gap', async () => {
   const { databasePort, service } = harness();
   await service.execute(input('prepare_empty_database'));

@@ -77,6 +77,22 @@ function parsedInput() {
   });
 }
 
+function parsedDestroyInput() {
+  return parseTenantLifecycleTaskInput({
+    command: 'destroy',
+    environment: taskEnvironment({
+      TENANT_DATABASE_OPERATION: 'destroy',
+      TENANT_EXTERNAL_OPERATION_EPOCH: '2',
+      TENANT_EXTERNAL_OPERATION_MARKER:
+        `tl_epoch_${PREFIX.slice(0, 24)}_g1_e2`,
+      TENANT_EXTERNAL_OPERATION_HASH: 'c'.repeat(64),
+      TENANT_PREDECESSOR_PROVISION_EPOCH: '1',
+      TENANT_PREDECESSOR_PROVISION_MARKER: EXTERNAL_MARKER,
+      TENANT_PREDECESSOR_PROVISION_OPERATION_HASH: OPERATION_HASH,
+    }),
+  });
+}
+
 function inspectOutput(overrides = {}) {
   return {
     state: 'missing',
@@ -181,6 +197,28 @@ test('rejects non-allowlisted lifecycle output before the object-store port', ()
       }),
     (error) => error.code === 'TENANT_LIFECYCLE_RECEIPT_INVALID',
   );
+  for (const output of [
+    {
+      outcome: 'deleted',
+      databaseDeleted: true,
+      roleDeleted: false,
+      evidenceHash: 'e'.repeat(64),
+    },
+    {
+      outcome: 'already_missing',
+      databaseDeleted: true,
+      roleDeleted: true,
+      evidenceHash: 'e'.repeat(64),
+    },
+  ]) {
+    assert.throws(
+      () => buildRawTenantLifecycleReceipt({
+        input: parsedDestroyInput(),
+        output,
+      }),
+      (error) => error.code === 'TENANT_LIFECYCLE_RECEIPT_INVALID',
+    );
+  }
 });
 
 test('binds bucket owner, stable hash, and generation before lifecycle work', () => {

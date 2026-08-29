@@ -17,12 +17,15 @@ The checked-in GitHub Actions workflow is manual-only and uses an ephemeral
 PostgreSQL 16.14 service without AWS or application secrets.
 
 The current suite covers the SaaS control migration, constraints, concurrent
-epoch CAS, and exact replay after a simulated lost COMMIT response. It does not
-yet provide or exercise the real tenant lifecycle PostgreSQL provider or the
-destructive `destroy` path. If setup fails before the runner can install its
-ownership marker, the randomly named database is deliberately retained instead
-of being dropped without proof; inspect and remove that disposable database
-manually before retrying.
+epoch CAS, exact replay after a simulated lost COMMIT response, and the tenant
+lifecycle registry's raw PostgreSQL 16.14 catalog identity. The runner creates
+an exact marker-bound `cell_admin` NOLOGIN role only when that name is absent,
+then verifies and removes it after dropping the disposable database. The
+registry test also proves that the runtime role lacks `TRUNCATE`, a privileged
+`TRUNCATE` reaches the statement trigger and returns SQLSTATE `55000`, and the
+tombstone remains. It does not exercise the full destructive database/role
+`destroy` path. If setup fails before the runner can install its ownership
+markers, retained disposable state must be inspected manually before retrying.
 
 PowerShell example for a local disposable PostgreSQL 16.14 server:
 

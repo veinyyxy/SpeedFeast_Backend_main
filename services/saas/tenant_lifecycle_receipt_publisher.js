@@ -208,8 +208,9 @@ function assertSafeOutput(input, output) {
       !['deleted', 'already_missing'].includes(output.outcome) ||
       typeof output.databaseDeleted !== 'boolean' ||
       typeof output.roleDeleted !== 'boolean' ||
-      (output.outcome === 'already_missing' &&
-        (output.databaseDeleted || output.roleDeleted))
+      (output.outcome === 'deleted'
+        ? output.databaseDeleted !== true || output.roleDeleted !== true
+        : output.databaseDeleted !== false || output.roleDeleted !== false)
     ) {
       throw new TenantLifecycleReceiptError(
         'TENANT_LIFECYCLE_RECEIPT_INVALID',

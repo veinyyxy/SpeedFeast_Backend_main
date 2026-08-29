@@ -195,22 +195,55 @@ task response return `already_applied`, rejects older epochs, rejects
 same-epoch marker/hash drift, and refuses foreign identity or generation
 adoption.
 
-`destroy` additionally requires the exact immediately preceding provision
+`destroy` additionally requires the exact preceding successful provision
 epoch, marker, and operation hash. Missing predecessor fields are rejected
-before Secret resolution or database inspection. A real provider must compare
-those fields with its durable generation record before its first destructive
-write and retain only a non-secret tombstone for idempotent retry.
+before Secret resolution or database inspection. The production cleanup
+provider compares those fields with both remaining database/role ownership
+comments and a durable, non-secret generation tombstone before its first
+destructive write.
 
-The production entrypoint now enables only `/usr/local/bin/node
-db/tenant_lifecycle.js inspect` and requires the exact runtime mode
-`APP_RUNTIME_MODE=aws_sandbox_tenant_lifecycle_inspect`. Missing/extra argv and
-all five mutating commands fail before an AWS or PostgreSQL provider call. It
-uses AWS SDK `GetSecretValue` for the exact `AWSCURRENT` runtime and
-RDS-managed management Secret ARNs, keeps both Secret values callback-scoped,
-connects to PostgreSQL using only explicit target fields plus the image-bundled
-RDS CA with certificate verification and read-only session options, and reads
-database/role comments through parameterized catalog queries. The raw result
-continues to use the immutable S3 receipt publisher.
+The production entrypoint has two isolated one-shot modes:
+
+- `/usr/local/bin/node db/tenant_lifecycle.js inspect` requires
+  `APP_RUNTIME_MODE=aws_sandbox_tenant_lifecycle_inspect` and keeps the
+  PostgreSQL session read-only.
+- `/usr/local/bin/node db/tenant_lifecycle.js destroy` requires
+  `APP_RUNTIME_MODE=aws_sandbox_tenant_lifecycle_destroy` and composes only the
+  cleanup provider. `prepare_empty_database`, `restore_approved_baseline`,
+  `migrate_saas`, and `verify` remain hard disabled before an AWS or PostgreSQL
+  provider call. The cleanup provider itself also rejects `inspect` and every
+  non-destroy mutation method.
+
+Both modes use AWS SDK `GetSecretValue` for the exact `AWSCURRENT` runtime and
+RDS-managed management Secret ARNs, keep both Secret values callback-scoped,
+connect with the image-bundled RDS CA and certificate verification, and publish
+only through the immutable S3 receipt path. Missing/extra argv, a crossed
+runtime mode, credential/endpoint overrides, or arbitrary PostgreSQL
+environment settings fail before provider construction.
+
+Before enabling cleanup for a Shared Cell, apply
+`db/tenant_lifecycle_registry.sql` exactly once to its `cell_admin` database as
+`cell_admin`. The provider fail-closes unless the registry has the exact
+reviewed column order/types/defaults, named checks and primary key, sole primary
+index, irreversible guard trigger and function body, object ownership, table
+and function ACLs, comments, and disabled row security. The trigger rejects
+tombstone deletion, ownership-fence changes, flag reversal, and changes after a
+row reaches `destroyed`.
+
+Destroy acquires one session-scoped PostgreSQL advisory lock for the stable
+identity and generation and holds it across registry transactions, database
+session draining, `DROP DATABASE`, `DROP ROLE`, final absence readback, and
+tombstone advancement. A `destroying` row records intent before the first drop.
+If the task dies between a drop and its next registry update, a retry uses that
+exact row to reconcile observed absence and continues in database-then-role
+order. A missing or partial resource set without the exact registry row is
+never adopted.
+
+Successful destroy output has only two valid shapes (plus the common evidence
+hash added by the service): `deleted` requires both `databaseDeleted=true` and
+`roleDeleted=true`; `already_missing` requires both flags `false`. Partial
+success combinations are rejected by both the lifecycle service and receipt
+publisher.
 
 Future mutation code must write both shared-object comments as one-line
 canonical JSON with exactly `schemaVersion`, `kind`, `ownershipMarker`, and
@@ -219,11 +252,13 @@ canonical JSON with exactly `schemaVersion`, `kind`, `ownershipMarker`, and
 rejects noncanonical, oversized, incomplete, or disagreeing metadata rather
 than adopting it.
 
-The remaining production pieces are the PostgreSQL locking/mutation provider,
-a reviewed empty baseline artifact, a lifecycle-capable restore image, and
-platform Worker live-readback/runtime wiring. `prepare_empty_database`,
-`restore_approved_baseline`, `migrate_saas`, `verify`, and `destroy` remain hard
-disabled in the production composition. The legacy
+The remaining production pieces are a reviewed empty baseline artifact, a
+lifecycle-capable restore image, and platform Worker live-readback/runtime
+wiring. `prepare_empty_database`, `restore_approved_baseline`, `migrate_saas`,
+and `verify` remain hard disabled in the production composition. Cleanup source
+availability does not by itself authorize a live cleanup task: the platform
+must separately prove the exact task definition, IAM, Shared Cell and ownership
+fences before opening its cleanup readiness gate. The legacy
 `scripts/run-rds-migration.sh` and direct `db/apply_saas_control.js` commands do
 not persist this lifecycle marker and must not be treated as the B5-H task
 provider.
