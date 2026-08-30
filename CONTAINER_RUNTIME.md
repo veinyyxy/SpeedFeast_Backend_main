@@ -16,8 +16,12 @@ in runtime configuration, secrets, resource sizing, and routing.
   and certificate-download tools remain in disposable build stages only.
 - The image contains production dependencies and compiled verification assets,
   but no `.env`, test fixtures, database dumps, private keys, or uploaded images.
+- The final image includes `db/tenant_lifecycle.js`, the production lifecycle
+  composition and receipt-publisher modules under `services/saas/`, and the
+  reviewed RDS global CA bundle. Including these one-shot assets does not change
+  normal application startup.
 - `CMD` starts only `node ./bin/www`. Application startup never runs a schema
-  migration.
+  migration or tenant lifecycle operation.
 - `APP_IMAGE_REVISION` is the deployed application image digest in the form
   `sha256:<64 lowercase hex characters>`. It is runtime metadata, not the Node
   base-image digest.
@@ -214,6 +218,26 @@ The production entrypoint has two isolated one-shot modes:
   provider call. The cleanup provider itself also rejects `inspect` and every
   non-destroy mutation method.
 
+Destroy also receives the exact prior successful provision fence through
+`TENANT_PREDECESSOR_PROVISION_EPOCH`,
+`TENANT_PREDECESSOR_PROVISION_MARKER`, and
+`TENANT_PREDECESSOR_PROVISION_OPERATION_HASH`. All three are required together,
+must identify an older operation in the same stable identity and generation,
+and are compared with both the owned PostgreSQL objects and the durable cleanup
+registry before a destructive write.
+
+These three states must remain distinct:
+
+- The source tree locally composes the production `destroy` root, its PostgreSQL
+  cleanup provider, AWS Secrets Manager providers, and immutable S3 receipt
+  publisher. Offline acceptance tests prove only this injected composition and
+  its fail-closed ordering; they do not prove an AWS or PostgreSQL execution.
+- The currently registered `tenant-lifecycle:1` task definition still points to
+  the older Build #4 inspect-only artifact. The destroy-capable source has not
+  been rebuilt, scanned, registered, read back, or exercised with `RunTask`.
+- The platform cleanup readiness gate remains closed. Source availability and
+  local tests do not authorize the Worker to submit a cleanup task.
+
 Both modes use AWS SDK `GetSecretValue` for the exact `AWSCURRENT` runtime and
 RDS-managed management Secret ARNs, keep both Secret values callback-scoped,
 connect with the image-bundled RDS CA and certificate verification, and publish
@@ -252,12 +276,12 @@ canonical JSON with exactly `schemaVersion`, `kind`, `ownershipMarker`, and
 rejects noncanonical, oversized, incomplete, or disagreeing metadata rather
 than adopting it.
 
-The remaining production pieces are a reviewed empty baseline artifact, a
+The remaining apply/bootstrap pieces are a reviewed empty baseline artifact, a
 lifecycle-capable restore image, and platform Worker live-readback/runtime
 wiring. `prepare_empty_database`, `restore_approved_baseline`, `migrate_saas`,
-and `verify` remain hard disabled in the production composition. Cleanup source
-availability does not by itself authorize a live cleanup task: the platform
-must separately prove the exact task definition, IAM, Shared Cell and ownership
+and `verify` remain hard disabled in the production composition. Before cleanup
+can run online, the platform must also build and verify a new immutable artifact
+and separately prove the exact task definition, IAM, Shared Cell and ownership
 fences before opening its cleanup readiness gate. The legacy
 `scripts/run-rds-migration.sh` and direct `db/apply_saas_control.js` commands do
 not persist this lifecycle marker and must not be treated as the B5-H task
@@ -311,8 +335,9 @@ equivalent.
 The platform must still independently bind this raw envelope to the reviewed
 request and exact `DescribeTasks` observation before it constructs
 `requestHash`, the final receipt hash, or accepts an ECS task. Until that reader
-and production providers are wired and exercised, a real ECS canary remains
-prohibited.
+and live Worker wiring exist, and a new destroy-capable artifact is built,
+scanned, registered, read back, and exercised against the reviewed production
+boundaries, a real ECS canary remains prohibited.
 
 ### Tenant baseline data policy
 
@@ -379,8 +404,10 @@ separate review process.
 ## Local verification
 
 The repository test suite statically verifies both image pins, the shell-less
-non-root runtime, readiness health check, migration major version, ignore rules,
-and production environment validation. It also exercises `bcrypt`, whose
+non-root runtime, the lifecycle/receipt sources and RDS CA copied into that
+runtime, the unchanged web-only default command, readiness health check,
+migration major version, ignore rules, and production environment validation.
+It also exercises `bcrypt`, whose
 production dependency includes a Linux glibc prebuild compatible with the
 distroless Debian runtime:
 

@@ -13,7 +13,13 @@ const {
   buildMarker,
   canonicalJson,
   parseTenantLifecycleTaskInput,
+  sha256Hex,
 } = require('../services/saas/tenant_lifecycle_service');
+const {
+  RAW_RECEIPT_CONTENT_TYPE,
+  buildRawTenantLifecycleReceipt,
+  sha256Base64,
+} = require('../services/saas/tenant_lifecycle_receipt_publisher');
 const {
   DATABASE_METADATA_KINDS,
   DESTROY_ADVISORY_LOCK_SQL,
@@ -134,6 +140,29 @@ function destroyInput(overrides = {}) {
     command: 'destroy',
     environment: destroyEnvironment(overrides),
   });
+}
+
+function deletedDestroyOutput(parsed = destroyInput()) {
+  const outputWithoutHash = {
+    outcome: 'deleted',
+    databaseDeleted: true,
+    roleDeleted: true,
+  };
+  return {
+    ...outputWithoutHash,
+    evidenceHash: sha256Hex({
+      schemaVersion: 1,
+      stableIdentity: parsed.stableIdentity,
+      resourceGeneration: parsed.resourceGeneration,
+      managementTargetHash: parsed.managementTargetHash,
+      ownershipMarker: parsed.ownershipMarker,
+      cleanupEpoch: parsed.externalOperationEpoch,
+      cleanupMarker: parsed.externalOperationMarker,
+      cleanupOperationHash: parsed.externalOperationHash,
+      provisionPredecessor: parsed.provisionPredecessor,
+      ...outputWithoutHash,
+    }),
+  };
 }
 
 function runtimeSecret(overrides = {}) {
@@ -275,6 +304,7 @@ function createDestroyHarness({
   roleExists = true,
   registry = null,
   identityOverrides = {},
+  recordEvent = () => {},
 } = {}) {
   const parsed = destroyInput();
   const marker = buildMarker(input(), 'empty', null, null);
@@ -347,9 +377,11 @@ function createDestroyHarness({
         };
       }
       if (text === DESTROY_REGISTRY_IDENTITY_SQL) {
+        recordEvent('registry_identity');
         return { rowCount: 1, rows: [registryIdentity(identityOverrides)] };
       }
       if (text === DESTROY_ADVISORY_LOCK_SQL) {
+        recordEvent('registry_lock');
         return { rowCount: 1, rows: [{ locked: '' }] };
       }
       if (text === DESTROY_ADVISORY_UNLOCK_SQL) {
@@ -358,7 +390,12 @@ function createDestroyHarness({
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(text)) {
         return { rowCount: null, rows: [] };
       }
-      if (text === INSPECT_RESOURCES_SQL) return resourcesResult();
+      if (text === INSPECT_RESOURCES_SQL) {
+        if (!state.databaseExists && !state.roleExists) {
+          recordEvent('final_absence');
+        }
+        return resourcesResult();
+      }
       if (text === DESTROY_REGISTRY_SELECT_SQL) {
         return state.registry === null
           ? { rowCount: 0, rows: [] }
@@ -388,11 +425,13 @@ function createDestroyHarness({
       }
       if (text.startsWith('DROP DATABASE ')) {
         assert.equal(state.databaseExists, true);
+        recordEvent('database_drop');
         state.databaseExists = false;
         return { rowCount: null, rows: [] };
       }
       if (text.startsWith('DROP ROLE ')) {
         assert.equal(state.roleExists, true);
+        recordEvent('role_drop');
         state.roleExists = false;
         return { rowCount: null, rows: [] };
       }
@@ -432,6 +471,7 @@ function createDestroyHarness({
     ca: CA,
   });
   return {
+    Client,
     clients,
     parsed,
     port,
@@ -443,6 +483,124 @@ function createDestroyHarness({
         provisionPredecessor: parsed.provisionPredecessor,
         signal: new AbortController().signal,
       });
+    },
+  };
+}
+
+function createProductionDestroyDependencies({
+  existingReceipt = null,
+  missingReceiptStatusHook = null,
+  recordEvent = () => {},
+} = {}) {
+  const counters = {
+    caReads: 0,
+    pgClientConstructors: 0,
+    s3ClientConstructors: 0,
+    s3Gets: 0,
+    s3Puts: 0,
+    secretClientConstructors: 0,
+    secretSends: 0,
+  };
+  const requests = { gets: [], puts: [], secrets: [] };
+  const harness = createDestroyHarness({ recordEvent });
+
+  class GetSecretValueCommand extends Command {}
+  class GetObjectCommand extends Command {}
+  class PutObjectCommand extends Command {}
+
+  class SecretsManagerClient {
+    constructor(config) {
+      counters.secretClientConstructors += 1;
+      this.config = config;
+    }
+
+    async send(command, options) {
+      counters.secretSends += 1;
+      requests.secrets.push({ input: command.input, options });
+      const isRuntime = command.input.SecretId === RUNTIME_SECRET_ARN;
+      recordEvent(isRuntime ? 'runtime_secret' : 'management_secret');
+      return {
+        ARN: command.input.SecretId,
+        SecretString: JSON.stringify(
+          isRuntime
+            ? runtimeSecret()
+            : { username: 'cell_admin', password: 'management-placeholder' },
+        ),
+        VersionStages: ['AWSCURRENT'],
+      };
+    }
+  }
+
+  class S3Client {
+    constructor(config) {
+      counters.s3ClientConstructors += 1;
+      this.config = config;
+    }
+
+    async send(command, options) {
+      if (command instanceof GetObjectCommand) {
+        counters.s3Gets += 1;
+        requests.gets.push({ input: command.input, options });
+        recordEvent('receipt_get');
+        if (existingReceipt === null) {
+          const metadata = { httpStatusCode: 404 };
+          if (missingReceiptStatusHook) {
+            Object.defineProperty(metadata, 'httpStatusCode', {
+              enumerable: true,
+              get() {
+                missingReceiptStatusHook();
+                return 404;
+              },
+            });
+          }
+          throw Object.assign(new Error('synthetic missing receipt'), {
+            name: 'NoSuchKey',
+            $metadata: metadata,
+          });
+        }
+        return {
+          Body: Buffer.from(existingReceipt.body),
+          ChecksumSHA256: sha256Base64(existingReceipt.body),
+          ChecksumType: 'FULL_OBJECT',
+          ContentLength: existingReceipt.body.length,
+          ContentType: RAW_RECEIPT_CONTENT_TYPE,
+          ServerSideEncryption: 'AES256',
+        };
+      }
+      if (command instanceof PutObjectCommand) {
+        counters.s3Puts += 1;
+        requests.puts.push({ input: command.input, options });
+        recordEvent('receipt_put');
+        return {};
+      }
+      throw new Error('unexpected synthetic S3 command');
+    }
+  }
+
+  class Client extends harness.Client {
+    constructor(config) {
+      counters.pgClientConstructors += 1;
+      super(config);
+    }
+  }
+
+  return {
+    counters,
+    harness,
+    requests,
+    dependencies: {
+      SecretsManagerClient,
+      GetSecretValueCommand,
+      S3Client,
+      PutObjectCommand,
+      GetObjectCommand,
+      Client,
+      readFileSync(filePath, encoding) {
+        counters.caReads += 1;
+        assert.equal(filePath, RDS_CA_BUNDLE_PATH);
+        assert.equal(encoding, 'utf8');
+        return CA;
+      },
     },
   };
 }
@@ -1249,6 +1407,172 @@ test('production CLI rejects argv, mode, and connection overrides before factori
   }));
 });
 
+test('production destroy CLI executes the receipt-first fenced deletion and publishes the exact receipt', async () => {
+  const events = [];
+  const fixture = createProductionDestroyDependencies({
+    recordEvent(event) {
+      events.push(event);
+    },
+  });
+  const taskEnvironment = destroyEnvironment();
+  const parsed = parseTenantLifecycleTaskInput({
+    command: 'destroy',
+    environment: taskEnvironment,
+  });
+  const expectedOutput = deletedDestroyOutput(parsed);
+  const expectedReceipt = buildRawTenantLifecycleReceipt({
+    input: parsed,
+    output: expectedOutput,
+  });
+
+  const output = await runProductionTenantLifecycleCli({
+    argv: ['node', 'db/tenant_lifecycle.js', 'destroy'],
+    environment: taskEnvironment,
+    dependencies: fixture.dependencies,
+  });
+
+  assert.deepEqual(output, expectedOutput);
+  assert.deepEqual(events, [
+    'receipt_get',
+    'runtime_secret',
+    'management_secret',
+    'registry_identity',
+    'registry_lock',
+    'database_drop',
+    'role_drop',
+    'final_absence',
+    'receipt_put',
+  ]);
+  assert.deepEqual(fixture.counters, {
+    caReads: 1,
+    pgClientConstructors: 1,
+    s3ClientConstructors: 1,
+    s3Gets: 1,
+    s3Puts: 1,
+    secretClientConstructors: 1,
+    secretSends: 2,
+  });
+  assert.equal(fixture.harness.state.databaseExists, false);
+  assert.equal(fixture.harness.state.roleExists, false);
+  assert.deepEqual(fixture.harness.state.registry, {
+    lifecycleStatus: 'destroyed',
+    databaseDeleted: true,
+    roleDeleted: true,
+  });
+  assert.deepEqual(fixture.requests.gets[0].input, {
+    Bucket: taskEnvironment.TENANT_RECEIPT_BUCKET,
+    Key: taskEnvironment.TENANT_RECEIPT_KEY,
+    ExpectedBucketOwner: ACCOUNT_ID,
+    ChecksumMode: 'ENABLED',
+  });
+  assert.ok(fixture.requests.gets[0].options.abortSignal instanceof AbortSignal);
+
+  const put = fixture.requests.puts[0];
+  assert.deepEqual(Object.keys(put.input).sort(), [
+    'Body',
+    'Bucket',
+    'ChecksumSHA256',
+    'ContentLength',
+    'ContentType',
+    'ExpectedBucketOwner',
+    'IfNoneMatch',
+    'Key',
+    'ServerSideEncryption',
+  ].sort());
+  assert.equal(put.input.Bucket, taskEnvironment.TENANT_RECEIPT_BUCKET);
+  assert.equal(put.input.Key, taskEnvironment.TENANT_RECEIPT_KEY);
+  assert.equal(put.input.ExpectedBucketOwner, ACCOUNT_ID);
+  assert.equal(put.input.ContentType, RAW_RECEIPT_CONTENT_TYPE);
+  assert.equal(put.input.ContentLength, expectedReceipt.body.length);
+  assert.equal(put.input.ChecksumSHA256, sha256Base64(expectedReceipt.body));
+  assert.equal(put.input.IfNoneMatch, '*');
+  assert.equal(put.input.ServerSideEncryption, 'AES256');
+  assert.equal(put.input.Body.equals(expectedReceipt.body), true);
+  assert.deepEqual(
+    JSON.parse(put.input.Body.toString('utf8')),
+    expectedReceipt.envelope,
+  );
+  assert.ok(put.options.abortSignal instanceof AbortSignal);
+});
+
+test('production destroy CLI reuses an exact receipt before constructing Secret or PostgreSQL providers', async () => {
+  const parsed = destroyInput();
+  const expectedOutput = deletedDestroyOutput(parsed);
+  const existingReceipt = buildRawTenantLifecycleReceipt({
+    input: parsed,
+    output: expectedOutput,
+  });
+  const events = [];
+  const fixture = createProductionDestroyDependencies({
+    existingReceipt,
+    recordEvent(event) {
+      events.push(event);
+    },
+  });
+
+  const output = await runProductionTenantLifecycleCli({
+    argv: ['node', 'db/tenant_lifecycle.js', 'destroy'],
+    environment: destroyEnvironment(),
+    dependencies: fixture.dependencies,
+  });
+
+  assert.deepEqual(output, expectedOutput);
+  assert.equal(Object.isFrozen(output), true);
+  assert.deepEqual(events, ['receipt_get']);
+  assert.deepEqual(fixture.counters, {
+    caReads: 0,
+    pgClientConstructors: 0,
+    s3ClientConstructors: 1,
+    s3Gets: 1,
+    s3Puts: 0,
+    secretClientConstructors: 0,
+    secretSends: 0,
+  });
+  assert.equal(fixture.requests.secrets.length, 0);
+  assert.equal(fixture.requests.puts.length, 0);
+  assert.equal(fixture.harness.state.databaseExists, true);
+  assert.equal(fixture.harness.state.roleExists, true);
+  assert.equal(fixture.harness.state.registry, null);
+});
+
+test('production destroy CLI honors cancellation after receipt absence before constructing execution providers', async () => {
+  const controller = new AbortController();
+  const reason = new Error('synthetic cancellation after receipt absence');
+  const events = [];
+  const fixture = createProductionDestroyDependencies({
+    missingReceiptStatusHook() {
+      controller.abort(reason);
+    },
+    recordEvent(event) {
+      events.push(event);
+    },
+  });
+
+  await assert.rejects(
+    runProductionTenantLifecycleCli({
+      argv: ['node', 'db/tenant_lifecycle.js', 'destroy'],
+      environment: destroyEnvironment(),
+      dependencies: fixture.dependencies,
+      signal: controller.signal,
+    }),
+    (error) => error === reason,
+  );
+
+  assert.deepEqual(events, ['receipt_get']);
+  assert.deepEqual(fixture.counters, {
+    caReads: 0,
+    pgClientConstructors: 0,
+    s3ClientConstructors: 1,
+    s3Gets: 1,
+    s3Puts: 0,
+    secretClientConstructors: 0,
+    secretSends: 0,
+  });
+  assert.equal(fixture.harness.state.databaseExists, true);
+  assert.equal(fixture.harness.state.roleExists, true);
+  assert.equal(fixture.harness.state.registry, null);
+});
+
 test('production composition pins one region for Secrets, S3, PG, and RDS CA', () => {
   const configurations = { secrets: [], s3: [] };
   class SecretsManagerClient {
@@ -1308,6 +1632,28 @@ test('production composition pins one region for Secrets, S3, PG, and RDS CA', (
     destroyComposition.databasePort instanceof PostgresTenantLifecycleDestroyPort,
     true,
   );
+
+  const secretClientCount = configurations.secrets.length;
+  let incompleteDependencyCaReads = 0;
+  assert.throws(
+    () => createProductionTenantLifecycleComposition({
+      input: input(),
+      dependencies: {
+        SecretsManagerClient,
+        GetSecretValueCommand: Command,
+        PutObjectCommand: Command,
+        GetObjectCommand: Command,
+        Client,
+        readFileSync() {
+          incompleteDependencyCaReads += 1;
+          return CA;
+        },
+      },
+    }),
+    (error) => error.code === 'TENANT_LIFECYCLE_PROVIDER_INVALID',
+  );
+  assert.equal(configurations.secrets.length, secretClientCount);
+  assert.equal(incompleteDependencyCaReads, 0);
 
   for (const operation of ['constructor', 'toString', '__proto__']) {
     let dependencyTouched = false;

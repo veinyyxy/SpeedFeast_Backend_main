@@ -10,7 +10,8 @@ const {
 const {
   TENANT_LIFECYCLE_DEADLINE_MS,
   assertProductionRuntimeEnvironment,
-  createProductionTenantLifecycleComposition,
+  createProductionTenantLifecycleExecutionComposition,
+  createProductionTenantLifecycleReceiptPublisher,
   validateProductionInvocation,
 } = require('../services/saas/tenant_lifecycle_production');
 
@@ -116,6 +117,7 @@ async function runParsedTenantLifecycleTaskWithReceipt({
   environment,
   secretProvider,
   databasePort,
+  createExecutionProviders,
   receiptPublisher,
   signal,
 }) {
@@ -141,7 +143,11 @@ async function runParsedTenantLifecycleTaskWithReceipt({
   if (existingOutput !== null) {
     return existingOutput;
   }
-  const service = new TenantLifecycleService({ secretProvider, databasePort });
+  signal.throwIfAborted();
+  const executionProviders = createExecutionProviders
+    ? createExecutionProviders()
+    : { secretProvider, databasePort };
+  const service = new TenantLifecycleService(executionProviders);
   const output = await service.execute(input, signal);
   await receiptPublisher.publish({ input, output, target, signal });
   return output;
@@ -177,14 +183,19 @@ async function runProductionTenantLifecycleCli({
   const command = validateProductionInvocation(argv, environment);
   const input = parseTenantLifecycleTaskInput({ command, environment });
   assertProductionRuntimeEnvironment({ environment, input });
-  const providers = createProductionTenantLifecycleComposition({
+  const receiptPublisher = createProductionTenantLifecycleReceiptPublisher({
     input,
     dependencies,
   });
   return runParsedTenantLifecycleTaskWithReceipt({
     input,
     environment,
-    ...providers,
+    createExecutionProviders: () =>
+      createProductionTenantLifecycleExecutionComposition({
+        input,
+        dependencies,
+      }),
+    receiptPublisher,
     signal,
   });
 }

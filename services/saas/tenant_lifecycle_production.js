@@ -2073,53 +2073,84 @@ function loadRdsCaBundle(readFileSync = fs.readFileSync) {
   return ca;
 }
 
-function defaultProductionDependencies() {
+function defaultProductionReceiptDependencies() {
+  const { S3Client, PutObjectCommand, GetObjectCommand } =
+    require('@aws-sdk/client-s3');
+  return { S3Client, PutObjectCommand, GetObjectCommand };
+}
+
+function defaultProductionExecutionDependencies() {
   const {
     SecretsManagerClient,
     GetSecretValueCommand,
   } = require('@aws-sdk/client-secrets-manager');
-  const { S3Client, PutObjectCommand, GetObjectCommand } =
-    require('@aws-sdk/client-s3');
   const { Client } = require('pg');
   return {
     SecretsManagerClient,
     GetSecretValueCommand,
-    S3Client,
-    PutObjectCommand,
-    GetObjectCommand,
     Client,
     readFileSync: fs.readFileSync,
   };
 }
 
-function createProductionTenantLifecycleComposition({ input, dependencies }) {
+function assertProductionCompositionInput(input) {
   if (!productionRuntimeModeForOperation(input?.operation)) {
     fail(
       'TENANT_LIFECYCLE_COMMAND_DISABLED',
       'Production lifecycle composition is available only for inspect and cleanup-only destroy.',
     );
   }
-  const sdk = dependencies || defaultProductionDependencies();
-  for (const name of [
-    'SecretsManagerClient',
-    'GetSecretValueCommand',
-    'S3Client',
-    'PutObjectCommand',
-    'GetObjectCommand',
-    'Client',
-  ]) {
-    if (typeof sdk[name] !== 'function') {
+}
+
+function assertProductionDependencies(sdk, names) {
+  for (const name of names) {
+    if (typeof sdk?.[name] !== 'function') {
       fail(
         'TENANT_LIFECYCLE_PROVIDER_INVALID',
         'Production lifecycle dependencies are incomplete.',
       );
     }
   }
-  const secretsClient = new sdk.SecretsManagerClient({
+}
+
+function createProductionTenantLifecycleReceiptPublisher({
+  input,
+  dependencies,
+}) {
+  assertProductionCompositionInput(input);
+  const sdk = dependencies || defaultProductionReceiptDependencies();
+  assertProductionDependencies(sdk, [
+    'S3Client',
+    'PutObjectCommand',
+    'GetObjectCommand',
+  ]);
+  const s3Client = new sdk.S3Client({
     region: input.aws.region,
     maxAttempts: 2,
   });
-  const s3Client = new sdk.S3Client({
+  return new TenantLifecycleReceiptPublisher({
+    objectStore: new AwsSdkTenantLifecycleReceiptObjectStore({
+      client: s3Client,
+      region: input.aws.region,
+      PutObjectCommand: sdk.PutObjectCommand,
+      GetObjectCommand: sdk.GetObjectCommand,
+    }),
+  });
+}
+
+function createProductionTenantLifecycleExecutionComposition({
+  input,
+  dependencies,
+}) {
+  assertProductionCompositionInput(input);
+  const sdk = dependencies || defaultProductionExecutionDependencies();
+  assertProductionDependencies(sdk, [
+    'SecretsManagerClient',
+    'GetSecretValueCommand',
+    'Client',
+    'readFileSync',
+  ]);
+  const secretsClient = new sdk.SecretsManagerClient({
     region: input.aws.region,
     maxAttempts: 2,
   });
@@ -2139,18 +2170,36 @@ function createProductionTenantLifecycleComposition({ input, dependencies }) {
   const databasePort = input.operation === 'inspect'
     ? new PostgresTenantLifecycleInspectPort(databaseProviderInput)
     : new PostgresTenantLifecycleDestroyPort(databaseProviderInput);
-  const receiptPublisher = new TenantLifecycleReceiptPublisher({
-    objectStore: new AwsSdkTenantLifecycleReceiptObjectStore({
-      client: s3Client,
-      region: input.aws.region,
-      PutObjectCommand: sdk.PutObjectCommand,
-      GetObjectCommand: sdk.GetObjectCommand,
-    }),
-  });
   return Object.freeze({
     secretProvider: runtimeSecretProvider,
     databasePort,
-    receiptPublisher,
+  });
+}
+
+function createProductionTenantLifecycleComposition({ input, dependencies }) {
+  assertProductionCompositionInput(input);
+  const sdk = dependencies || {
+    ...defaultProductionReceiptDependencies(),
+    ...defaultProductionExecutionDependencies(),
+  };
+  assertProductionDependencies(sdk, [
+    'SecretsManagerClient',
+    'GetSecretValueCommand',
+    'S3Client',
+    'PutObjectCommand',
+    'GetObjectCommand',
+    'Client',
+    'readFileSync',
+  ]);
+  return Object.freeze({
+    ...createProductionTenantLifecycleExecutionComposition({
+      input,
+      dependencies: sdk,
+    }),
+    receiptPublisher: createProductionTenantLifecycleReceiptPublisher({
+      input,
+      dependencies: sdk,
+    }),
   });
 }
 
@@ -2192,6 +2241,8 @@ module.exports = {
   assertProductionRuntimeEnvironment,
   boundedEndClient,
   createProductionTenantLifecycleComposition,
+  createProductionTenantLifecycleExecutionComposition,
+  createProductionTenantLifecycleReceiptPublisher,
   loadRdsCaBundle,
   parseMetadataComment,
   quoteTenantIdentifier,

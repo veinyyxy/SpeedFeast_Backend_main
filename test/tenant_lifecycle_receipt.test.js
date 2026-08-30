@@ -655,6 +655,42 @@ function statefulPrepareProviders(counters) {
   };
 }
 
+function destructiveProviders(counters) {
+  return {
+    secretProvider: {
+      async useRuntimeSecret({ use }) {
+        counters.secret += 1;
+        return use(runtimeSecret());
+      },
+    },
+    databasePort: {
+      async inspect() {
+        throw new Error('unexpected inspect');
+      },
+      async apply() {
+        throw new Error('unexpected apply');
+      },
+      async destroy({ input, provisionPredecessor }) {
+        counters.destroy += 1;
+        assert.equal(input.operation, 'destroy');
+        assert.deepEqual(
+          provisionPredecessor,
+          parsedDestroyInput().provisionPredecessor,
+        );
+        if (counters.destroy > 1) {
+          throw new Error('destructive provider replayed');
+        }
+        return {
+          outcome: 'deleted',
+          databaseDeleted: true,
+          roleDeleted: true,
+          predecessorMatched: true,
+        };
+      },
+    },
+  };
+}
+
 test('receipt-aware task validates target before providers and publishes only after success', async () => {
   const invalidCounters = { secret: 0, database: 0 };
   await assert.rejects(
@@ -841,6 +877,71 @@ test('a put accepted before response loss is reused on retry without database re
   assert.ok(Object.isFrozen(replay));
   assert.deepEqual(counters, { secret: 1, database: 1, apply: 1 });
   assert.equal(store.puts.length, 1);
+});
+
+test('destroy response loss is confirmed by exact canonical receipt and retry never replays destruction', async () => {
+  const counters = { secret: 0, destroy: 0 };
+  const providers = destructiveProviders(counters);
+  const store = new RecordingObjectStore();
+  store.acceptBeforeError = true;
+  store.putError = Object.assign(
+    new Error('synthetic S3 response loss after accepting destroy receipt'),
+    { name: 'TimeoutError', $retryable: true },
+  );
+  const publisher = new TenantLifecycleReceiptPublisher({ objectStore: store });
+  const environment = taskEnvironment({
+    TENANT_DATABASE_OPERATION: 'destroy',
+    TENANT_EXTERNAL_OPERATION_EPOCH: '2',
+    TENANT_EXTERNAL_OPERATION_MARKER:
+      `tl_epoch_${PREFIX.slice(0, 24)}_g1_e2`,
+    TENANT_EXTERNAL_OPERATION_HASH: 'c'.repeat(64),
+    TENANT_PREDECESSOR_PROVISION_EPOCH: '1',
+    TENANT_PREDECESSOR_PROVISION_MARKER: EXTERNAL_MARKER,
+    TENANT_PREDECESSOR_PROVISION_OPERATION_HASH: OPERATION_HASH,
+  });
+
+  const first = await runTenantLifecycleTaskWithReceipt({
+    command: 'destroy',
+    environment,
+    ...providers,
+    receiptPublisher: publisher,
+  });
+
+  assert.equal(first.outcome, 'deleted');
+  assert.deepEqual(counters, { secret: 1, destroy: 1 });
+  assert.equal(store.puts.length, 1);
+  assert.equal(store.gets.length, 2);
+  assert.ok(store.existing);
+  assert.equal(
+    store.existing.checksumSha256,
+    sha256Base64(store.existing.body),
+  );
+  const envelope = JSON.parse(store.existing.body.toString('utf8'));
+  assert.equal(envelope.operation, 'destroy');
+  assert.deepEqual(envelope.output, first);
+  assert.equal(
+    store.existing.body.toString('utf8'),
+    canonicalReceiptJson(envelope),
+  );
+  for (const request of store.gets) {
+    assert.equal(request.bucket, RECEIPT_BUCKET);
+    assert.equal(request.key, RECEIPT_KEY);
+    assert.equal(request.expectedBucketOwner, ACCOUNT_ID);
+    assert.equal(request.expectedRegion, REGION);
+  }
+
+  const replay = await runTenantLifecycleTaskWithReceipt({
+    command: 'destroy',
+    environment,
+    ...providers,
+    receiptPublisher: publisher,
+  });
+
+  assert.deepEqual(replay, first);
+  assert.ok(Object.isFrozen(replay));
+  assert.deepEqual(counters, { secret: 1, destroy: 1 });
+  assert.equal(store.puts.length, 1);
+  assert.equal(store.gets.length, 3);
 });
 
 test('an explicitly disabled publisher cannot create an AWS client or receipt', async () => {

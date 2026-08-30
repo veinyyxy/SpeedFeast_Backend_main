@@ -29,6 +29,29 @@ test('application image is pinned, non-root and checks database readiness', () =
   assert.deepEqual(fromImages.slice(0, 3), Array(3).fill(expectedNodeImage));
   assert.equal(fromImages[3], expectedRuntimeImage);
   assert.match(runtimeStage, /COPY --from=production-dependencies \/usr\/local\/bin\/node/);
+  assert.match(
+    runtimeStage,
+    /COPY --chown=65532:65532 db \.\/db/
+  );
+  assert.match(
+    runtimeStage,
+    /COPY --chown=65532:65532 services \.\/services/
+  );
+  assert.match(
+    runtimeStage,
+    /COPY --from=rds-certificates \/aws-rds-global-bundle\.pem \/usr\/local\/share\/ca-certificates\/aws-rds-global-bundle\.pem/
+  );
+  for (const requiredLifecycleSource of [
+    'db/tenant_lifecycle.js',
+    'services/saas/tenant_lifecycle_production.js',
+    'services/saas/tenant_lifecycle_receipt_publisher.js',
+  ]) {
+    assert.equal(
+      fs.statSync(path.join(repositoryRoot, requiredLifecycleSource)).isFile(),
+      true,
+      `runtime lifecycle source must exist: ${requiredLifecycleSource}`
+    );
+  }
   assert.match(runtimeStage, /\nUSER 65532:65532\r?\n/);
   assert.match(runtimeStage, /ENTRYPOINT \[\]/);
   assert.match(runtimeStage, /process\.version !== 'v24\.18\.0'/);
@@ -39,6 +62,7 @@ test('application image is pinned, non-root and checks database readiness', () =
   assert.doesNotMatch(dockerfile, /HEALTHCHECK[^\n]*[\s\S]*127\.0\.0\.1:3000\/health/);
   assert.match(dockerfile, /CMD \["\/usr\/local\/bin\/node", "\.\/bin\/www"\]/);
   assert.doesNotMatch(dockerfile, /CMD[^\n]*(migrat|npm run)/i);
+  assert.doesNotMatch(runtimeStage, /^(?:ENTRYPOINT|CMD)[^\r\n]*tenant_lifecycle/im);
   assert.match(
     dockerfile,
     /e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3[\s\S]*sha256sum --check --strict/
