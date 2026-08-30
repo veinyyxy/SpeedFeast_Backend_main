@@ -43,6 +43,7 @@ test('application image is pinned, non-root and checks database readiness', () =
   );
   for (const requiredLifecycleSource of [
     'db/tenant_lifecycle.js',
+    'services/saas/tenant_lifecycle_service.js',
     'services/saas/tenant_lifecycle_production.js',
     'services/saas/tenant_lifecycle_receipt_publisher.js',
   ]) {

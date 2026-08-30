@@ -321,8 +321,11 @@ full-object SHA-256 checksum, and `AES256` server-side encryption. If S3 reports
 a precondition failure or the response is lost, it reads the exact key with
 checksum mode enabled and accepts the retry only when owner enforcement,
 content type, encryption, checksum, and canonical bytes all match. A collision
-fails closed. The default CLI wires only the disabled publisher and emits a
-fixed status line rather than treating logs as a second receipt channel.
+fails closed. The production CLI constructs only the exact S3 receipt publisher
+before this read. It lazily constructs the Secrets Manager, RDS CA, and
+PostgreSQL providers only after an authoritative `NoSuchKey`; an exact existing
+receipt returns before those capabilities are created. The CLI emits a fixed
+status line rather than treating logs as a second receipt channel.
 
 The read-before-work rule also closes the response-loss replay gap. If a write
 was never accepted, a later `NoSuchKey` retry may safely execute the idempotent
