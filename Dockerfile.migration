@@ -22,6 +22,8 @@ RUN apt-get update \
 COPY --chmod=0555 scripts/run-rds-migration.sh /usr/local/bin/run-rds-migration
 COPY --chmod=0444 scripts/render_tenant_baseline_verification.py \
     /usr/local/lib/speedfeast/render_tenant_baseline_verification.py
+COPY --chmod=0444 scripts/tenant_baseline_schema_profile.py \
+    /usr/local/lib/speedfeast/tenant_baseline_schema_profile.py
 
 ENV PGPORT=5432 \
     PGSSLMODE=verify-full \

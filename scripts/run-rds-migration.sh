@@ -218,6 +218,12 @@ actual_manifest_sha256="$(sha256sum "${manifest_path}" | awk '{print $1}')"
 
 echo "Validating the PostgreSQL custom-format archive"
 offline_pg_restore --list "${dump_path}" >"${toc_path}"
+offline_pg_restore \
+  --file="${restore_sql_path}" \
+  --no-owner \
+  --no-privileges \
+  --no-comments \
+  "${dump_path}"
 
 # This gate deliberately runs before any target-database inspection or restore.
 # A generic local export, even when its hashes are valid, is never a tenant
@@ -227,7 +233,8 @@ python3 /usr/local/lib/speedfeast/render_tenant_baseline_verification.py \
   "${actual_sha256}" \
   "${MIGRATION_CONFIRM_SOURCE_DATABASE}" \
   "${toc_path}" \
-  "${verification_sql_path}"
+  "${verification_sql_path}" \
+  "${restore_sql_path}"
 
 server_version_num="$(target_psql --no-psqlrc --tuples-only --no-align --command='SHOW server_version_num')"
 [[ "${server_version_num}" =~ ^16[0-9]{4}$ ]] || \
@@ -339,13 +346,6 @@ SQL
 )"
 [[ "${existing_object_summary}" == "relations=0,extensions=0,routines=0,types=0,schemas=0,event_triggers=0,publications=0" ]] || \
   fail "Destination database contains user objects (${existing_object_summary}); restore was not started"
-
-echo "Rendering the archive into an atomic restore script"
-offline_pg_restore \
-  --file="${restore_sql_path}" \
-  --no-owner \
-  --no-privileges \
-  "${dump_path}"
 
 echo "Restoring, validating every table, and granting application access in one transaction"
 {

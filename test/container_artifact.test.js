@@ -98,11 +98,18 @@ test('database restore image matches the PostgreSQL 16.14 sandbox baseline', () 
     dockerfile,
     /COPY --chmod=0444 scripts\/render_tenant_baseline_verification\.py/
   );
+  assert.match(dockerfile, /COPY --chmod=0444 scripts\/tenant_baseline_schema_profile\.py/);
   const policyGate = migrationScript.indexOf(
     'render_tenant_baseline_verification.py'
   );
   const targetInspection = migrationScript.indexOf('existing_object_summary=');
   assert.ok(policyGate > 0, 'tenant baseline policy gate must be invoked');
+  const offlineRender = migrationScript.indexOf('--file="${restore_sql_path}"');
+  assert.ok(offlineRender > 0 && offlineRender < policyGate,
+    'exact executable SQL must be rendered offline before profile validation');
+  assert.ok(policyGate < migrationScript.indexOf('server_version_num="'),
+    'profile validation must precede every target connection');
+  assert.match(migrationScript, /verification_sql_path\}" \\\r?\n  "\$\{restore_sql_path\}"/);
   assert.ok(
     policyGate < targetInspection,
     'tenant baseline policy must be checked before target inspection and restore'

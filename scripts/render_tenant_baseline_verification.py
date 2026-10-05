@@ -186,7 +186,25 @@ def validate_restore_toc(
     toc_text: str,
     manifest: dict[str, Any],
     normalized: list[tuple[str, str, int]],
+    program_sql: str | None = None,
 ) -> None:
+    profile_objects: set[str] = set()
+    if manifest.get("schemaProfile") is not None:
+        from tenant_baseline_schema_profile import PROFILE, validate_program_sql
+
+        if manifest["schemaProfile"] != PROFILE or manifest.get("dataPolicy") != SCHEMA_ONLY_POLICY:
+            raise ManifestValidationError("Unsupported executable schema profile")
+        try:
+            profile_objects = set(validate_program_sql(program_sql))
+        except ValueError as error:
+            raise ManifestValidationError(str(error)) from error
+    used_profile_objects: set[str] = set()
+
+    def require_profile_object(value: str) -> None:
+        if value not in profile_objects or value in used_profile_objects:
+            raise ManifestValidationError("Restore TOC contains an unknown or duplicate profile object")
+        used_profile_objects.add(value)
+
     manifest_tables = {
         (schema.casefold(), name.casefold()) for schema, name, _ in normalized
     }
@@ -340,13 +358,32 @@ def validate_restore_toc(
             if len(details) < 3:
                 raise ManifestValidationError("Restore TOC contains an invalid FUNCTION entry")
             function_key = (details[0].casefold(), details[1].casefold())
-            if function_key not in APPROVED_FUNCTIONS:
+            if profile_objects:
+                if len(details) != 3:
+                    raise ManifestValidationError("Invalid profile function TOC entry")
+                require_profile_object(f"FUNCTION {details[0]}.{details[1]}")
+            elif function_key not in APPROVED_FUNCTIONS:
                 raise ManifestValidationError(
                     f"Restore TOC FUNCTION is not approved: {details[0]}.{details[1]}"
                 )
             require_manifest_schema_object(
                 f"FUNCTION {details[0]}.{details[1]}"
             )
+            continue
+
+        if descriptor == "EXTENSION" and profile_objects:
+            # pg_dump may leave the extension owner field empty.
+            if len(details) not in (2, 3) or details[:2] != ["-", "uuid-ossp"]:
+                raise ManifestValidationError("Restore TOC contains an unreviewed extension")
+            require_profile_object("EXTENSION uuid-ossp")
+            require_manifest_schema_object("EXTENSION uuid-ossp")
+            continue
+        if descriptor == "TRIGGER" and profile_objects:
+            if len(details) != 4 or (details[0], details[1]) not in manifest_tables:
+                raise ManifestValidationError("Restore TOC trigger targets an undeclared table")
+            value = f"TRIGGER {details[0]}.{details[1]}.{details[2]}"
+            require_profile_object(value)
+            require_manifest_schema_object(value)
             continue
 
         # Extensions, ACLs, BLOBs, security labels, event triggers, foreign
@@ -358,6 +395,8 @@ def validate_restore_toc(
 
     if entry_count == 0:
         raise ManifestValidationError("Restore TOC does not contain any entries")
+    if used_profile_objects != profile_objects:
+        raise ManifestValidationError("Restore TOC is missing required profile objects")
     if toc_tables != manifest_tables:
         missing = manifest_tables - toc_tables
         unexpected = toc_tables - manifest_tables
@@ -406,6 +445,11 @@ def validate_manifest(
         raise ManifestValidationError(
             "Manifest dataPolicy must be schema_only or allowlisted_seed_tables"
         )
+    if manifest.get("schemaProfile") is not None:
+        from tenant_baseline_schema_profile import PROFILE, REQUIRED_TABLES
+
+        if manifest["schemaProfile"] != PROFILE or data_policy != SCHEMA_ONLY_POLICY:
+            raise ManifestValidationError("Unsupported executable schema profile")
 
     tables = manifest.get("tables")
     if not isinstance(tables, list) or not tables:
@@ -497,6 +541,10 @@ def validate_manifest(
             )
 
     normalized.sort(key=lambda item: (item[0], item[1]))
+    if manifest.get("schemaProfile") is not None and not {
+        ("public", name) for name in REQUIRED_TABLES
+    }.issubset(normalized_keys):
+        raise ManifestValidationError("Schema profile requires its referenced business tables")
     return normalized
 
 
@@ -554,10 +602,10 @@ def render_verification_sql(normalized: list[tuple[str, str, int]]) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 6:
+    if len(argv) not in (6, 7):
         print(
             "Usage: render_tenant_baseline_verification.py "
-            "MANIFEST ARCHIVE_SHA256 SOURCE_DATABASE RESTORE_TOC OUTPUT_SQL",
+            "MANIFEST ARCHIVE_SHA256 SOURCE_DATABASE RESTORE_TOC OUTPUT_SQL [OFFLINE_SCHEMA_SQL]",
             file=sys.stderr,
         )
         return 2
@@ -568,7 +616,7 @@ def main(argv: list[str]) -> int:
         source_database_name,
         toc_path,
         output_path,
-    ) = argv[1:]
+    ) = argv[1:6]
     try:
         manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
         normalized = validate_manifest(
@@ -576,14 +624,26 @@ def main(argv: list[str]) -> int:
             archive_sha256.lower(),
             source_database_name,
         )
+        program_sql = None
+        if manifest.get("schemaProfile") is not None:
+            if len(argv) != 7 or pathlib.Path(argv[6]).stat().st_size > 8_000_000:
+                raise ManifestValidationError("Profile requires bounded offline schema SQL")
+            program_sql = pathlib.Path(argv[6]).read_text(encoding="utf-8")
         validate_restore_toc(
             pathlib.Path(toc_path).read_text(encoding="utf-8"),
             manifest,
             normalized,
+            program_sql,
         )
+        verification = render_verification_sql(normalized)
+        if manifest.get("schemaProfile") is not None:
+            from tenant_baseline_schema_profile import render_profile_verification_sql
+
+            verification += render_profile_verification_sql()
         pathlib.Path(output_path).write_text(
-            render_verification_sql(normalized),
+            verification,
             encoding="utf-8",
+            newline="\n",
         )
     except (OSError, json.JSONDecodeError, ManifestValidationError) as error:
         print(f"Tenant bootstrap manifest rejected: {error}", file=sys.stderr)
