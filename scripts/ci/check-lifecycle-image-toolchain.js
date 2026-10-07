@@ -30,10 +30,12 @@ async function main(){
     if(!text.includes('Version: '+pkg.version+'\n'))throw new Error('Runtime dependency metadata missing');}
   phase='BUNDLE';
   const bundle=checkPreparedImageBundle();
-  phase='SYNTHETIC_FILES';
+  phase='FIXTURE_ARCHIVE';
   const root='/ci-fixture';
   const archiveBytes=await fs.readFile(path.join(root,'empty-baseline.dump'));
+  phase='FIXTURE_MANIFEST';
   const manifestBytes=await fs.readFile(path.join(root,'empty-baseline.manifest.json'));
+  phase='TEMP_WORKSPACE';
   const parent=await fs.mkdtemp(path.join(os.tmpdir(),'lifecycle-compiler-check-'));
   phase='BASELINE_COMPILER';
   const program=await compileTenantBaselineProgram({archiveBytes,manifestBytes,archiveSha256:hash(archiveBytes),manifestSha256:hash(manifestBytes),

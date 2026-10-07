@@ -52,7 +52,7 @@ if [[ "$kind" == app ]]; then
     }main().catch(()=>{console.error("APP_IMAGE_SELF_CHECK_FAILED");process.exitCode=1;});
   ' > "$output/self-check.json"
 else
-  docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=128m "$image" > "$output/bundle-check.json"
+  docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=128m,mode=1777 "$image" > "$output/bundle-check.json"
   fixture="$output/synthetic-fixture"
   mkdir "$fixture"
   python3 scripts/ci/create-image-toolchain-fixture.py "$fixture/create.sql"
@@ -75,7 +75,7 @@ else
   python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["policyCompatible"] is True' "$fixture/schema-policy-review.json"
   chmod 0755 "$output" "$fixture"
   chmod 0444 "$fixture/empty-baseline.dump" "$fixture/empty-baseline.manifest.json"
-  docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+  docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=128m,mode=1777 \
     --mount "type=bind,source=$fixture,target=/ci-fixture,readonly" \
     --entrypoint node "$image" /app/scripts/ci/check-lifecycle-image-toolchain.js /ci-fixture > "$output/self-check.json"
   set +e

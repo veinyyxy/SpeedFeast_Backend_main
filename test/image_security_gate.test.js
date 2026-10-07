@@ -38,4 +38,6 @@ test('lifecycle final layer is nonroot and contains patched Python plus minimal 
   const bundle=fs.readFileSync('scripts/ci/build-lifecycle-runtime.py','utf8');
   assert.ok(bundle.includes("'var/lib/dpkg/status.d'"));assert.ok(bundle.includes('upstreamPythonIsDebianPackage'));
   assert.ok(!bundle.includes('ignore-errors'));assert.ok(bundle.includes("'3.14.8'"));
+  assert.ok(bundle.includes("(OUTPUT / 'tmp').chmod(0o1777)"));
+  assert.ok(fs.readFileSync('scripts/ci/check-image-candidate.sh','utf8').includes('mode=1777'));
 });

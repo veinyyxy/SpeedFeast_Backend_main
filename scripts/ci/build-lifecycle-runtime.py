@@ -103,6 +103,9 @@ def main():
         'upstreamPythonIsDebianPackage': False,
         'excludedPythonFeatures': ['pip', 'tkinter', 'idlelib', 'turtle']}, sort_keys=True))
     (OUTPUT / 'tmp/tenant-lifecycle').mkdir(parents=True)
+    # COPY overlays directory modes too; do not turn the base's shared /tmp
+    # into root-only 0755. The compiler creates an owned 0700 mkdtemp child.
+    (OUTPUT / 'tmp').chmod(0o1777)
     (OUTPUT / 'tmp/tenant-lifecycle').chmod(0o700)
     print(json.dumps({'outcome': 'MINIMAL_RUNTIME_OVERLAY_BUILT', 'python': '3.14.8',
                       'pgRestore': '16.14', 'debianPackages': packages}))
