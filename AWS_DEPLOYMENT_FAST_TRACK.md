@@ -2,6 +2,18 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2g1：受审生产admission/CLI root代码与真实PG验证完成，未云启用
+
+2026-10-07 服务端源 `19cc3e096df4d37be0a6570ce3116d47c472ace2` 的 [双镜像候选37702693753](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37702693753) 与 [完整CI37702693776](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37702693776)实际success。新 `tenant_lifecycle_admission.js` 只读核验固定TaskRole、Fargate metadata/TaskDefinition/registry image、运行窗口、完整平台ownership preimage与ownerDeploymentId，再强一致读取固定authority table的独立runtime descriptor及租户epoch；旧SQL scope hash不冒充平台hash。新 `tenant_lifecycle_admitted_root.js` 校验opaque capability、准确S3 owner/FULL_OBJECT checksum/bytes SHA、进程内baseline compiler品牌，接既有RDS SQL/应用/cleanup；每个SQL query和receipt transport前后重验围栏。
+
+prepared CLI仍以check-bundle为default，选中production mode也不构成批准；需要实际安装的runtime descriptor、当前权威epoch和完整live task proof。共享120s deadline/5s hard-abort，旧inspect/destroy协议保持原限制、不把旧命令自动改成prepared-v2。新镜像声明唯一scratch volume `/tmp/tenant-lifecycle`，admission只接受该匿名临时卷，不接受host/EFS/额外挂载；实际Fargate卷权限与身份仍需未来在线证明。
+
+41项backend相邻测试、6项平台合同测试、两仓typecheck/定向lint、npm生产audit0通过。新root在隔离PG16.14 TLS、非superuser管理账户上实际通过完整SQL/app login/immutable receipt响应丢失恢复/重放不重开/active业务不覆盖/取消与cleanup，临时server已停。AWS admission和S3 transport显式本地替换，compiler复用已真实编译品牌program，不是AWS endpoint/CA/metadata/DynamoDB/S3/ECS证明；私有final receipt `F:/ChatGPT_workshop/techlong-pg16-admitted-root-20261007-f2g2/sessions-receipt.json` SHA `989d41483417eeb5ffafa7324ebe5f5e83b5d31b55bad2dda26c9770e86c198b`。
+
+新app/lifecycle config digest `sha256:75140a5e88550b04f458e2aa2c1b6b7b4326dc1225e11d8491dc2f440ac63206` / `sha256:8cd975a2f73c11e4363ef5fbf298416323f2723a24a68738e72dfdf273342d9e`，Trivy OS HIGH/CRITICAL均0；这两候选未发布，不能把其config当registry digest。日志/REST metadata索引SHA `8da909ad09dba7702772796658924118a5e66d54785e70c8e8dbe2ec28550d24`，未下载原ZIP/receipt。旧已发布镜像保留，Source只读Inspect仍Locked/v4；无AWS/Neon/源PG15/生产baseline写入或权限安装，50USD/月目标不变。
+
+下一小阶段：将平台prepared-v2 command/三个authority参数、receipt v2与SDK request validation接到显式选中的runner，编译但不安装runtime descriptor/新TaskDefinition候选和权限范围；新的image发布、baseline upload/批准、DDB runtime record、IAM和付费Cell各按准确fresh范围确认。当前runtime descriptor新namespace仅为未部署契约；不是schema2 Writer已实现或云已admitted。跨DynamoDB/Postgres/Neon lease不是原子事务，实际concurrency/lease-loss/TTL/cleanup和费用仍待F3，Worker gates不得打开。见 [代码、真实验证与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2g1-admitted-root.md)。以下保留历史状态。
+
 ## F2f6：修复镜像已实际发布，独立扫描通过并Locked收尾
 
 2026-10-07 用户确认fresh SHA `15d30e5ec70feb4712c572a404f437405b5d5b9704acd59937423ac4bbd62f80` 后，唯一更新现有两项publisher IAM并完整Grant回读，唯一 [Actions发布37694984927](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37694984927) 在publisher main `41b5645dd91c99547dd88d4ac570802c96e4de02` success。准确修复源仍 `40b1ce6e487dc4c1187da3014a89b9379d50d578`，先原始ZIP/checksum/receipt/image load校验再OIDC，没有rebuild/overwrite。两新immutable tag均实际写入，ECR BASIC scan COMPLETE/空severity counts，HIGH/CRITICAL门禁通过；不是普遍无漏洞或ECS ready保证。
