@@ -52,9 +52,12 @@ jobs:
       - name: Validate self-check entrypoints
         run: |
           bash -n scripts/ci/check-image-candidate.sh
+          bash -n scripts/ci/check-image-security.sh
           python3 -m py_compile scripts/ci/create-image-toolchain-fixture.py
+          python3 -m py_compile scripts/ci/build-lifecycle-runtime.py
           node --check scripts/ci/check-lifecycle-image-toolchain.js
           node --check scripts/ci/record-image-candidate.js
+          node --check scripts/ci/verify-image-security.js
 
       - name: Gate high and critical production dependency advisories
         run: npm audit --omit=dev --audit-level=high
@@ -75,6 +78,27 @@ jobs:
           output="$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
           mkdir "$output"
           bash scripts/ci/check-image-candidate.sh "$CANDIDATE_KIND" "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" "$output"
+
+      - name: Gate operating-system HIGH and CRITICAL before retaining candidates
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: bash scripts/ci/check-image-security.sh "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" "$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+
+      - name: Record the exact checked and scanned image
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: node scripts/ci/record-image-candidate.js "$CANDIDATE_KIND" "$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+
+      - name: Preserve OS scan diagnosis on success or failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: os-scan-${{ matrix.kind }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/os-scan.json
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/os-scan-summary.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Export the exact checked image
         env:

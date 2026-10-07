@@ -75,6 +75,6 @@ test('prepared factory rejects a forged compiler object before CA reads and life
   assert.throws(()=>createPreparedRdsTaskComposition({input,program:{},manifestBytes:Buffer.from('{}'),dependencies:{readFileSync(){reads++;}}}),{code:'TENANT_BASELINE_PROGRAM_INVALID'});
   assert.equal(reads,0);
   const image=require('node:fs').readFileSync('Dockerfile.lifecycle','utf8');
-  for(const text of ['postgres:16.14-bookworm@sha256:','node:24.18.0-bookworm-slim@sha256:',RDS_CA_SHA256,'sha256sum --check --strict','USER node','CMD ["--check-bundle"]','libpq.so.5*'])assert.ok(image.includes(text));
+  for(const text of ['postgres:16.14-trixie@sha256:','node:24.18.0-bookworm-slim@sha256:',RDS_CA_SHA256,'sha256sum --check --strict','USER 65532:65532','CMD ["--check-bundle"]','libpq.so.5*','gcr.io/distroless/cc-debian13:nonroot@sha256:','python:3.14.8-slim-trixie@sha256:'])assert.ok(image.includes(text));
   assert.ok(!image.includes('COPY . '));assert.ok(!image.includes('COPY .env'));
 });

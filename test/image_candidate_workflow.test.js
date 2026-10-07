@@ -5,7 +5,7 @@ const {spawnSync}=require('node:child_process');
 const read=name=>fs.readFileSync(name,'utf8');
 const {isPgRestore16_14}=require('../services/saas/tenant_postgres_tools');
 test('same pinned patch accepts only the specific Debian packaging family, not a different tool version',()=>{
-  for(const value of ['pg_restore (PostgreSQL) 16.14','pg_restore (PostgreSQL) 16.14 (Debian 16.14-1.pgdg120+1)','pg_restore (PostgreSQL) 16.14 (Debian 16.14-1.pgdg12+1)'])assert.equal(isPgRestore16_14(value),true);
+  for(const value of ['pg_restore (PostgreSQL) 16.14','pg_restore (PostgreSQL) 16.14 (Debian 16.14-1.pgdg120+1)','pg_restore (PostgreSQL) 16.14 (Debian 16.14-1.pgdg12+1)','pg_restore (PostgreSQL) 16.14 (Debian 16.14-1.pgdg13+1)'])assert.equal(isPgRestore16_14(value),true);
   for(const value of ['pg_restore (PostgreSQL) 16.15','pg_restore (PostgreSQL) 15.14','pg_restore (PostgreSQL) 16.14 (Debian 16.15-1.pgdg120+1)','pg_restore (PostgreSQL) 16.14 unexpected'])assert.equal(isPgRestore16_14(value),false);
 });
 test('cloud candidate build has no AWS/OIDC/registry publication and only fixed image kinds',()=>{

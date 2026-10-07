@@ -85,4 +85,3 @@ else
   [[ "$gate_exit" -eq 1 && ! -s "$output/write-gate.stdout" ]]
   grep -q '^TENANT_PREPARED_STANDALONE_DISABLED:' "$output/write-gate.stderr"
 fi
-node scripts/ci/record-image-candidate.js "$kind" "$output"
