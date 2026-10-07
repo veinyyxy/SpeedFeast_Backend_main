@@ -49,7 +49,9 @@ function validatePreparedProductionInvocation(argv,environment,input){
   const uri=environment.ECS_CONTAINER_METADATA_URI_V4;
   if(typeof uri!=='string'||!/^http:\/\/169\.254\.170\.2\/v4\/[A-Za-z0-9-]{16,200}$/.test(uri))fail('TENANT_ADMISSION_METADATA_INVALID');
   const identity=validatePlatformIdentity(environment.TENANT_RESOURCE_IDENTITY_JSON,input,key);
-  return Object.freeze({authorityKey:key,metadataUri:uri,identity});
+  const ownerDeploymentId=environment.TENANT_OWNER_DEPLOYMENT_ID;
+  if(typeof ownerDeploymentId!=='string'||!ownerDeploymentId||ownerDeploymentId.length>128||/[\r\n\0]/.test(ownerDeploymentId))fail('TENANT_ADMISSION_OWNER_INVALID');
+  return Object.freeze({authorityKey:key,metadataUri:uri,identity,ownerDeploymentId});
 }
 
 function activationFromItem(item,input,now=Date.now()){
@@ -73,14 +75,14 @@ function activationFromItem(item,input,now=Date.now()){
   return freeze(a);
 }
 
-function assertEpochItem(item,authorityKey,input){
+function assertEpochItem(item,authorityKey,input,ownerDeploymentId){
   if(!exact(item,['authority_key','schema_version','revision','record_json'])||item.authority_key?.S!==authorityKey||item.schema_version?.N!=='1'||
     !/^[1-9][0-9]{0,14}$/.test(item.revision?.N||'')||typeof item.record_json?.S!=='string'||Buffer.byteLength(item.record_json.S)>16384)fail('TENANT_ADMISSION_EPOCH_MISSING');
   let r;try{r=JSON.parse(item.record_json.S);}catch{fail();}
   if(!exact(r,['schemaVersion','stableIdentityHash','generation','epoch','intent','ownerDeploymentId','operationHash','marker','predecessor'])||r.schemaVersion!==1||
     r.stableIdentityHash!==authorityKey.slice(7)||!hash.test(r.stableIdentityHash)||r.generation!==input.resourceGeneration||r.epoch!==input.externalOperationEpoch||
     r.intent!==input.externalIntent||r.operationHash!==input.externalOperationHash||r.marker!==input.externalOperationMarker||typeof r.ownerDeploymentId!=='string'||
-    !r.ownerDeploymentId||r.ownerDeploymentId.length>200||canonicalReceiptJson(r)!==item.record_json.S)fail('TENANT_ADMISSION_EPOCH_STALE');
+    !r.ownerDeploymentId||r.ownerDeploymentId.length>200||(ownerDeploymentId!==undefined&&r.ownerDeploymentId!==ownerDeploymentId)||canonicalReceiptJson(r)!==item.record_json.S)fail('TENANT_ADMISSION_EPOCH_STALE');
   if(r.predecessor!==null){
     const p=r.predecessor;
     if(!exact(p,['schemaVersion','generation','epoch','intent','ownerDeploymentId','operationHash','marker'])||p.schemaVersion!==1||
@@ -110,9 +112,11 @@ async function boundedMetadata(uri,signal,fetcher=fetch){
 function defaultDependencies(){return {...require('@aws-sdk/client-sts'),...require('@aws-sdk/client-ecs'),...require('@aws-sdk/client-dynamodb')};}
 async function admitPreparedProductionTask({input,coordinates,signal,dependencies,fetchMetadata=boundedMetadata}){
   signal.throwIfAborted();
-  if(!exact(coordinates,['authorityKey','metadataUri','identity'])||!/^tenant:[a-f0-9]{64}$/.test(coordinates.authorityKey)||
+  if(!exact(coordinates,['authorityKey','metadataUri','identity','ownerDeploymentId'])||typeof coordinates.ownerDeploymentId!=='string'||!coordinates.ownerDeploymentId||coordinates.ownerDeploymentId.length>128||
+    !/^tenant:[a-f0-9]{64}$/.test(coordinates.authorityKey)||
     coordinates.authorityKey.slice(7,39)!==input.stableIdentityHashPrefix||!/^http:\/\/169\.254\.170\.2\/v4\/[A-Za-z0-9-]{16,200}$/.test(coordinates.metadataUri))fail();
   validatePlatformIdentity(JSON.stringify(coordinates.identity),input,coordinates.authorityKey);
+  coordinates=freeze(structuredClone(coordinates));
   try{
     const sdk=dependencies||defaultDependencies(),configuration={region:REGION,maxAttempts:2};
     const sts=new sdk.STSClient(configuration),ecs=new sdk.ECSClient(configuration),ddb=new sdk.DynamoDBClient(configuration);
@@ -143,13 +147,13 @@ async function admitPreparedProductionTask({input,coordinates,signal,dependencie
       !(exact(volumes[0],['name'])||(exact(volumes[0],['name','host'])&&exact(volumes[0].host,[]))))fail('TENANT_ADMISSION_WORKSPACE_INVALID');
     const overrides=task.overrides?.containerOverrides;
     if(overrides?.length!==1||overrides[0].name!==container.name||canonicalJson(overrides[0].command)!==canonicalJson([input.operation]))fail('TENANT_ADMISSION_TASK_INVALID');
-    const epochItem=await get(coordinates.authorityKey),epoch=assertEpochItem(epochItem,coordinates.authorityKey,input);
+    const epochItem=await get(coordinates.authorityKey),epoch=assertEpochItem(epochItem,coordinates.authorityKey,input,coordinates.ownerDeploymentId);
     const token=Object.freeze({status:'admitted_production_task',taskArn:task.taskArn,receiptSchemaVersion:2});
     const refresh=async()=>{
       signal.throwIfAborted();
       const a=await get(ACTIVATION_KEY);activationFromItem(a,input);
       if(canonicalJson(a)!==canonicalJson(activationItem))fail('TENANT_ADMISSION_ACTIVATION_CHANGED');
-      const e=await get(coordinates.authorityKey);assertEpochItem(e,coordinates.authorityKey,input);
+      const e=await get(coordinates.authorityKey);assertEpochItem(e,coordinates.authorityKey,input,coordinates.ownerDeploymentId);
       if(e.record_json.S!==epoch||e.revision.N!==epochItem.revision.N)fail('TENANT_ADMISSION_EPOCH_STALE');
     };
     grants.set(token,Object.freeze({inputHash:canonicalJson(input),activation,refresh}));return token;

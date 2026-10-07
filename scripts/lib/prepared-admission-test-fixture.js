@@ -19,7 +19,7 @@ function fixture(input=lifecycleInput()){
   input=validateTaskInput(raw,raw.operation);
   const identity={schemaVersion:1,...ownership,databaseName:input.managementTarget.targetDatabaseName,roleName:input.managementTarget.targetRoleName,secretName,stableIdentityHash};
   const authorityKey='tenant:'+stableIdentityHash;
-  const coordinates={authorityKey,identity,metadataUri:'http://169.254.170.2/v4/12345678-1234-1234-1234-123456789012'};
+  const coordinates={authorityKey,identity,ownerDeploymentId:'test-deployment',metadataUri:'http://169.254.170.2/v4/12345678-1234-1234-1234-123456789012'};
   const {targetDatabaseName,targetRoleName,...managementTarget}=input.managementTarget;
   const descriptor={schemaVersion:1,purpose:'tenant-lifecycle-prepared-activation/v1',status:'active',notBefore:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+3600000).toISOString(),
     clusterArn:input.managementTarget.clusterArn,taskDefinitionArn:'arn:aws:ecs:ca-central-1:402010193138:task-definition/tenant-lifecycle:99',imageUri:'402010193138.dkr.ecr.ca-central-1.amazonaws.com/techlong-sandbox-speedfeast@sha256:'+'1'.repeat(64),managementTarget,receiptSchemaVersion:2,
@@ -48,7 +48,7 @@ function fixture(input=lifecycleInput()){
   f.fetchMetadata=async uri=>{assert.equal(uri,coordinates.metadataUri);return {TaskARN:taskArn,Cluster:descriptor.clusterArn};};
   f.admit=()=>admitPreparedProductionTask({input,coordinates,dependencies:f.sdk,fetchMetadata:f.fetchMetadata,signal:new AbortController().signal});
   f.environment={...taskEnvironment(input,'admission-test'),APP_RUNTIME_MODE:MODE,NODE_ENV:'production',AWS_REGION:'ca-central-1',PGSSLMODE:'verify-full',PGSSL_REJECT_UNAUTHORIZED:'true',PGSSLROOTCERT:'/usr/local/share/ca-certificates/aws-rds-global-bundle.pem',
-    AWS_CONTAINER_CREDENTIALS_RELATIVE_URI:'/v2/credentials/12345678-1234-1234-1234-123456789012',ECS_CONTAINER_METADATA_URI_V4:coordinates.metadataUri,TENANT_EXTERNAL_AUTHORITY_KEY:authorityKey,TENANT_RESOURCE_IDENTITY_JSON:canonicalReceiptJson(identity)};
+    AWS_CONTAINER_CREDENTIALS_RELATIVE_URI:'/v2/credentials/12345678-1234-1234-1234-123456789012',ECS_CONTAINER_METADATA_URI_V4:coordinates.metadataUri,TENANT_EXTERNAL_AUTHORITY_KEY:authorityKey,TENANT_RESOURCE_IDENTITY_JSON:canonicalReceiptJson(identity),TENANT_OWNER_DEPLOYMENT_ID:coordinates.ownerDeploymentId};
   return f;
 }
 module.exports={fixture};

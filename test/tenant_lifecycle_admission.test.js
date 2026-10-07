@@ -29,7 +29,8 @@ test('closed admission binds live role/task/definition/image and strongly-consis
 test('missing activation and wrong live provenance deny before granting any capability',async()=>{
   for(const mutate of [f=>{f.activationItem=undefined;},f=>{f.identity.Arn='arn:aws:iam::402010193138:user/techlong-sandbox-dev';},f=>{f.task.launchType='EC2';},
     f=>{f.definition.taskRoleArn=f.definition.executionRoleArn;},f=>{f.task.containers[0].imageDigest='sha256:'+'0'.repeat(64);},f=>{f.task.overrides.containerOverrides[0].command=['verify','--enable'];},
-    f=>{f.definition.containerDefinitions[0].readonlyRootFilesystem=false;},f=>{f.definition.volumes=[{name:'tenant-lifecycle-workspace',host:{sourcePath:'/home/nonroot/.aws'}}];}]){const f=fixture();mutate(f);await assert.rejects(()=>f.admit());}
+    f=>{f.definition.containerDefinitions[0].readonlyRootFilesystem=false;},f=>{f.definition.volumes=[{name:'tenant-lifecycle-workspace',host:{sourcePath:'/home/nonroot/.aws'}}];},
+    f=>{f.coordinates.ownerDeploymentId='another-deployment';}]){const f=fixture();mutate(f);await assert.rejects(()=>f.admit());}
 });
 test('activation refuses unapproved baseline paths, expiration, cell drift and noncanonical JSON',()=>{
   const f=fixture();activationFromItem(f.activationItem,f.input);
