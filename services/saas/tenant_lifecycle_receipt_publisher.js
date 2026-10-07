@@ -174,7 +174,7 @@ function assertHash(value, label) {
   }
 }
 
-function assertSafeOutput(input, output) {
+function assertSafeOutput(input, output, receiptSchemaVersion = 1) {
   if (input.operation === 'inspect') {
     assertExactKeys(output, INSPECT_OUTPUT_KEYS, 'Inspect output');
     if (
@@ -218,7 +218,14 @@ function assertSafeOutput(input, output) {
       );
     }
   } else {
-    assertExactKeys(output, MUTATION_OUTPUT_KEYS, 'Mutation output');
+    const preparedVerify=receiptSchemaVersion===2&&input.operation==='verify';
+    assertExactKeys(output, preparedVerify?[...MUTATION_OUTPUT_KEYS,'applicationAccess']:MUTATION_OUTPUT_KEYS, 'Mutation output');
+    if(preparedVerify){
+      assertExactKeys(output.applicationAccess,['policy','databaseLoginVerified','evidenceHash'],'Application access proof');
+      if(output.applicationAccess.policy!=='speedfeast-application-access/v1'||output.applicationAccess.databaseLoginVerified!==true)
+        throw new TenantLifecycleReceiptError('TENANT_LIFECYCLE_RECEIPT_INVALID','Prepared verify requires actual database login proof.');
+      assertHash(output.applicationAccess.evidenceHash,'Application access evidenceHash');
+    }
     const expectedState = {
       prepare_empty_database: 'empty',
       restore_approved_baseline: 'baseline_restored',
@@ -238,7 +245,8 @@ function assertSafeOutput(input, output) {
   assertHash(output.evidenceHash, 'Lifecycle evidenceHash');
 }
 
-function buildRawTenantLifecycleReceipt({ input, output }) {
+function buildRawTenantLifecycleReceipt({ input, output, receiptSchemaVersion = 1 }) {
+  if(![1,2].includes(receiptSchemaVersion))throw new TenantLifecycleReceiptError('TENANT_LIFECYCLE_RECEIPT_INVALID','Only compiled receipt schema 1 or 2 is supported.');
   const ownershipMatch = OWNERSHIP_MARKER_PATTERN.exec(
     String(input?.ownershipMarker || ''),
   );
@@ -266,12 +274,14 @@ function buildRawTenantLifecycleReceipt({ input, output }) {
     );
   }
   assertHash(input.externalOperationHash, 'Lifecycle externalOperationHash');
-  assertSafeOutput(input, output);
+  assertSafeOutput(input, output, receiptSchemaVersion);
   // Copy only the already allowlisted JSON result so caller mutation cannot
   // make the returned envelope disagree with its serialized bytes.
-  const safeOutput = Object.freeze(JSON.parse(canonicalReceiptJson(output)));
+  const copiedOutput=JSON.parse(canonicalReceiptJson(output));
+  if(copiedOutput.applicationAccess)Object.freeze(copiedOutput.applicationAccess);
+  const safeOutput = Object.freeze(copiedOutput);
   const envelope = {
-    schemaVersion: RAW_RECEIPT_SCHEMA_VERSION,
+    schemaVersion: receiptSchemaVersion,
     operation: input.operation,
     resourceGeneration: input.resourceGeneration,
     ownershipMarker: input.ownershipMarker,
@@ -329,7 +339,7 @@ function mayHaveCommittedReceiptWrite(error) {
   );
 }
 
-function decodeExistingReceipt({ existing, input, expectedEnvelope = null }) {
+function decodeExistingReceipt({ existing, input, expectedEnvelope = null, receiptSchemaVersion = 1 }) {
   if (
     !existing ||
     !Buffer.isBuffer(existing.body) ||
@@ -374,7 +384,7 @@ function decodeExistingReceipt({ existing, input, expectedEnvelope = null }) {
       throw new Error('unexpected raw envelope shape');
     }
     reviewedEnvelope = expectedEnvelope ||
-      buildRawTenantLifecycleReceipt({ input, output: parsed.output }).envelope;
+      buildRawTenantLifecycleReceipt({ input, output: parsed.output, receiptSchemaVersion }).envelope;
     const expectedBody = Buffer.from(canonicalReceiptJson(reviewedEnvelope), 'utf8');
     if (
       !existing.body.equals(expectedBody) ||
@@ -392,7 +402,7 @@ function decodeExistingReceipt({ existing, input, expectedEnvelope = null }) {
 }
 
 class TenantLifecycleReceiptPublisher {
-  constructor({ objectStore }) {
+  constructor({ objectStore, receiptSchemaVersion = 1 }) {
     if (
       !objectStore ||
       typeof objectStore.putImmutable !== 'function' ||
@@ -403,6 +413,8 @@ class TenantLifecycleReceiptPublisher {
         'Lifecycle receipt publishing requires an injected immutable object store.',
       );
     }
+    if(![1,2].includes(receiptSchemaVersion))throw new TenantLifecycleReceiptError('TENANT_LIFECYCLE_RECEIPT_PROVIDER_INVALID','Only compiled receipt schema 1 or 2 is supported.');
+    Object.defineProperty(this,'receiptSchemaVersion',{value:receiptSchemaVersion,enumerable:true,writable:false});
     this.objectStore = objectStore;
   }
 
@@ -451,12 +463,12 @@ class TenantLifecycleReceiptPublisher {
         true,
       );
     }
-    return decodeExistingReceipt({ existing, input });
+    return decodeExistingReceipt({ existing, input, receiptSchemaVersion:this.receiptSchemaVersion });
   }
 
   async publish({ input, output, target, signal = new AbortController().signal }) {
     const reviewedTarget = this.assertReady({ input, target, signal });
-    const { envelope, body } = buildRawTenantLifecycleReceipt({ input, output });
+    const { envelope, body } = buildRawTenantLifecycleReceipt({ input, output, receiptSchemaVersion:this.receiptSchemaVersion });
     const checksumSha256 = sha256Base64(body);
     try {
       await this.objectStore.putImmutable({

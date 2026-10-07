@@ -2,6 +2,7 @@ const { randomBytes, createHash } = require('node:crypto');
 const { TenantLifecycleContractError, validateTaskInput, assertRuntimeDatabaseReference, buildMarker, canonicalJson } = require('./tenant_lifecycle_service');
 const { SESSION_IDENTITY_SQL } = require('./tenant_saas_transaction_provider');
 const {PREPARE_V2_IDENTITY_SHA256,assertCleanupJournal,assertNamespaceReleased,assertProvisionNotCleaning}=require('./tenant_cleanup_journal');
+const {readJournalCatalog}=require('./tenant_journal_catalog');
 const { DESTROY_REGISTRY_IDENTITY_SQL, DESTROY_ADVISORY_LOCK_SQL, DESTROY_ADVISORY_UNLOCK_SQL,
   DATABASE_METADATA_KINDS, quoteTenantIdentifier,parseMetadataComment } = require('./tenant_lifecycle_production');
 
@@ -31,7 +32,7 @@ function values(input) {return [input.stableIdentity,input.stableIdentityHashPre
   input.externalOperationEpoch,input.externalOperationMarker,input.externalOperationHash,
   input.managementTarget.targetDatabaseName,input.managementTarget.targetRoleName];}
 async function journalIdentity(client) {
-  const result=await query(client,JOURNAL_IDENTITY_SQL);
+  const result=await readJournalCatalog(client,JOURNAL_IDENTITY_SQL);
   if(result.rowCount!==1 || Buffer.byteLength(canonicalJson(result.rows[0]))>262144)fail('TENANT_PREPARE_JOURNAL_INVALID','Journal identity is absent or unbounded.');
   // Only line endings in the compiled function source are canonicalized.
   for(const trigger of result.rows[0].triggers || [])if(typeof trigger.functionSource==='string')trigger.functionSource=trigger.functionSource.replace(/\r\n/g,'\n');

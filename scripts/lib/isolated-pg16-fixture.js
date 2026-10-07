@@ -8,7 +8,7 @@ const { run, cleanEnvironment, unusedPort, inside } = require('../verify-empty-t
 const literal = (value) => "'" + value.replaceAll("'", "''") + "'";
 
 async function withIsolatedPg16({output,bin,python,receiptKind='prepare',hardenDatabaseConnect=false},body) {
-  if(!['prepare','restore','cleanup','access'].includes(receiptKind))throw new Error('Invalid isolated receipt kind');
+  if(!['prepare','restore','cleanup','access','sessions'].includes(receiptKind))throw new Error('Invalid isolated receipt kind');
   const root=await fs.realpath('F:/ChatGPT_workshop');
   output=path.resolve(output);bin=await fs.realpath(bin);python=await fs.realpath(python);
   if(!inside(root,output)||!inside(root,bin)||await fs.realpath(path.dirname(output))!==root)
@@ -78,7 +78,21 @@ async function withIsolatedPg16({output,bin,python,receiptKind='prepare',hardenD
       PGDATABASE:database,PGUSER:'cell_admin',PGPASSWORD:adminPassword,PGSSLMODE:'verify-full',
       PGSSLROOTCERT:path.join(output,'server.crt'),PGCONNECT_TIMEOUT:'5',
       PGOPTIONS:readonly?'-c default_transaction_read_only=on':'-c default_transaction_read_only=off'});
-    result=await body({managementClient,connect,exe,output,pgEnvironment,run,receipt});
+    const localRdsTestDependencies=(onConfiguration=()=>{})=>({ca,
+      managementSecretProvider:{async useManagementSecret({input,use}){
+        return use(Object.freeze({host:input.managementTarget.managementEndpoint,port:5432,database:'cell_admin',user:'cell_admin',password:adminPassword}));
+      }},
+      Client:class LocalRdsTestClient extends Client {
+        constructor(configuration){
+          onConfiguration(configuration);
+          // Deliberate test-only transport: the production source still emits
+          // exact RDS/5432/CA settings, but this fixture never contacts RDS.
+          super({...configuration,host:'127.0.0.1',port,ssl:{ca,rejectUnauthorized:true,servername:'localhost'},
+            statement_timeout:45000,query_timeout:50000});
+          this.on('error',()=>{});clients.add(this);
+        }
+      }});
+    result=await body({managementClient,connect,exe,output,pgEnvironment,run,receipt,localRdsTestDependencies});
   }catch(error){failure=error;}
   finally{
     for(const client of clients)await client.end().catch(()=>undefined);
@@ -88,7 +102,7 @@ async function withIsolatedPg16({output,bin,python,receiptKind='prepare',hardenD
       receipt.isolatedServerStopped=true;
     }catch{failure||=new Error('Owned isolated server stop not proved');}}
     if(result?.receipt)Object.assign(result.receipt,receipt);
-    const failures={prepare:'PREPARE_TEST_FAILED',restore:'BASELINE_RESTORE_TEST_FAILED',cleanup:'PREPARED_COMPOSITION_CLEANUP_TEST_FAILED',access:'APPLICATION_ACCESS_TEST_FAILED'};
+    const failures={prepare:'PREPARE_TEST_FAILED',restore:'BASELINE_RESTORE_TEST_FAILED',cleanup:'PREPARED_COMPOSITION_CLEANUP_TEST_FAILED',access:'APPLICATION_ACCESS_TEST_FAILED',sessions:'PREPARED_RDS_TASK_TEST_FAILED'};
     const final={schemaVersion:1,...receipt,...result?.receipt,outcome:failure?failures[receiptKind]:result?.outcome,
       ...(failure?{code:/^[A-Z0-9_]{5,100}$/.test(failure.code||'')?failure.code:'ISOLATED_TEST_FAILED'}:{}),
       finishedAt:new Date().toISOString()};

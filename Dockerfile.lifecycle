@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+# Separate one-shot candidate. No application HTTP server, no embedded baseline
+# archive/Secret, no cloud activation or publication at image build time.
+FROM postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55 AS pg-tools
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS lifecycle
+RUN apt-get update && apt-get install -y --no-install-recommends python3 libpq5 liblz4-1 libzstd1 ca-certificates curl \
+    && curl --fail --silent --show-error --location https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem --output /aws-rds-global-bundle.pem \
+    && echo "fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c  /aws-rds-global-bundle.pem" | sha256sum --check --strict \
+    && install -D -m 0444 /aws-rds-global-bundle.pem /usr/local/share/ca-certificates/aws-rds-global-bundle.pem \
+    && rm /aws-rds-global-bundle.pem && rm -rf /var/lib/apt/lists/*
+COPY --from=pg-tools /usr/lib/postgresql/16/bin/pg_restore /usr/local/bin/pg_restore16
+# Reviewed target architecture is linux/amd64. Keep the tool's libpq from the
+# same pinned stage; Debian's stock libpq can be older than this pg_restore.
+COPY --from=pg-tools /usr/lib/x86_64-linux-gnu/libpq.so.5* /usr/local/lib/
+RUN ldconfig
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY package.json ./
+COPY services/saas ./services/saas
+COPY db/tenant_lifecycle_prepared.js ./db/tenant_lifecycle_prepared.js
+COPY db/saas_control.sql db/theme_config.sql ./db/
+COPY scripts/render_tenant_baseline_verification.py scripts/tenant_baseline_schema_profile.py ./scripts/
+COPY scripts/verify-empty-tenant-baseline-pg16.js ./scripts/verify-empty-tenant-baseline-pg16.js
+RUN install -d -m 0700 -o node -g node /tmp/tenant-lifecycle
+ENV NODE_ENV=production PGSSLMODE=verify-full PGSSL_REJECT_UNAUTHORIZED=true \
+    PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
+USER node
+RUN ["node", "db/tenant_lifecycle_prepared.js", "--check-bundle"]
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["node", "db/tenant_lifecycle_prepared.js"]
+CMD ["--check-bundle"]

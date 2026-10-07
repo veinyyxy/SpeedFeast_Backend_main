@@ -1,12 +1,13 @@
 const {createHash}=require('node:crypto');
 const {DESTROY_REGISTRY_IDENTITY_SQL}=require('./tenant_lifecycle_production');
 const {TenantLifecycleContractError,canonicalJson}=require('./tenant_lifecycle_service');
+const {readJournalCatalog}=require('./tenant_journal_catalog');
 const CLEANUP_JOURNAL='public.techlong_tenant_normal_cleanup_journal';
 const CLEANUP_IDENTITY_SQL=DESTROY_REGISTRY_IDENTITY_SQL.replaceAll('techlong_tenant_lifecycle_registry','techlong_tenant_normal_cleanup_journal');
 const CLEANUP_IDENTITY_SHA256='847a45554decbb5cb951d58fa290d2991d749e9b5b9fc8a0b21772f40c952f24';
 const PREPARE_V2_IDENTITY_SHA256='7d08fae04b5e77a55085ccf4b4e06d44fa41a49e1dcc3630673fa31535113612';
 async function cleanupJournalIdentity(client,signal){
-  signal?.throwIfAborted();const result=await client.query(CLEANUP_IDENTITY_SQL);signal?.throwIfAborted();
+  const result=await readJournalCatalog(client,CLEANUP_IDENTITY_SQL,signal);
   if(result.rowCount!==1||Buffer.byteLength(canonicalJson(result.rows[0]))>262144)
     throw new TenantLifecycleContractError('TENANT_NORMAL_CLEANUP_JOURNAL_INVALID','The complete cleanup journal identity is absent or unbounded.');
   for(const trigger of result.rows[0].triggers||[])if(typeof trigger.functionSource==='string')trigger.functionSource=trigger.functionSource.replace(/\r\n/g,'\n');

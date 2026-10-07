@@ -70,7 +70,7 @@ done
 
 export PGPORT="${PGPORT:-5432}"
 rds_root_certificate="/usr/local/share/ca-certificates/aws-rds-global-bundle.pem"
-rds_root_certificate_sha256="e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3"
+rds_root_certificate_sha256="fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c"
 maximum_dump_bytes=$((500 * 1024 * 1024))
 maximum_manifest_bytes=$((1 * 1024 * 1024))
 

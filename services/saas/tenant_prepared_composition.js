@@ -1,5 +1,5 @@
 const {TenantLifecycleService,TenantLifecycleContractError,validateTaskInput,assertRuntimeDatabaseReference,assertRuntimeSecret,
-  canonicalJson,preparedApplyIntent,completePreparedApply,inspectPreparedEvidence}=require('./tenant_lifecycle_service');
+  canonicalJson,preparedApplyIntent,completePreparedApply,inspectPreparedEvidence,sha256Hex}=require('./tenant_lifecycle_service');
 const {PostgresTenantPrepareProvider,readActiveProvisionSlotV2}=require('./tenant_prepare_provider');
 const {PostgresTenantBaselineRestoreProvider}=require('./tenant_baseline_restore_provider');
 const {PostgresTenantSaasTransactionProvider,SESSION_IDENTITY_SQL}=require('./tenant_saas_transaction_provider');
@@ -109,10 +109,35 @@ class PreparedTenantLifecycleService extends TenantLifecycleService {
     }
   }
 }
+// Distinct from the SQL-only service: active tenants must not rerun empty-row
+// initialization checks. Current schema/ACL and actual login are still proved.
+class PreparedTenantLifecycleTaskService {
+  #service;#access;#secrets;#port;
+  constructor(service,access,secrets,port){this.#service=service;this.#access=access;this.#secrets=secrets;this.#port=port;}
+  async execute(input,signal=new AbortController().signal){
+    parsedInput(input);signal.throwIfAborted();
+    if(input.operation!=='verify')return this.#service.execute(input,signal);
+    try{
+      const observation=await this.#secrets.useRuntimeSecret({input,secretArn:input.runtimeSecretArn,signal,use:secret=>
+        this.#port.inspect({input,runtimeSecret:assertRuntimeSecret(secret,input),signal})});
+      const prior=inspectPreparedEvidence(input,observation);
+      const sql=prior.state==='verified'?{outcome:'already_applied',resultingState:'verified',evidenceHash:prior.evidenceHash}:
+        await this.#service.execute(input,signal);
+      const access=await this.#access.activate(input,signal);
+      const applicationAccess=Object.freeze({policy:access.policy,databaseLoginVerified:access.databaseLoginVerified,evidenceHash:access.evidenceHash});
+      return Object.freeze({outcome:sql.outcome==='already_applied'&&access.outcome==='already_active'?'already_applied':'applied',
+        resultingState:'verified',applicationAccess,evidenceHash:sha256Hex({schemaVersion:2,sqlEvidenceHash:sql.evidenceHash,applicationAccess})});
+    }catch(e){
+      if(e instanceof TenantLifecycleContractError)throw e;
+      throw new TenantLifecycleContractError('TENANT_PREPARED_VERIFY_FAILED','Prepared SQL/application verification failed; diagnostics withheld.',true);
+    }
+  }
+}
 function createPreparedTenantLifecycleComposition({secretProvider,sessionProvider,program,manifestBytes}){
   const databasePort=new PreparedTenantLifecycleDatabasePort({sessionProvider,program,manifestBytes});
   const service=new PreparedTenantLifecycleService({secretProvider,databasePort});
   const applicationAccess=new PreparedTenantApplicationAccess({secretProvider,sessionProvider});
-  return Object.freeze({status:'prepared_not_activated',runtimeEnabled:false,service,databasePort,applicationAccess});
+  const taskService=new PreparedTenantLifecycleTaskService(service,applicationAccess,secretProvider,databasePort);
+  return Object.freeze({status:'prepared_not_activated',runtimeEnabled:false,service,databasePort,applicationAccess,taskService});
 }
 module.exports={PreparedTenantLifecycleService,createPreparedTenantLifecycleComposition};

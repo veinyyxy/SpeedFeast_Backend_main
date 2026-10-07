@@ -2,6 +2,26 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+2026-10-07 F2f 第一批完成代码和真实本地 PG16 验证；镜像候选尚未构建，本机无 Docker/WSL。生产 admission/CLI 写 root、真实 RDS/ECS/镜像发布仍未启用。下一批先取得容器构建条件，再补容器/compiler/digest readback 和 production root。以下记录保留历史状态。
+
+## F2f 第一批：RDS owned-session、组合 verify 与 v2 receipt
+
+`tenant_rds_sessions.js` 独立 prepared AWS Secret source 为准确 ARN/AWSCURRENT/严格 JSON keys，fixed pg endpoint/5432/数据库/role/CA/servername/timeout，不传 connectionString，不读 .env 或用通用 pool。Client actual PG16.14/TLS/用户/数据库/read-only identity 回读、取消关闭所有本任务自有连接、bounded end 与诊断脱敏；凭据尽量释放但不保证内存擦除。`createPreparedRdsTaskComposition` 先检查进程内 compiler brand，再读 image pinned CA、构造 sources/完整 SQL/app/cleanup composition；构造不执行云或 DB API。旧默认 factory/命令仍 inspect/legacy cleanup-only destroy。
+
+composition 单独 `taskService` 在首轮 verify 后实际激活/app TLS 登录；已 verified active 库固定 schema/ACL/登录复验，不重新要求业务零行或覆盖 entitlement。新 v2 verify 输出携带三键 applicationAccess proof，legacy SQL-only service 不放宽。`tenant_lifecycle_prepared.js` receipt runner 先准确目标/协议/readExisting，已有回执不构造 execution sources；成功后 immutable publish/准确响应丢失恢复。CLI main 只 check-bundle；生产 admission/authority/env/deadline/artifact source/固定 task-definition root 仍待下一批，不靠 env flag 打开。
+
+v2 publisher/平台显式 v2 reader 不交叉接受 v1/v2，SQL-only/false/额外 proof 拒绝，v1 不能附 proof 冒充真实登录；平台 mutation/Guarded evidence 保留严格 proof，默认 Worker仍 disabled。旧受批 transport key v1 形状/旧对象/IAM 不自动更改。SQL verified、databaseLoginVerified、HTTP/tenant ready 是不同证据。
+
+真实 startup search_path=pg_catalog 暴露 journal constraintdef 文本限定不稳定；`tenant_journal_catalog.js` 在 durable management transactions 之间独立 READ ONLY/SET LOCAL pg_catalog,public，保留全部 v1/v2/cleanup pins，恢复借用 session GUC，不松开结构/ACL 校验、不更新旧表。
+
+`Dockerfile.lifecycle` 候选为 pinned Node24.18.0/PG16.14、linux/amd64 pg_restore+同 pinned stage libpq、Python3、非 root、固定 bundle/SQL check、无 baseline/Secret/HTTP，默认只 check-bundle。尚无实际 Docker 构建/Linux动态库/compiler/image digest 证据。
+
+AWS公开 global-bundle.pem 独立 HTTPS 下载到 `F:/ChatGPT_workshop/techlong-rds-truststore-20261007-f2f.pem`，169984 bytes，新 SHA `fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c`；111 个有效自签 Amazon RDS roots，包括 ca-central-1 三 G1 roots。新 loader/三个候选 Dockerfile/旧 migration shell 的 byte pin同步为审阅值；历史旧 e5bb pin记录保留，现有线上 images/系统truststore/RDS不更新。下次 bytes改变仍fail closed。参考 [AWS RDS CA 官方下载与 root说明](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html)、[node-postgres URL/ssl override说明](https://node-postgres.com/features/ssl)。
+
+最终目录 `F:/ChatGPT_workshop/techlong-pg16-prepared-rds-task-20261007-f2f4`；sessions receipt SHA `7960a3c9cda002af640ecac4bad465d73f6861ece765d37b0664045f6111112c`，`PREPARED_RDS_SOURCE_TASK_REAL_PG16_VERIFIED`。actualPreparedFactoryUsed/pinnedOfficialTrustStoreVerified=true：真实 SQL/实际TLS应用登录、v2本地immutable receipt响应丢失恢复/无provider replay、业务修改后active verify保留、owned cancellation、accurate cleanup、独立psql终态核验。AWS SDK/传输/storage明确是本地依赖替身；localTransportOverride=true、rdsEndpointVerified/rdsCertificateVerified=false，不能当AWS在线证明。平台独立validator/hash读取真实task-4 bytes，SHA `f3339ef910cdcb6ca6786d997222f1c47d898d8dc3bc61b2517ab4f8ed533f39`。
+
+97 项 backend Node、28 项 Python、64 项平台测试、两仓类型/定向lint、migration shell语法通过；四个本阶段实例独立pg_ctl停止，失败/成功目录保留，私有证书/archive/SQL/key/cluster/完整receipt不提交。只删除owned local test DB/role，原OID不可恢复，永久记录保留；用户无关VS Code设置不提交。无源PG15/AWS/Neon写入、baseline批准/上传、paid Cell或Worker/ECS运行。[完整证据与下一批](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f-rds-task.md)。
+
 2026-10-07 F2e 完成：单独 prepared 应用最小授权、实际 TLS 数据库登录和对应的安全退役清理；默认 Worker/旧生产 CLI 不启用。下一步 F2f：固定 RDS owned-session factory、应用登录 source、SQL verify/activation 的 CLI/receipt/幂等恢复和镜像接线。以下记录保留历史状态。
 
 ## F2e：固定授权、数据库登录与准确退役
