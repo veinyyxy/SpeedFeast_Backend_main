@@ -55,15 +55,16 @@ def main():
     python_library = OUTPUT / 'usr/local/lib/python3.14'
     shutil.copytree('/usr/local/lib/python3.14', python_library,
                     ignore=shutil.ignore_patterns('site-packages', '__pycache__', '*.pyc',
-                                                 '_tkinter*', 'tkinter', 'idlelib', 'turtledemo', 'turtle.py'))
+                                                 '_tkinter*', 'tkinter', 'idlelib', 'turtledemo', 'turtle.py',
+                                                 '_curses*', 'curses', 'readline*.so', '_uuid*.so'))
     (python_library / 'site-packages').mkdir(exist_ok=True)
     # Keep the exact patched interpreter and non-GUI stdlib, including ssl.
-    # Tk/IDLE/turtle are not used by this one-shot schema compiler; no GUI
-    # libraries, pip or npm installation tools enter the runtime.
+    # This noninteractive schema compiler needs no GUI, curses/readline or
+    # native libuuid. Exclude those actual modules/libraries, not their metadata.
     binaries = [Path('/usr/local/bin/pg_restore16'), Path('/usr/local/bin/python3.14'),
                 Path('/usr/local/lib/libpython3.14.so.1.0')]
     binaries += [file for file in sorted(Path('/usr/local/lib/python3.14/lib-dynload').glob('*.so'))
-                 if not file.name.startswith('_tkinter')]
+                 if not file.name.startswith(('_tkinter', '_curses', 'readline', '_uuid'))]
     dependencies = set()
     for binary in binaries:
         listing = command('ldd', str(binary))
@@ -101,7 +102,8 @@ def main():
         'pgRestoreVersion': '16.14', 'pgSourceImage': PG_IMAGE, 'debianPackages': packages,
         'copiedBinaryFiles': files, 'basePackageMetadataPreserved': True,
         'upstreamPythonIsDebianPackage': False,
-        'excludedPythonFeatures': ['pip', 'tkinter', 'idlelib', 'turtle']}, sort_keys=True))
+        'excludedPythonFeatures': ['pip', 'tkinter', 'idlelib', 'turtle', 'curses',
+                                   'interactive_readline', 'native_libuuid']}, sort_keys=True))
     (OUTPUT / 'tmp/tenant-lifecycle').mkdir(parents=True)
     # COPY overlays directory modes too; do not turn the base's shared /tmp
     # into root-only 0755. The compiler creates an owned 0700 mkdtemp child.

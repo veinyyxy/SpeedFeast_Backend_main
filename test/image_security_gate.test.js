@@ -39,5 +39,6 @@ test('lifecycle final layer is nonroot and contains patched Python plus minimal 
   assert.ok(bundle.includes("'var/lib/dpkg/status.d'"));assert.ok(bundle.includes('upstreamPythonIsDebianPackage'));
   assert.ok(!bundle.includes('ignore-errors'));assert.ok(bundle.includes("'3.14.8'"));
   assert.ok(bundle.includes("(OUTPUT / 'tmp').chmod(0o1777)"));
+  assert.ok(bundle.includes("('_tkinter', '_curses', 'readline', '_uuid')"));
   assert.ok(fs.readFileSync('scripts/ci/check-image-candidate.sh','utf8').includes('mode=1777'));
 });

@@ -16,6 +16,9 @@ async function main(){
   for(const file of ['/bin/sh','/bin/bash','/usr/bin/apt','/usr/bin/apt-get','/usr/bin/dpkg','/usr/bin/perl','/usr/local/bin/npm','/usr/local/bin/pip']){
     try{await fs.access(file);throw new Error('Unnecessary runtime executable');}catch(e){if(e.code!=='ENOENT')throw e;}
   }
+  for(const name of ['libuuid.so.1','libncursesw.so.6','libtinfo.so.6']){
+    try{await fs.access('/usr/lib/x86_64-linux-gnu/'+name);throw new Error('Unnecessary interactive dependency');}catch(e){if(e.code!=='ENOENT')throw e;}
+  }
   phase='PROVENANCE';
   const provenance=JSON.parse(await fs.readFile('/usr/local/share/lifecycle-runtime-provenance.json'));
   if(provenance.pythonVersion!=='3.14.8'||provenance.pgRestoreVersion!=='16.14'||provenance.basePackageMetadataPreserved!==true||
