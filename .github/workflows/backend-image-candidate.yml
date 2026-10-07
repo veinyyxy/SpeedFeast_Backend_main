@@ -1,0 +1,100 @@
+name: Backend Image Candidates - Build and Self Check Only
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backend-image-candidate.yml'
+      - 'Dockerfile'
+      - 'Dockerfile.lifecycle'
+      - '.dockerignore'
+      - 'package*.json'
+      - 'app.js'
+      - 'bin/**'
+      - 'public/**'
+      - 'routes/**'
+      - 'services/**'
+      - 'db/tenant_lifecycle_prepared.js'
+      - 'db/saas_control.sql'
+      - 'db/theme_config.sql'
+      - 'scripts/ci/**'
+      - 'scripts/*tenant*baseline*.py'
+
+# No OIDC, package/registry write, secrets or AWS credentials. Publication and
+# ECS remain separate manually reviewed steps under a later exact approval.
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-image-candidates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and self-check ${{ matrix.kind }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: app
+            dockerfile: Dockerfile
+          - kind: lifecycle
+            dockerfile: Dockerfile.lifecycle
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate self-check entrypoints
+        run: |
+          bash -n scripts/ci/check-image-candidate.sh
+          python3 -m py_compile scripts/ci/create-image-toolchain-fixture.py
+          node --check scripts/ci/check-lifecycle-image-toolchain.js
+          node --check scripts/ci/record-image-candidate.js
+
+      - name: Build local linux/amd64 candidate
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+          CANDIDATE_DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          docker build --platform linux/amd64 --file "$CANDIDATE_DOCKERFILE" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" .
+
+      - name: Run isolated container self-check
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: |
+          output="$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+          mkdir "$output"
+          bash scripts/ci/check-image-candidate.sh "$CANDIDATE_KIND" "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" "$output"
+
+      - name: Export the exact checked image
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: |
+          output="$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+          docker save "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" | gzip -1 > "$output/image.tar.gz"
+          cd "$output"
+          sha256sum image.tar.gz candidate-receipt.json self-check.json > SHA256SUMS
+          # Bound one artifact and retain it for only one day. No build cache
+          # accumulation and no private baseline/fixture/database files.
+          test "$(stat -c %s image.tar.gz)" -le 471859200
+          cat candidate-receipt.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain promotion candidate and small receipts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: checked-${{ matrix.kind }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/image.tar.gz
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/candidate-receipt.json
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/self-check.json
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

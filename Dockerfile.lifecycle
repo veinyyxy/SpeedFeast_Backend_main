@@ -26,6 +26,7 @@ COPY db/tenant_lifecycle_prepared.js ./db/tenant_lifecycle_prepared.js
 COPY db/saas_control.sql db/theme_config.sql ./db/
 COPY scripts/render_tenant_baseline_verification.py scripts/tenant_baseline_schema_profile.py ./scripts/
 COPY scripts/verify-empty-tenant-baseline-pg16.js ./scripts/verify-empty-tenant-baseline-pg16.js
+COPY scripts/ci/check-lifecycle-image-toolchain.js ./scripts/ci/check-lifecycle-image-toolchain.js
 RUN install -d -m 0700 -o node -g node /tmp/tenant-lifecycle
 ENV NODE_ENV=production PGSSLMODE=verify-full PGSSL_REJECT_UNAUTHORIZED=true \
     PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
