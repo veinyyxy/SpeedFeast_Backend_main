@@ -1,0 +1,38 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Locked sandbox publisher after success or failure. Preserve role, boundary and image records; no deletion.",
+  "Resources": {
+    "PublisherBoundary": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "ManagedPolicyName": "TechlongSandboxGitHubImagePublisherBoundary",
+        "PolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Deny", "Action": "*", "Resource": "*"}]}
+      }
+    },
+    "PublisherRole": {
+      "Type": "AWS::IAM::Role",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "RoleName": "TechlongSandboxGitHubImagePublisherRole",
+        "MaxSessionDuration": 3600,
+        "PermissionsBoundary": {"Ref": "PublisherBoundary"},
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Deny",
+            "Principal": {"Federated": "arn:aws:iam::402010193138:oidc-provider/token.actions.githubusercontent.com"},
+            "Action": "sts:AssumeRoleWithWebIdentity"
+          }]
+        },
+        "Policies": [{
+          "PolicyName": "ExactSandboxEcrPublication",
+          "PolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Deny", "Action": "*", "Resource": "*"}]}
+        }]
+      }
+    }
+  },
+  "Outputs": {"PublisherRoleArn": {"Value": {"Fn::GetAtt": ["PublisherRole", "Arn"]}}}
+}

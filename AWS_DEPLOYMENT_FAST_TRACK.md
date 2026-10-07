@@ -2,6 +2,20 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2f 第二批：Actions 真实镜像与 ECR 发布准备
+
+2026-10-07 用户选择云端构建，不安装本地 Docker/WSL。源 `acc8ae648119e8ad5cca98b8af1907eef09bf213` 的 [镜像运行 37662382372](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37662382372) 与 [完整 CI 37662382268](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37662382268) 实际 success；app/lifecycle linux/amd64 容器隔离 smoke/bundle/pg_restore/Python/compiler 通过。lifecycle 合成五表结构不读取、上传或批准私有 baseline；CLI 写 root 仍 disabled。app health200/无数据库 ready503 不等于租户就绪。
+
+PG16.14 Debian包装版本固定解析，lockfile范围内修复六项npm生产依赖advisory，新audit报告0、完整在线CI通过；不声明OS漏洞已清零。新 build-only workflow 无 AWS/OIDC/registry权限，精确镜像 tar＋小收据短保留一天，前两次失败记录保留。
+
+独立手动 `.github/workflows/backend-reviewed-ecr-publish.yml` 与 `scripts/publication/` 验证成功run/artifact pins、ZIP/receipt/checksums、loaded image config，再获取30分钟OIDC凭据并推准确immutable tags；实际ECR manifest digest和自动BASIC scan/HIGH-CRITICAL gate独立回读，不rebuild/overwrite/delete或触发ECS。8项定向门禁测试/JS/Python语法、本地无云verify通过。发布工作流尚未实际运行。
+
+`deployment/reviewed-ecr-publication.json` fresh文本SHA：`ce32e46450cd18f382d67de843eeaf208be9421beed80dc7cb94ed6d335abc10`；截止2026-10-08T17:40:00Z。绑定两个已checked image config/ZIP/receipt pins、执行器与Grant/Revoke模板；text hash采用UTF-8 LF规范化，artifact bytes SHA不规范化。
+
+待确认范围：Source新栈 `techlong-sandbox-github-image-publication` 创建专用 publisher role＋managed boundary两IAM资源，复用现有OIDC，不改production角色/历史边界。main全ref trust不是AWS按workflow隔离；双policy仅ca-central-1 exact sandbox repository ECR上传/读扫描，固定截止。Source创建disable-rollback/Retain，成功或失败后立即独立Source应用Locked Revoke并回读boundary/inline/trust，保留资源/镜像，不自动重试。
+
+只读AWS证明现有 `techlong-sandbox-speedfeast` IMMUTABLE/scanOnPush/BASIC，现有production发布role只允许另一个仓库；新role/boundary/stack absent，sandbox Cell MISSING。没有AWS/Neon/source PG15写入、ECRpush、paid Cell或Worker运行。预算仍50USD/月；ECR扫描/费用、ECS/数据库/网络/生产root不能由镜像构建成功推断。见 [完整证据和准确确认范围](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f2-cloud-images.md)。以下记录保留历史状态。
+
 2026-10-07 F2f 第一批完成代码和真实本地 PG16 验证；镜像候选尚未构建，本机无 Docker/WSL。生产 admission/CLI 写 root、真实 RDS/ECS/镜像发布仍未启用。下一批先取得容器构建条件，再补容器/compiler/digest readback 和 production root。以下记录保留历史状态。
 
 ## F2f 第一批：RDS owned-session、组合 verify 与 v2 receipt

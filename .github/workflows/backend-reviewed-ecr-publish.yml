@@ -1,0 +1,62 @@
+name: Reviewed Sandbox ECR Promotion - No ECS
+
+on:
+  workflow_dispatch:
+    inputs:
+      approved_manifest_sha:
+        description: Fresh approved SHA of deployment/reviewed-ecr-publication.json (UTF-8 LF)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewed-sandbox-ecr-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      APPROVED_MANIFEST_SHA: ${{ inputs.approved_manifest_sha }}
+      AWS_REGION: ca-central-1
+      AWS_DEFAULT_REGION: ca-central-1
+      AWS_PAGER: ''
+    steps:
+      - name: Check out reviewed publication implementation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Verify fresh approval and load exact checked artifact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publication/reviewed-ecr-publication.js prepare "$APPROVED_MANIFEST_SHA" "$RUNNER_TEMP/reviewed-ecr-publication"
+
+      - name: Configure short-lived sandbox publisher credentials
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
+        with:
+          role-to-assume: arn:aws:iam::402010193138:role/TechlongSandboxGitHubImagePublisherRole
+          aws-region: ca-central-1
+          allowed-account-ids: '402010193138'
+          role-duration-seconds: 1800
+          role-session-name: ReviewedEcr-${{ github.run_id }}
+
+      - name: Publish two immutable tags and read back registry digests and scans
+        run: node scripts/publication/reviewed-ecr-publication.js publish "$APPROVED_MANIFEST_SHA" "$RUNNER_TEMP/reviewed-ecr-publication"
+
+      - name: Preserve small success or partial-publication receipt
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: reviewed-ecr-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewed-ecr-publication/publication-receipt.json
+          if-no-files-found: warn
+          retention-days: 7
