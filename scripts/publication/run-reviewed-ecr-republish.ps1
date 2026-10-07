@@ -42,6 +42,26 @@ function Canonical($Value){
   return (ConvertTo-Json -InputObject $Value -Compress)
 }
 function AssertEqual($Actual,$Expected,[string]$Label){if((Canonical $Actual) -cne (Canonical $Expected)){throw ($Label+' mismatch; no grant/publication retry.')}}
+function SourceLoginReady(){
+  $session=& aws configure get login_session --profile $source 2>$null
+  if($LASTEXITCODE -ne 0){throw 'Source login_session unavailable; no AWS write.'}
+  $listing=& aws configure list --profile $source 2>$null
+  if($LASTEXITCODE -ne 0 -or ($listing -join [char]10) -notmatch '(?m)^access_key\s*:\s*\S+\s*:\s*login\s*:'){throw 'Source is not using the auto-refreshing CLI login provider; no AWS write.'}
+  $version=& aws --version 2>$null
+  if($LASTEXITCODE -ne 0){throw 'AWS CLI version unavailable; no AWS write.'}
+  $caller=AwsJson @('sts','get-caller-identity')
+  # Capture process credentials only in memory and discard their secrets.
+  # Each AWS resource call continues to use --profile, allowing CLI renewal.
+  $credentialJson=& aws configure export-credentials --profile $source --format process 2>$null
+  if($LASTEXITCODE -ne 0){throw 'Source credential metadata unavailable; no AWS write.'}
+  $credentials=($credentialJson -join [char]10) | ConvertFrom-Json
+  if($credentials.PSObject.Properties.Name -notcontains 'Expiration'){throw 'Current Source credential expiration unavailable; no AWS write.'}
+  $evidence=@{schemaVersion=1;profile=$source;provider='login';loginSessionArn=($session -join '').Trim();cliVersion=($version -join '').Trim();callerIdentity=$caller;credentialExpiration=$credentials.Expiration}
+  $credentials=$null;$credentialJson=$null;$listing=$null
+  $verified=($evidence | ConvertTo-Json -Depth 5 -Compress) | & node (Join-Path $PSScriptRoot 'reviewed-ecr-publication.js') verify-source-login
+  if($LASTEXITCODE -ne 0){throw 'Source auto-refreshing login proof failed; no AWS write.'}
+  return (($verified -join [char]10) | ConvertFrom-Json)
+}
 function ReadStack(){
   $items=@((AwsJson @('cloudformation','describe-stacks','--stack-name',$stackArn)).Stacks)
   if($items.Count -ne 1 -or $items[0].StackId -cne $stackArn -or $items[0].StackName -cne 'techlong-sandbox-github-image-publication'){throw 'Exact stack identity mismatch.'}
@@ -99,20 +119,13 @@ $stack=ReadStack
 $locked=ReadIam $revoke 'LOCKED_VERIFIED'
 if($Mode -cne 'Inspect' -and ($stack.StackStatus -cne 'UPDATE_COMPLETE' -or $locked.policy.DefaultVersionId -cne 'v2')){throw 'Reviewed Locked/v2 prestate changed; no AWS write.'}
 if($Mode -cne 'RunReviewed'){
-  @{mode=$Mode;approvedManifestSha=$sha;installBy=$m.installBy;stackArn=$stackArn;stackStatus=$stack.StackStatus;boundaryVersion=$locked.policy.DefaultVersionId;lockedVerified=$true;mutationPerformed=$false} | ConvertTo-Json
+  $loginProof=if($Mode -ceq 'ReviewOnly'){SourceLoginReady}else{$null}
+  @{mode=$Mode;approvedManifestSha=$sha;installBy=$m.installBy;stackArn=$stackArn;stackStatus=$stack.StackStatus;boundaryVersion=$locked.policy.DefaultVersionId;lockedVerified=$true;sourceLogin=$loginProof;mutationPerformed=$false} | ConvertTo-Json -Depth 8
   return
 }
 if([DateTimeOffset]::UtcNow -ge [DateTimeOffset]::Parse($m.installBy)){throw 'Installation approval expired; no AWS write.'}
 
-# Read only the lifetime from the credential provider's JSON in memory. Do not
-# emit/export credentials or install a grant with insufficient revoke margin.
-$credentialJson=& aws configure export-credentials --profile $source --format process 2>$null
-if($LASTEXITCODE -ne 0){throw 'Source credential lifetime unavailable; no AWS write.'}
-$sourceCredentials=($credentialJson -join [char]10) | ConvertFrom-Json
-if($sourceCredentials.PSObject.Properties.Name -notcontains 'Expiration'){throw 'Source session expiration unavailable; no AWS write.'}
-$sourceExpiration=[DateTimeOffset]::Parse($sourceCredentials.Expiration)
-$sourceCredentials=$null;$credentialJson=$null
-if($sourceExpiration -lt [DateTimeOffset]::UtcNow.AddHours(1)){throw 'Refresh Source: at least one hour is required for publication/revoke; no AWS write.'}
+$sourceProof=SourceLoginReady
 
 # Native Git's existing credential provider is used only for the authorized
 # GitHub API. Never print/save credential lines or pass tokens in arguments.
@@ -143,7 +156,7 @@ $registry=(AwsJson @('ecr','describe-repositories','--repository-names','techlon
 if(@($registry).Count -ne 1 -or $registry[0].imageTagMutability -cne 'IMMUTABLE' -or $registry[0].imageScanningConfiguration.scanOnPush -ne $true){throw 'Repository scanning/immutability drift; no AWS write.'}
 if((AwsJson @('ecr','get-registry-scanning-configuration')).scanningConfiguration.scanType -cne 'BASIC'){throw 'Scan billing/configuration drift; no AWS write.'}
 if([DateTimeOffset]::UtcNow -ge [DateTimeOffset]::Parse($m.installBy)){throw 'Installation approval expired; no AWS write.'}
-if($sourceExpiration -lt [DateTimeOffset]::UtcNow.AddHours(1)){throw 'Source revoke margin decreased; refresh before a new review, no AWS write.'}
+$sourceProof=SourceLoginReady
 
 $script:output=[IO.Path]::GetFullPath((Join-Path $EvidenceRoot ('techlong-reviewed-ecr-republish-'+$sha.Substring(0,12))))
 if(Test-Path -LiteralPath $script:output){throw 'Permanent execution slot occupied; no reset or retry.'}
@@ -151,6 +164,7 @@ $null=New-Item -ItemType Directory -Path $script:output
 FreezeTemplate 'grant';FreezeTemplate 'revoke'
 SaveJson 'approved-manifest.json' $m
 SaveJson 'prestate-locked.json' $locked
+SaveJson 'source-login-pregrant.json' $sourceProof
 SaveJson 'update-intent.json' @{approvedManifestSha=$sha;source=$identity;publisherHead=$localHead;stackArn=$stackArn;at=[DateTimeOffset]::UtcNow.ToString('o');grantAttemptsAllowed=1;dispatchAttemptsAllowed=1;revokeRequired=$true}
 $submitted=$false;$runId=$null;$failure=$null;$lockedVerified=$false;$grantVerified=$false
 try{
@@ -187,6 +201,7 @@ finally{
     if(-not $grantVerified){try{$observed=ReadIam $revoke 'ALREADY_LOCKED_VERIFIED';$alreadyLocked=$true}catch{}}
     if(-not $alreadyLocked){
       Write-Host 'Submitting exact Source Revoke immediately.'
+      SaveJson 'source-login-prerevoke.json' (SourceLoginReady)
       SaveJson 'revoke-intent.json' @{stackArn=$stackArn;at=[DateTimeOffset]::UtcNow.ToString('o')}
       $response=AwsJson @('cloudformation','update-stack','--stack-name',$stackArn,'--template-body',('file://'+$script:output.Replace('\','/')+'/revoke.template.json'),'--capabilities','CAPABILITY_NAMED_IAM','--client-request-token',('reviewed-ecr-'+$sha.Substring(0,12)+'-revoke'))
       SaveJson 'revoke-submission.json' $response

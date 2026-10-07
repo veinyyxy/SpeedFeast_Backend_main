@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { validateManifest, validateCandidate, validateOsScan, textSha } = require('../scripts/publication/reviewed-ecr-publication');
+const { validateManifest, validateCandidate, validateOsScan, validateSourceLoginEvidence, textSha } = require('../scripts/publication/reviewed-ecr-publication');
 const manifestFile = 'deployment/reviewed-ecr-publication.json';
 const bytes = () => fs.readFileSync(manifestFile);
 const parse = () => JSON.parse(bytes());
@@ -79,12 +79,36 @@ test('fresh review can update only the exact Locked/v2 stack and cannot enable r
     { sourceInstallerArn: m.publisherRoleArn }, { ecsDeploymentAuthorized: true }, { requirePrePublicationOsScan: false },
     { iamUpdate: { ...m.iamUpdate, creationAuthorized: true } }, { iamUpdate: { ...m.iamUpdate, replacementAuthorized: true } },
     { iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v3' } },
+    { sourceAuthenticationPolicy: { ...m.sourceAuthenticationPolicy, provider: 'FROZEN_KEYS' } },
+    { sourceAuthenticationPolicy: { ...m.sourceAuthenticationPolicy, minimumCurrentCredentialRemainingSeconds: 0 } },
+    { sourceAuthenticationPolicy: { ...m.sourceAuthenticationPolicy, overallLoginSessionExpiryVerified: true } },
     { iamUpdate: { ...m.iamUpdate, stackArn: m.iamUpdate.stackArn + '-other' } }]) {
     const changed = Buffer.from(JSON.stringify({ ...m, ...patch }));
     assert.throws(() => validateManifest(changed, textSha(changed), Date.parse(m.reviewedAt)), /scope mismatch/);
   }
   const changed = Buffer.from(JSON.stringify({ ...m, installBy: m.expiresAt }));
   assert.throws(() => validateManifest(changed, textSha(changed), Date.parse(m.reviewedAt)), /safety margin/);
+});
+
+test('Source login guard accepts current 15-minute credentials without inventing a one-hour expiry guarantee', () => {
+  const now = Date.parse(parse().reviewedAt);
+  const evidence = { schemaVersion: 1, profile: 'techlong-sandbox-user', provider: 'login',
+    loginSessionArn: 'arn:aws:iam::402010193138:user/techlong-sandbox-dev', cliVersion: 'aws-cli/2.36.19 Python/3.14.6 Windows/11 exe/AMD64',
+    callerIdentity: { Account: '402010193138', Arn: 'arn:aws:iam::402010193138:user/techlong-sandbox-dev' },
+    credentialExpiration: new Date(now + 14 * 60000).toISOString(), secretAccessKey: 'never-forward-this-test-secret', refreshToken: 'never-forward-test-token' };
+  const result = validateSourceLoginEvidence(evidence, now);
+  assert.equal(result.provider, 'AWS_CLI_LOGIN_AUTO_REFRESH');
+  assert.equal(result.overallLoginSessionExpiryVerified, false);
+  assert.equal(result.credentialsExportedToEnvironment, false);
+  assert.equal(result.cloudMutationPerformed, false);
+  assert.ok(!JSON.stringify(result).includes('never-forward'));
+  for (const patch of [{ provider: 'shared-credentials-file' }, { cliVersion: 'aws-cli/2.31.0' }, { profile: 'other' },
+    { loginSessionArn: 'arn:aws:iam::402010193138:root' }, { callerIdentity: { Account: '402010193138', Arn: parse().publisherRoleArn } },
+    { credentialExpiration: new Date(now + 119999).toISOString() }, { credentialExpiration: new Date(now - 1).toISOString() },
+    { credentialExpiration: null }]) {
+    assert.throws(() => validateSourceLoginEvidence({ ...evidence, ...patch }, now), /Source|unsupported/);
+  }
+  validateSourceLoginEvidence({ ...evidence, credentialExpiration: new Date(now + 120000).toISOString() }, now);
 });
 
 test('publisher workflow is manual-only, pins actions and validates before AWS credentials', () => {
@@ -135,6 +159,14 @@ test('consumed approval and original grant/revoke evidence remain byte-preserved
   for (const pin of Object.values(old.iamTemplates)) assert.equal(textSha(fs.readFileSync(pin.path)), pin.textSha256);
   assert.equal(parse().priorConsumedApprovalSha, textSha(original));
   assert.notEqual(textSha(bytes()), textSha(original));
+  const unexecuted = fs.readFileSync('deployment/history/reviewed-ecr-publication-c9fa6086.json');
+  assert.equal(textSha(unexecuted), 'c9fa6086f28c8e599f40baf1d1f20ef937d2fcb9d2346bdd5376cc1d2a1c4790');
+  assert.equal(parse().previousApprovedUnexecutedManifestSha, textSha(unexecuted));
+  const previous = JSON.parse(unexecuted);
+  assert.deepEqual(parse().images, previous.images);
+  assert.deepEqual(parse().iamTemplates, previous.iamTemplates);
+  assert.equal(parse().installBy, previous.installBy);
+  assert.equal(parse().expiresAt, previous.expiresAt);
 });
 
 test('Source controller is read-only by default, one-shot update/dispatch, with finally revoke and expiry-safe Inspect', () => {
@@ -143,8 +175,11 @@ test('Source controller is read-only by default, one-shot update/dispatch, with 
   assert.match(controller, /\$Mode -ceq 'RunReviewed' -and \$ApprovedManifestSha -cne \$sha/);
   assert.ok(controller.indexOf("if($Mode -cne 'RunReviewed')") < controller.indexOf('credential fill'));
   assert.match(controller, /if\(Test-Path -LiteralPath \$script:output\).*no reset or retry/);
-  assert.match(controller, /Source session expiration unavailable; no AWS write/);
-  assert.match(controller, /\$sourceExpiration -lt \[DateTimeOffset\]::UtcNow.AddHours\(1\)/);
+  assert.match(controller, /Source is not using the auto-refreshing CLI login provider/);
+  assert.match(controller, /verify-source-login/);
+  assert.ok(!controller.includes('AddHours(1)'));
+  assert.match(controller, /SaveJson 'source-login-pregrant.json' \$sourceProof/);
+  assert.match(controller, /SaveJson 'source-login-prerevoke.json' \(SourceLoginReady\)/);
   assert.ok(controller.indexOf('Exact main candidate run did not succeed') < controller.indexOf("'cloudformation','update-stack'"));
   assert.equal([...controller.matchAll(/'cloudformation','update-stack'/g)].length, 2);
   assert.equal([...controller.matchAll(/\/dispatches' 'Post'/g)].length, 1);

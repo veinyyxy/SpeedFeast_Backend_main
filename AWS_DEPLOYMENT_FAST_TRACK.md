@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2f5 登录前置检查修正：旧批准未执行，新SHA待确认
+
+2026-10-07 用户批准 `c9fa6086...` 后，前置只读检查发现AWS Login导出的当前临时凭据仅约14分钟，而旧执行器要求一小时，未进入写入口/永久执行槽位。这个检查把可自动刷新的15分钟凭据误当成整个登录会话期限；不是用户刷新失败。额度恢复后Source真实只读调用仍成功，当前profile实际为login provider。
+
+已修正为准确Source profile/login_session/provider/STS身份、支持login的CLI版本、当前凭据至少120秒；每个AWS调用仍使用profile自动刷新，Grant/Revoke前复验，不把keys冻结到环境，也不声称已证明整个refresh session剩余时间。17项定向测试/语法通过，真实ReviewOnly再次证明Locked/v2/UPDATE_COMPLETE、准确两资源/零attached/完整policy和trust；两artifact仍准确且有效、新tag仍absent。旧已批准但未执行清单原文保留在 `deployment/history/reviewed-ecr-publication-c9fa6086.json`，旧Git源 `9bd3560e5e1c576b543aea30bd35a33e3feda50f` 保留原执行器。
+
+新fresh清单文本SHA `15d30e5ec70feb4712c572a404f437405b5d5b9704acd59937423ac4bbd62f80`。仅认证前置检查/对应executor hash和review记录改变，两IAM模板、两镜像/扫描/tag、权限范围、安装/发布截止和单次写槽位规则均与旧c9fa清单一致；需要用户准确批准后才能执行，不继承旧批准去绕过哈希。截止仍2026-10-08T18:00:00Z开始安装/18:45Z权限结束；立即Source Revoke和独立Locked仍必需，若自动刷新或撤权失败则报告需要处理，不继续新Grant/重试。无AWS资源写入、ECR发布、ECS/Cell或数据库变化，50USD/月目标不变。见 [修正、新审批与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f5-login-preflight-fix.md)。以下保留修正前审阅时的历史状态。
+
 ## F2f 第五批：修复镜像 fresh 发布审阅，尚未执行
 
 2026-10-07 新清单 `deployment/reviewed-ecr-publication.json` schema2、UTF-8 LF SHA `c9fa6086f28c8e599f40baf1d1f20ef937d2fcb9d2346bdd5376cc1d2a1c4790` 已绑定第四批成功源/run、两个原始ZIP/receipt/config/前置OS scan与四个执行器。原已消费清单原文保留在 `deployment/history/reviewed-ecr-publication-ce32e464.json`，原Grant/Revoke模板未改；新增日期固定的Regrant模板只更新现有Locked栈的两项IAM资源，不创建或替换。

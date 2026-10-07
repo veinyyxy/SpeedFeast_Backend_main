@@ -44,6 +44,11 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
     m.iamStackName === 'techlong-sandbox-github-image-publication' &&
     m.executorHashFormat === 'sha256-utf8-lf' && m.noAutomaticWriteRetry === true &&
     m.noAutomaticExpiredManifestRefresh === true &&
+    m.sourceAuthenticationPolicy?.provider === 'AWS_CLI_LOGIN_AUTO_REFRESH' &&
+    m.sourceAuthenticationPolicy.minimumCurrentCredentialRemainingSeconds === 120 &&
+    m.sourceAuthenticationPolicy.verifyIdentityBeforeGrantAndRevoke === true &&
+    m.sourceAuthenticationPolicy.exportCredentialsToEnvironment === false &&
+    m.sourceAuthenticationPolicy.overallLoginSessionExpiryVerified === false &&
     m.ecsDeploymentAuthorized === false && m.baselinePublicationAuthorized === false &&
     m.resourceDeletionAuthorized === false && m.requirePrePublicationOsScan === true &&
     m.iamUpdate?.mode === 'UPDATE_LOCKED_STACK' && m.iamUpdate.stackArn === STACK &&
@@ -81,6 +86,25 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
     'IAM template changed since review');
   }
   return m;
+}
+
+// The CLI's 15-minute access-token expiry is not the outer login-session
+// expiry. Keep the CLI provider active; never freeze keys into the environment
+// or claim that refresh tokens guarantee future revoke availability.
+function validateSourceLoginEvidence(e, now = Date.now()) {
+  const sourceArn = `arn:aws:iam::${ACCOUNT}:user/techlong-sandbox-dev`;
+  check(e?.schemaVersion === 1 && e.profile === 'techlong-sandbox-user' && e.provider === 'login' &&
+    e.loginSessionArn === sourceArn && e.callerIdentity?.Account === ACCOUNT && e.callerIdentity.Arn === sourceArn,
+  'Exact auto-refreshing Source login identity mismatch; no AWS write');
+  const version = /^aws-cli\/2\.(\d+)\.(\d+)\b/.exec(e.cliVersion || '');
+  check(version && Number(version[1]) >= 32, 'AWS CLI login provider version unsupported; no AWS write');
+  check(Number.isFinite(Date.parse(e.credentialExpiration)) && Date.parse(e.credentialExpiration) - now >= 120000,
+    'Current Source credentials too short or expired; refresh login, no AWS write');
+  return { schemaVersion: 1, outcome: 'SOURCE_LOGIN_CURRENTLY_VERIFIED', profile: e.profile,
+    loginSessionArn: sourceArn, provider: 'AWS_CLI_LOGIN_AUTO_REFRESH',
+    credentialExpiration: e.credentialExpiration, minimumCurrentCredentialRemainingSeconds: 120,
+    overallLoginSessionExpiryVerified: false, credentialsExportedToEnvironment: false,
+    at: new Date(now).toISOString(), cloudMutationPerformed: false };
 }
 
 function validateOsScan(scan, configDigest, now = Date.now()) {
@@ -288,6 +312,9 @@ async function publish(m, approvedSha, output) {
 
 async function main() {
   const [mode, approvedSha, output] = process.argv.slice(2);
+  // Safe authentication-only check must remain available after candidate or
+  // publication expiry so it can never prevent an already-required Revoke.
+  if (mode === 'verify-source-login') return console.log(JSON.stringify(validateSourceLoginEvidence(JSON.parse(fs.readFileSync(0, 'utf8')))));
   check(['verify', 'prepare', 'publish'].includes(mode), 'Unknown publication mode');
   const m = validateManifest(fs.readFileSync(path.join(ROOT, MANIFEST)), approvedSha);
   if (mode === 'verify') return console.log(JSON.stringify({ outcome: 'REVIEWED_NOT_EXECUTED', approvedSha, installBy: m.installBy, expiresAt: m.expiresAt, images: m.images.map(x => x.tag) }));
@@ -299,5 +326,5 @@ async function main() {
   else await publish(m, approvedSha, output);
 }
 
-module.exports = { validateManifest, validateCandidate, validateOsScan, verifyCandidateFiles, sha, textSha };
+module.exports = { validateManifest, validateCandidate, validateOsScan, validateSourceLoginEvidence, verifyCandidateFiles, sha, textSha };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

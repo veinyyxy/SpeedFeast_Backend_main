@@ -8,7 +8,7 @@
   "publisherRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxGitHubImagePublisherRole",
   "sourceInstallerArn": "arn:aws:iam::402010193138:user/techlong-sandbox-dev",
   "iamStackName": "techlong-sandbox-github-image-publication",
-  "reviewedAt": "2026-10-07T22:06:10Z",
+  "reviewedAt": "2026-10-07T19:40:44Z",
   "expiresAt": "2026-10-08T18:45:00Z",
   "sourceCommit": "40b1ce6e487dc4c1187da3014a89b9379d50d578",
   "candidateRunId": "37674970489",
@@ -91,9 +91,9 @@
   "executorHashFormat": "sha256-utf8-lf",
   "executorTextSha256": {
     ".github/workflows/backend-reviewed-ecr-publish.yml": "43b832e20fd87e8d6aa9607670f9d53bbeb6d2b94e6c5c99b8742bef6f530dcd",
-    "scripts/publication/reviewed-ecr-publication.js": "61cb75bd4d0167468d2f1f76af69570b36f32c13cc395ab92def39081bc1352a",
+    "scripts/publication/reviewed-ecr-publication.js": "fa186322295c5dd32a872a752b9fd3dd3b0fc2a4a4aa99fc0130890a30624066",
     "scripts/publication/extract-checked-artifact.py": "9fb2ccdd9a573cdd09e253c747894f540bb80cdd821c7a85e0c2df8ced8f0d50",
-    "scripts/publication/run-reviewed-ecr-republish.ps1": "d3adefa98316077df401d0a4d93ae2d2db86d3ddbf01ee463765e25eb3ce2930"
+    "scripts/publication/run-reviewed-ecr-republish.ps1": "3af922c9113253370f8bded296eb4aac87103fe75a957607ddfddb1fd0afa644"
   },
   "iamTemplates": {
     "grant": {
@@ -110,8 +110,7 @@
     "Reuse the existing GitHub OIDC provider without changes; require the reviewed existing policy inventory and v2 prestate before the update",
     "Dispatch the manual workflow once on main with this fresh SHA; load the exact reviewed ZIP/receipt/scan/image bytes before OIDC; never rebuild",
     "Push at most two new fixed immutable tags into the existing repository, independently read registry/config digests and BASIC scans; HIGH/CRITICAL blocks ECS",
-    "On success or failure immediately Source Revoke and independently verify Locked; preserve all prior images, IAM resources, policy/template and execution records; no automatic write retry",
-    "Require the exact Source CLI login provider and live identity with current credentials valid for at least 120 seconds before Grant/Revoke; rely on CLI automatic renewal, not a frozen 60-minute access token; outer refresh-session expiry is not independently proved and failed revoke needs immediate attention"
+    "On success or failure immediately Source Revoke and independently verify Locked; preserve all prior images, IAM resources, policy/template and execution records; no automatic write retry"
   ],
   "trustScope": "GitHub OIDC aud sts.amazonaws.com; only this repository main ref (not a per-workflow AWS claim)",
   "monthlyBudgetTargetUsd": 50,
@@ -133,13 +132,5 @@
     "creationAuthorized": false,
     "replacementAuthorized": false
   },
-  "priorConsumedApprovalSha": "ce32e46450cd18f382d67de843eeaf208be9421beed80dc7cb94ed6d335abc10",
-  "previousApprovedUnexecutedManifestSha": "c9fa6086f28c8e599f40baf1d1f20ef937d2fcb9d2346bdd5376cc1d2a1c4790",
-  "sourceAuthenticationPolicy": {
-    "provider": "AWS_CLI_LOGIN_AUTO_REFRESH",
-    "minimumCurrentCredentialRemainingSeconds": 120,
-    "verifyIdentityBeforeGrantAndRevoke": true,
-    "exportCredentialsToEnvironment": false,
-    "overallLoginSessionExpiryVerified": false
-  }
+  "priorConsumedApprovalSha": "ce32e46450cd18f382d67de843eeaf208be9421beed80dc7cb94ed6d335abc10"
 }
