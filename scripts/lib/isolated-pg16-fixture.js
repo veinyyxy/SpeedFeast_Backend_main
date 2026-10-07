@@ -7,7 +7,8 @@ const { Client } = require('pg');
 const { run, cleanEnvironment, unusedPort, inside } = require('../verify-empty-tenant-baseline-pg16');
 const literal = (value) => "'" + value.replaceAll("'", "''") + "'";
 
-async function withIsolatedPg16({output,bin,python},body) {
+async function withIsolatedPg16({output,bin,python,receiptKind='prepare'},body) {
+  if(!['prepare','restore'].includes(receiptKind))throw new Error('Invalid isolated receipt kind');
   const root=await fs.realpath('F:/ChatGPT_workshop');
   output=path.resolve(output);bin=await fs.realpath(bin);python=await fs.realpath(python);
   if(!inside(root,output)||!inside(root,bin)||await fs.realpath(path.dirname(output))!==root)
@@ -83,10 +84,10 @@ async function withIsolatedPg16({output,bin,python},body) {
       receipt.isolatedServerStopped=true;
     }catch{failure||=new Error('Owned isolated server stop not proved');}}
     if(result?.receipt)Object.assign(result.receipt,receipt);
-    const final={schemaVersion:1,...receipt,...result?.receipt,outcome:failure?'PREPARE_TEST_FAILED':result?.outcome,
+    const final={schemaVersion:1,...receipt,...result?.receipt,outcome:failure?(receiptKind==='prepare'?'PREPARE_TEST_FAILED':'BASELINE_RESTORE_TEST_FAILED'):result?.outcome,
       ...(failure?{code:/^[A-Z0-9_]{5,100}$/.test(failure.code||'')?failure.code:'ISOLATED_TEST_FAILED'}:{}),
       finishedAt:new Date().toISOString()};
-    await fs.writeFile(path.join(output,'prepare-receipt.json'),JSON.stringify(final),{flag:'wx'});
+    await fs.writeFile(path.join(output,`${receiptKind}-receipt.json`),JSON.stringify(final),{flag:'wx'});
     process.stdout.write(`${JSON.stringify({...final,output})}\n`);
   }
   if(failure)process.exitCode=1;

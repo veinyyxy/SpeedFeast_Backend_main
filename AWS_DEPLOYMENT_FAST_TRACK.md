@@ -2,6 +2,20 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+2026-10-07 F2c 第三批完成原子 baseline restore 与真实 prepare→restore→migrate→verify SQL 链。应用账户仍 NOLOGIN，生产 factory/CLI、正常清理、RDS/receipt/镜像和云启用仍待接线；以下既有记录保留当时状态。
+
+## F2c 第三批：原子 restore 与固定结构回读
+
+新增 `tenant_baseline_program.js`：对有界 archive/manifest bytes 冻结副本，离线 pg_restore16.14 TOC/schema-only 输出并复用严格 Python validator，目标连接之前编译。准确外层 restrict pair 移除，拒绝其他 client command、事务控制/数据/角色/数据库管理语句；renderer timeout=0 不执行，其余固定设置 LOCAL，不向 borrowed session 泄漏设置。编译对象冻结且带私有进程内品牌，不接收自报 SQL。完整 archive SHA 受批仍必要，这不是通用 SQL sandbox。[pg_restore 官方输出/安全说明](https://www.postgresql.org/docs/16/app-pgrestore.html)。
+
+`tenant_baseline_restore_provider.js` 在共享 management lock 下核对 prepare journal、准确 role/database OID、NOLOGIN/ownership/ACL 和完整 provision fence，绑定目标 backend 实际 datid。目标事务原子恢复、验证 73 表零行/profile/固定结构 catalog pin、更新双 ownership marker；失败 rollback，commit 响应丢失只在独立读取准确 marker/实际结构一致后判定 already_applied，重放目标事务 READ ONLY。无 --clean、down migration、LOGIN/grant 激活或默认 factory 放宽。
+
+`tenant_baseline_catalog.js` 固定当前 archive/manifest 的逻辑结构 pin，覆盖列/default、约束/索引、sequence 静态参数、trigger/function/ACL、schema/type/extensions 等；不包含业务行/统计或物理 OID，uuid-ossp script owner 规范化。新候选必须代码审阅新 pin，不由目标自动学习；实际 Aurora/extension/locale 差异仍待后续验收。archive/manifest SHA 延续 F2a4；restore SQL SHA `db6508986edd25344fcd8fc5763ccc33e2eea01b4659fb4771660f998640bbda`，verification SQL SHA `c676d7d47fe45f50c6c1ccecb0eefdae4b3eb9397ffdf62d8ef89b7a55043303`，catalog SHA `d27dc20410e0cceac97a49bfd72a0bcc7fa197b25d512d2b941df0a70ae1d55b`。
+
+最终目录 `F:/ChatGPT_workshop/techlong-pg16-baseline-restore-20261007-f2c4`，收据 SHA `de92cb59884ced7853696c404abb5f75bd37d8ff574407ada5e25b88208bed4f`，结果 `BASELINE_RESTORE_REAL_PG16_VERIFIED`。非 superuser/TLS 实测非空拒绝、DDL/marker rollback、实际非批准行导致零行拒绝并 rollback、真实管理 backend termination/end 导致 rollback、正常 applied/只读 replay、GUC 恢复、旧 epoch 拒绝、独立 psql+readonly Node catalog 验证、真实 SQL 四阶段链、commit 成功但响应丢失恢复及额外列漂移拒绝。baseline 73 表零行；迁移后初始化 1+8 行，空 stores 的主题为 0 行。四个本轮实例由独立 pg_ctl status 证明停止，所有校准/早期成功目录保留。
+
+62 项 Node 相邻回归、28 项 Python 严格校验、backend typecheck 通过。私有 archive/SQL/manifest/key/cluster/原始收据不入 Git。没有 source PG15、AWS/Neon 写入，没有 baseline 生产批准/上传、runtime 或 paid Cell。下一步集中补生产组合：partial-state recovery、normal destroy/journal/新 generation 释放、应用权限/LOGIN/真实登录、RDS factory/CLI/receipt/镜像；旧 cleanup registry 未迁移。生产和云变更仍各按 fresh SHA 单独批准，不使用过期 Grant。[完整本批次证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2c-atomic-restore.md)。
+
 2026-10-07 F2c 第二批已完成 prepare/失败补偿 SQL capability，真实 PG16.14 TLS、非 superuser cell_admin 验收通过；runtime、生产 baseline 批准和云部署仍未启用。下一小阶段是 restore；下文第一批记录保留其当时状态。
 
 ## F2c 第二批：准确 prepare、恢复和失败补偿

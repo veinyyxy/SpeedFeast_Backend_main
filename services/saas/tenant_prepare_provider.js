@@ -24,8 +24,8 @@ function validateInput(input) {
     fail('TENANT_PREPARE_INPUT_INVALID','An exact parsed prepare task is required.');
   return parsed;
 }
-function envelope(input,kind) { return canonicalJson({schemaVersion:1,kind,ownershipMarker:input.ownershipMarker,
-  marker:buildMarker(input,'empty',null,null)}); }
+function envelope(input,kind,marker=buildMarker(input,'empty',null,null)) {
+  return canonicalJson({schemaVersion:1,kind,ownershipMarker:input.ownershipMarker,marker}); }
 function values(input) {return [input.stableIdentity,input.stableIdentityHashPrefix,input.resourceGeneration,input.ownershipMarker,
   input.externalOperationEpoch,input.externalOperationMarker,input.externalOperationHash,
   input.managementTarget.targetDatabaseName,input.managementTarget.targetRoleName];}
@@ -93,14 +93,32 @@ function assertQuarantine(input,row,current) {
     (row.database_oid!==null && current.db.oid!==String(row.database_oid))))
     fail('TENANT_PREPARE_RESOURCE_CHANGED','The database is not the exact journal-owned disconnected quarantine.');
 }
-function assertPrepared(input,row,current) {
-  assertRole(current.app,row.role_oid,envelope(input,DATABASE_METADATA_KINDS.role),input.managementTarget.managementUsername);
+function assertPrepared(input,row,current,marker=buildMarker(input,'empty',null,null)) {
+  assertRole(current.app,row.role_oid,envelope(input,DATABASE_METADATA_KINDS.role,marker),input.managementTarget.managementUsername);
   if(row.phase!=='prepared' || !row.guard_deleted || row.database_deleted || row.role_deleted ||
     !current.db || current.db.oid!==String(row.database_oid) ||
-    current.db.comment!==envelope(input,DATABASE_METADATA_KINDS.database) || !current.db.datallowconn ||
+    current.db.comment!==envelope(input,DATABASE_METADATA_KINDS.database,marker) || !current.db.datallowconn ||
     current.db.owner_name!==input.managementTarget.managementUsername || current.db.encoding!=='UTF8' ||
     current.db.datistemplate || current.db.public_privileges || current.db.foreign_privileges || current.guard)
     fail('TENANT_PREPARE_RESOURCE_CHANGED','Prepared resources differ from their exact journal and closed access policy.');
+}
+// Read-only authority bridge for restore. No marker/epoch adoption, mutations,
+// table migration or LOGIN enablement. Caller must hold the management lock.
+async function readPreparedSlot(client,input,signal) {
+  if(input.operation!=='restore_approved_baseline'||!/^[a-f0-9]{64}$/.test(input.approvedBaselineDigest))
+    fail('TENANT_PREPARE_INPUT_INVALID','Only an exact restore fence can read the prepared slot bridge.');
+  if(await journalIdentity(client)!==JOURNAL_IDENTITY_SHA256)
+    fail('TENANT_PREPARE_JOURNAL_INVALID','Prepare journal differs from the complete compiled identity.');
+  const row=await journal(client,input,signal);
+  if(!row)fail('TENANT_PREPARE_CREATE_UNPROVEN','Restore requires the exact completed prepare reservation.');
+  const current=await resources(client,input,row,signal);
+  const markers=[buildMarker(input,'empty',null,null),buildMarker(input,'baseline_restored',input.approvedBaselineDigest,null)];
+  const marker=markers.find(value=>current.db?.comment===envelope(input,DATABASE_METADATA_KINDS.database,value)&&
+    current.app?.comment===envelope(input,DATABASE_METADATA_KINDS.role,value));
+  if(!marker)fail('TENANT_PREPARE_FENCE_MISMATCH','Only exact empty or restored markers in this prepare epoch are accepted.');
+  assertPrepared(input,row,current,marker);
+  return {databaseOid:String(row.database_oid),roleOid:String(row.role_oid),
+    observation:{...makeObservation(input),marker}};
 }
 async function transaction(client,signal,body) {
   await query(client,'BEGIN',[],signal);
@@ -245,4 +263,5 @@ class PostgresTenantPrepareProvider {
 }
 function makeObservation(input){return {databaseExists:true,roleExists:true,databaseOwnershipMarker:input.ownershipMarker,
   roleOwnershipMarker:input.ownershipMarker,marker:buildMarker(input,'empty',null,null)};}
-module.exports={PostgresTenantPrepareProvider,journalIdentity,JOURNAL_IDENTITY_SQL,JOURNAL_IDENTITY_SHA256,JOURNAL,validateInput,sqlLiteral:literal};
+module.exports={PostgresTenantPrepareProvider,journalIdentity,JOURNAL_IDENTITY_SQL,JOURNAL_IDENTITY_SHA256,JOURNAL,validateInput,
+  sqlLiteral:literal,readPreparedSlot};
