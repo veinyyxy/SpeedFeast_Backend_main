@@ -551,6 +551,15 @@ function assertRuntimeSecret(secret, input) {
       );
     }
   }
+  return assertRuntimeDatabaseReference({database_url:secret.database_url},input);
+}
+
+function assertRuntimeDatabaseReference(secret,input) {
+  assertExactKeys(secret,['database_url'],'Tenant database runtime reference');
+  if(typeof secret.database_url!=='string'||secret.database_url.length<1||secret.database_url.length>8192||
+    /[\r\n\0]/.test(secret.database_url)) {
+    throw new TenantLifecycleContractError('TENANT_RUNTIME_SECRET_INVALID','A bounded private database reference is required.');
+  }
   let databaseUrl;
   try {
     databaseUrl = new URL(secret.database_url);
@@ -1113,6 +1122,7 @@ module.exports = {
   TenantLifecycleService,
   assertMarkerShape,
   assertRuntimeSecret,
+  assertRuntimeDatabaseReference,
   buildMarker,
   canonicalJson,
   parseTenantLifecycleTaskInput,

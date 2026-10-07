@@ -2,6 +2,20 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+2026-10-07 F2c 第二批已完成 prepare/失败补偿 SQL capability，真实 PG16.14 TLS、非 superuser cell_admin 验收通过；runtime、生产 baseline 批准和云部署仍未启用。下一小阶段是 restore；下文第一批记录保留其当时状态。
+
+## F2c 第二批：准确 prepare、恢复和失败补偿
+
+`tenant_prepare_provider.js` 与 additive `tenant_prepare_journal.sql` 实现永久 reservation/CREATE intent/准确 OID、专属 NOLOGIN guard owner、禁止连接 quarantine、原子 empty ownership promotion、pending prepare 失败补偿和永久终态。完整 journal catalog SHA 固定为 `437c901ffaa790c57318f7de874567ae80993becd6dc0430b0911b734860c7da`，漂移拒绝；共享 cleanup advisory lock 键。同名 foreign resource/重建 OID/旧 epoch 均不接管或删除；无 FORCE、DROP OWNED、wildcard 或槽位复位。prepare 成功仍 app NOLOGIN/PUBLIC database 权限关闭，不声称运行账户登录或 tenant ready。
+
+现有五键 Secret 校验提取出共用 `assertRuntimeDatabaseReference`，SQL capability 仅接收 `{database_url}`，不接收 HMAC/JWT/支付值；完整 Secret callback 原约定保持。已连接 session 仍由可信 caller 借用；真实 RDS endpoint/CA/Secret/session 生命周期、生产日志策略尚待工厂接线。
+
+真实工具 `scripts/verify-tenant-prepare-pg16.js` 使用 fresh local TLS/SCRAM fixture、非 5432 loopback 和新 data directory；不读 `.env`、不联系源 PG15/AWS/Neon。最终目录 `F:/ChatGPT_workshop/techlong-pg16-prepare-20261007-f2c10`，收据 SHA `97a880aafa6f74676c670d46d17dde7a53b40b9a027afa4fb10c7875a91ed8d2`，结果 `PREPARE_REAL_PG16_VERIFIED`。实际验证 fresh/replay、reservation/CREATE/final COMMIT 响应丢失重连恢复、promotion rollback、DROP DATABASE 响应丢失补偿恢复、永久记录/ACL/trigger、foreign name/重建 app OID/旧 epoch/外来 database ACL 拒绝、catalog 漂移拒绝，以及独立只读 psql。所有十个实例由独立 pg_ctl status 证明停止，失败/早期成功目录保留；f2c8 的 15 秒本地 DROP 超时记录保留，后续仅提高隔离 fixture 等待时限复验，生产时限不变。私有 keys/cluster/收据不入 Git。
+
+45 项相邻 Node 回归、backend typecheck 通过；bounded metadata/DDL 引号与反斜杠转义已验证。平台本地 runtime 诊断仍 disabled、50 USD/月，无数据库或云访问。早期 PG16 实测纠正了 guard SET-only 不足以继承 ownership、bootstrap ADMIN grant 与显式 membership 共存的假设；仅给 guard 管理成员所需 SET/INHERIT，成功后删除 guard。参考 [PG16 role attributes](https://www.postgresql.org/docs/16/role-attributes.html) 和 [CREATE DATABASE 非事务限制](https://www.postgresql.org/docs/16/sql-createdatabase.html)。[完整本批次证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2c-prepare.md)。
+
+下一步 restore 的受批 immutable artifact 校验/原子 marker/rollback 和提交响应丢失恢复；然后接 prepare partial-state recovery、已完成 prepare 的正常 destroy 与 journal/generation 释放、RDS factory/CLI/receipt/镜像。新 journal 仅安装于本轮 fresh local cluster，旧 cleanup registry 未迁移，service 仍拒绝 partial observation，默认 production factory 仍 inspect/cleanup-only destroy。不能直接启用这个 SQL 模块或把本地验收等同 Aurora/Worker 在线验收。所有运行门禁 false，实际云发布和 baseline 批准仍按 fresh SHA 单独批准。
+
 2026-10-07 F2c 第一批已完成：新增真实 `PostgresTenantSaasTransactionProvider` 的 `migrate_saas/verify` SQL phase。在隔离 PG16.14 TLS、非 superuser cell_admin 上验证真实迁移、rollback、重放、COMMIT 响应丢失恢复、管理会话丢失中止和旧 epoch 拒绝，独立只读进程证明 1 条 singleton、8 条默认 entitlement、其余业务表零行。所有临时实例停止，无源 PG15/AWS/Neon 写入；baseline 未批准，runtime 未启用。prepare/restore/RDS/生产 CLI/镜像接线仍待完成。
 
 ## F2c 第一批：真实 SaaS 事务 provider
