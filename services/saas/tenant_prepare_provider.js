@@ -1,8 +1,9 @@
 const { randomBytes, createHash } = require('node:crypto');
 const { TenantLifecycleContractError, validateTaskInput, assertRuntimeDatabaseReference, buildMarker, canonicalJson } = require('./tenant_lifecycle_service');
 const { SESSION_IDENTITY_SQL } = require('./tenant_saas_transaction_provider');
+const {PREPARE_V2_IDENTITY_SHA256,assertCleanupJournal,assertNamespaceReleased,assertProvisionNotCleaning}=require('./tenant_cleanup_journal');
 const { DESTROY_REGISTRY_IDENTITY_SQL, DESTROY_ADVISORY_LOCK_SQL, DESTROY_ADVISORY_UNLOCK_SQL,
-  DATABASE_METADATA_KINDS, quoteTenantIdentifier } = require('./tenant_lifecycle_production');
+  DATABASE_METADATA_KINDS, quoteTenantIdentifier,parseMetadataComment } = require('./tenant_lifecycle_production');
 
 const JOURNAL = 'public.techlong_tenant_prepare_journal';
 const JOURNAL_IDENTITY_SQL = DESTROY_REGISTRY_IDENTITY_SQL.replaceAll('techlong_tenant_lifecycle_registry', 'techlong_tenant_prepare_journal');
@@ -104,11 +105,12 @@ function assertPrepared(input,row,current,marker=buildMarker(input,'empty',null,
 }
 // Read-only authority bridge for restore. No marker/epoch adoption, mutations,
 // table migration or LOGIN enablement. Caller must hold the management lock.
-async function readPreparedSlot(client,input,signal) {
+async function readPreparedSlotVersion(client,input,signal,version) {
   if(input.operation!=='restore_approved_baseline'||!/^[a-f0-9]{64}$/.test(input.approvedBaselineDigest))
     fail('TENANT_PREPARE_INPUT_INVALID','Only an exact restore fence can read the prepared slot bridge.');
-  if(await journalIdentity(client)!==JOURNAL_IDENTITY_SHA256)
+  if(await journalIdentity(client)!==(version===2?PREPARE_V2_IDENTITY_SHA256:JOURNAL_IDENTITY_SHA256))
     fail('TENANT_PREPARE_JOURNAL_INVALID','Prepare journal differs from the complete compiled identity.');
+  if(version===2)await assertProvisionNotCleaning(client,input,signal);
   const row=await journal(client,input,signal);
   if(!row)fail('TENANT_PREPARE_CREATE_UNPROVEN','Restore requires the exact completed prepare reservation.');
   const current=await resources(client,input,row,signal);
@@ -119,6 +121,31 @@ async function readPreparedSlot(client,input,signal) {
   assertPrepared(input,row,current,marker);
   return {databaseOid:String(row.database_oid),roleOid:String(row.role_oid),
     observation:{...makeObservation(input),marker}};
+}
+const readPreparedSlot=(client,input,signal)=>readPreparedSlotVersion(client,input,signal,1);
+const readPreparedSlotV2=(client,input,signal)=>readPreparedSlotVersion(client,input,signal,2);
+async function readCleanupReservation(client,input,signal){
+  if(input.operation!=='destroy'||!input.provisionPredecessor)fail('TENANT_PREPARE_INPUT_INVALID','Exact cleanup predecessor required.');
+  if(await journalIdentity(client)!==PREPARE_V2_IDENTITY_SHA256)fail('TENANT_PREPARE_JOURNAL_INVALID','Explicit prepare v2 catalog required.');
+  const predecessor=input.provisionPredecessor;
+  const fence={...input,externalOperationEpoch:predecessor.epoch,externalOperationMarker:predecessor.marker,externalOperationHash:predecessor.operationHash};
+  const row=await journal(client,fence,signal);
+  if(!row||row.phase!=='prepared'||row.database_deleted||row.role_deleted||!row.guard_deleted)
+    fail('TENANT_NORMAL_CLEANUP_PREDECESSOR_UNPROVEN','Exact completed prepare reservation required.');
+  return {row,current:await resources(client,fence,row,signal),fence};
+}
+async function readActiveProvisionSlotV2(client,input,signal){
+  if(await journalIdentity(client)!==PREPARE_V2_IDENTITY_SHA256)fail('TENANT_PREPARE_JOURNAL_INVALID','Explicit prepare v2 catalog required.');
+  await assertProvisionNotCleaning(client,input,signal);
+  const row=await journal(client,input,signal);
+  if(!row)fail('TENANT_PREPARE_CREATE_UNPROVEN','Exact prepared reservation required.');
+  const current=await resources(client,input,row,signal);
+  const marker=parseMetadataComment(current.db?.comment,DATABASE_METADATA_KINDS.database).marker;
+  const expected=buildMarker(input,marker.lifecycleState,marker.baselineDigest,marker.migrationContract);
+  if(canonicalJson(marker)!==canonicalJson(expected)||(input.approvedBaselineDigest&&marker.lifecycleState!=='empty'&&
+    marker.baselineDigest!==input.approvedBaselineDigest))fail('TENANT_PREPARE_FENCE_MISMATCH','Exact active provision marker required.');
+  assertPrepared(input,row,current,marker);
+  return {databaseOid:String(row.database_oid),roleOid:String(row.role_oid)};
 }
 async function transaction(client,signal,body) {
   await query(client,'BEGIN',[],signal);
@@ -136,6 +163,11 @@ async function update(client,input,patch,signal) {
 /** Prepared SQL capability only. No cloud clients, runtime enablement, migration
  * install, target takeover, generation reuse, or automatic retry after cleanup. */
 class PostgresTenantPrepareProvider {
+  #journalVersion;
+  constructor(journalVersion=1){
+    if(![1,2].includes(journalVersion))fail('TENANT_PREPARE_INPUT_INVALID','Only compiled journal versions 1 and 2 are supported.');
+    this.#journalVersion=journalVersion;
+  }
   async #locked(input,client,signal,body) {
     validateInput(input);
     signal.throwIfAborted();
@@ -143,10 +175,11 @@ class PostgresTenantPrepareProvider {
     if(identity.database!==input.managementTarget.managementDatabase || identity.username!==input.managementTarget.managementUsername ||
       identity.version!==160014 || identity.read_only!=='off' || identity.tls_active!==true)
       fail('TENANT_PREPARE_SESSION_INVALID','Exact PG16.14 writable TLS management session required.');
-    if(await journalIdentity(client)!==JOURNAL_IDENTITY_SHA256)fail('TENANT_PREPARE_JOURNAL_INVALID','Prepare journal differs from the complete compiled catalog identity.');
+    if(await journalIdentity(client)!==(this.#journalVersion===2?PREPARE_V2_IDENTITY_SHA256:JOURNAL_IDENTITY_SHA256))fail('TENANT_PREPARE_JOURNAL_INVALID','Prepare journal differs from the complete compiled catalog identity.');
+    if(this.#journalVersion===2)await assertCleanupJournal(client,signal);
     const key=canonicalJson({schemaVersion:1,stableIdentity:input.stableIdentity,resourceGeneration:input.resourceGeneration});
     await query(client,DESTROY_ADVISORY_LOCK_SQL,[key],signal);
-    try{return await body();}
+    try{if(this.#journalVersion===2)await assertProvisionNotCleaning(client,input,signal);return await body();}
     catch(error){if(error instanceof TenantLifecycleContractError)throw error;
       throw new TenantLifecycleContractError('TENANT_PREPARE_FAILED','Prepare failed or response was lost; inspect the exact permanent journal.',true);}
     finally{try{const released=await client.query({text:DESTROY_ADVISORY_UNLOCK_SQL,values:[key]});
@@ -167,6 +200,7 @@ class PostgresTenantPrepareProvider {
       const roleName=quoteTenantIdentifier(input.managementTarget.targetRoleName,'role');
       if(row?.phase==='compensated' || row?.phase==='compensating')fail('TENANT_PREPARE_TERMINAL','A cleaned or cleaning prepare slot cannot be reset or retried.');
       if(!row){
+        if(this.#journalVersion===2)await assertNamespaceReleased(client,input,signal);
         const current=await resources(client,input,null,signal);
         if(current.app || current.db)fail('TENANT_PREPARE_FOREIGN_RESOURCE','An existing resource cannot be taken over or deleted.');
         const nonce=randomBytes(16).toString('hex');const guardName=`tl_prepare_${nonce}`;
@@ -264,4 +298,4 @@ class PostgresTenantPrepareProvider {
 function makeObservation(input){return {databaseExists:true,roleExists:true,databaseOwnershipMarker:input.ownershipMarker,
   roleOwnershipMarker:input.ownershipMarker,marker:buildMarker(input,'empty',null,null)};}
 module.exports={PostgresTenantPrepareProvider,journalIdentity,JOURNAL_IDENTITY_SQL,JOURNAL_IDENTITY_SHA256,JOURNAL,validateInput,
-  sqlLiteral:literal,readPreparedSlot};
+  sqlLiteral:literal,readPreparedSlot,readPreparedSlotV2,readCleanupReservation,readActiveProvisionSlotV2,assertOwnedRole:assertRole};

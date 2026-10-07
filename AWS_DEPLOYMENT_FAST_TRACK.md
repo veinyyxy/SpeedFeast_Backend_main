@@ -2,6 +2,20 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+2026-10-07 F2d 已完成 prepared service、准确部分恢复、NoLOGIN 正常 cleanup 与新 generation 释放的真实闭环。应用授权/LOGIN/退役、RDS session factory/CLI/receipt/镜像仍待接线，runtime 和生产 baseline 批准保持 false。以下记录保留当时状态。
+
+## F2d：显式版本与正常 cleanup
+
+真实 PG16 INSERT 证明旧 cleanup registry 按 stable_identity 截断约束 marker，与 parsed task 的独立 hash_prefix 不符，返回 23514/cleanup_ck；不是 IAM/MFA 拦截。旧 registry/SQL/默认 production CLI 和原 prepare records 保留。新增 `tenant_normal_cleanup_journal.sql`：准确 hash_prefix/provision/cleanup fences、database/role OID、FK、不可逆 destroying/destroyed；flag 只能在旧准确 OID absent 后推进。REFERENCES 是显式父表 FK 依赖。`tenant_prepare_release_gate_v2.sql` 只显式调整两项 active index/table comment；prepare v1 默认指纹仍保留，v2 必须匹配所有旧 destroyed tombstone 才允许更大同身份 generation 复用命名空间，不复位旧行或自动升级云端。
+
+新 `tenant_prepared_composition.js` 的 branded SQL port/service 接通既有三个 SQL provider 与 `tenant_normal_cleanup_provider.js`。完整 Secret callback 仅向数据库模块交付 URL；session source 生命周期由可信 caller 管理，普通 diagnostics 脱敏。独立 prepared service 从准确 journal/guard/OID 恢复 partial prepare；旧 service 拒绝不放宽。marker replay 仍调用真实 provider 校验，管理锁下核对 v2 journal/cleanup claim/target backend OID；不支持 epoch 自动采用。正常清理 record-first、database-first、role/terminal tombstone 一事务；无 FORCE/wildcard/ownership cascade。terminal replay 仅验证旧 OID absent，已创建的新 generation 名字不会被误删。
+
+v2 prepare catalog SHA `7d08fae04b5e77a55085ccf4b4e06d44fa41a49e1dcc3630673fa31535113612`，normal cleanup SHA `847a45554decbb5cb951d58fa290d2991d749e9b5b9fc8a0b21772f40c952f24`。v1 指纹 `437c901ffaa790c57318f7de874567ae80993becd6dc0430b0911b734860c7da` 不被替换为宽松规则；显式版本选择不受 env 控制。未来实际安装必须 fresh SHA 审阅并前后完整回读。
+
+最终目录 `F:/ChatGPT_workshop/techlong-pg16-lifecycle-cleanup-20261007-f2d4`，收据 SHA `5b1d172de6496adb54494f42459d4cc95a6393d7a03d6d4e5ecc8bf969a8419d`，结果 `PREPARED_COMPOSITION_CLEANUP_REAL_PG16_VERIFIED`。非 superuser/TLS 实测 partial CREATE 恢复、完整 service SQL 链和 replay 校验、未释放 generation 拒绝、DROP DATABASE/terminal COMMIT 响应丢失恢复、cleanup claim 阻止旧 provision、原 prepare row 保留、新 generation 准确新 OID、旧 cleanup replay 保留新数据库、不同 cleanup epoch 拒绝及独立 readonly psql/终态保护。第一代本地测试 database/role 已准确删除，原 OID 不可还原；源 archive/记录保留，第二代仍为隔离证据且服务停止，无开发库/云删除。
+
+70 项 Node 新旧相邻回归、28 项 Python 严格校验和 backend typecheck 通过。四个本轮实例独立 pg_ctl status 证明停止，首次 REFERENCES 缺失失败与后续校准/成功目录全部保留；私有 files 不入 Git。当前仅支持 NoLOGIN/owner-only SQL 清理，不推断未来已登录用户的退役权限；下一批应用授权/LOGIN/真实登录+清理策略、RDS owned-session factory/CLI/receipt/镜像。默认 CLI 仍 inspect/legacy cleanup-only destroy，所有 runtime 门禁 false，没有 AWS/Neon/source PG15 写入或 paid Cell。 [完整证据及后续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2d-prepared-cleanup.md)。
+
 2026-10-07 F2c 第三批完成原子 baseline restore 与真实 prepare→restore→migrate→verify SQL 链。应用账户仍 NOLOGIN，生产 factory/CLI、正常清理、RDS/receipt/镜像和云启用仍待接线；以下既有记录保留当时状态。
 
 ## F2c 第三批：原子 restore 与固定结构回读

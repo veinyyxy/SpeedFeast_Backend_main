@@ -923,6 +923,21 @@ function markerForTransition(input, target) {
     MIGRATION_CONTRACT,
   );
 }
+// Prepared composition helpers; existing default service/CLI behavior is not
+// changed. Prepared callers always run the SQL provider even on marker replay.
+function preparedApplyIntent(input,observation){
+  const safe=validateObservation(input,observation);
+  if(safe.state==='partial')throw new TenantLifecycleContractError('TENANT_DATABASE_PARTIAL_STATE','Partial resources require exact prepare recovery, not marker adoption.');
+  const transition=desiredTransition(input,safe.state,observation.marker);
+  return {state:transition.target,nextMarker:markerForTransition(input,transition.target)};
+}
+function completePreparedApply(input,result,state){
+  assertExactKeys(result,APPLY_RESULT_KEYS,'Prepared database apply result');
+  if(!['applied','already_applied'].includes(result.outcome))throw new TenantLifecycleContractError('TENANT_DATABASE_RECEIPT_INVALID','Invalid prepared SQL outcome.');
+  const final=validateObservation(input,result.observation,true);
+  if(final.state!==state)throw new TenantLifecycleContractError('TENANT_DATABASE_TRANSITION_UNVERIFIED','The prepared SQL state was not proved.',true);
+  return {outcome:result.outcome,resultingState:state,evidenceHash:safeInspection(input,result.observation).evidenceHash};
+}
 
 /**
  * Secret-provider contract:
@@ -1128,4 +1143,7 @@ module.exports = {
   parseTenantLifecycleTaskInput,
   sha256Hex,
   validateTaskInput,
+  preparedApplyIntent,
+  completePreparedApply,
+  inspectPreparedEvidence:safeInspection,
 };

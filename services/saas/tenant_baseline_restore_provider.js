@@ -1,7 +1,7 @@
 const {TenantLifecycleContractError,validateTaskInput,buildMarker,canonicalJson}=require('./tenant_lifecycle_service');
 const {assertCompiledBaselineProgram}=require('./tenant_baseline_program');
 const {BASELINE_CATALOG_PINS,baselineCatalogIdentity}=require('./tenant_baseline_catalog');
-const {readPreparedSlot,sqlLiteral}=require('./tenant_prepare_provider');
+const {readPreparedSlot,readPreparedSlotV2,sqlLiteral}=require('./tenant_prepare_provider');
 const {SESSION_IDENTITY_SQL}=require('./tenant_saas_transaction_provider');
 const {DESTROY_ADVISORY_LOCK_SQL,DESTROY_ADVISORY_UNLOCK_SQL,DATABASE_METADATA_KINDS,quoteTenantIdentifier}=require('./tenant_lifecycle_production');
 const RAW_KEYS=['schemaVersion','operation','runtimeSecretArn','managementTarget','resourceGeneration','ownershipMarker',
@@ -27,7 +27,10 @@ async function query(client,text,values=[],signal){signal.throwIfAborted();const
  * role LOGIN/privilege activation, cloud clients, down migration or CLI root. */
 class PostgresTenantBaselineRestoreProvider {
   #program;
-  constructor({program}){
+  #readPreparedSlot;
+  constructor({program,prepareJournalVersion=1}){
+    if(![1,2].includes(prepareJournalVersion))fail('TENANT_BASELINE_RESTORE_INPUT_INVALID','Only compiled prepare journal versions are accepted.');
+    this.#readPreparedSlot=prepareJournalVersion===2?readPreparedSlotV2:readPreparedSlot;
     this.#program=assertCompiledBaselineProgram(program);
     if(program.archiveSha256!==BASELINE_CATALOG_PINS.archiveSha256||program.manifestSha256!==BASELINE_CATALOG_PINS.manifestSha256||
       !/^[a-f0-9]{64}$/.test(BASELINE_CATALOG_PINS.catalogSha256))
@@ -66,7 +69,7 @@ class PostgresTenantBaselineRestoreProvider {
         !management.tls_active||!target.tls_active||management.read_only!=='off'||target.read_only!=='off')
         fail('TENANT_BASELINE_SESSION_INVALID','Exact writable PG16.14 TLS management and target sessions are required.');
       await query(managementClient,DESTROY_ADVISORY_LOCK_SQL,[key],signal);locked=true;
-      const before=await readPreparedSlot(managementClient,input,signal);
+      const before=await this.#readPreparedSlot(managementClient,input,signal);
       if((await query(targetClient,TARGET_OID_SQL,[],signal)).rows[0]?.oid!==before.databaseOid)
         fail('TENANT_BASELINE_SESSION_INVALID','The actual connected database OID must match the prepare journal.');
       const already=canonicalJson(before.observation.marker)===canonicalJson(next);
@@ -82,7 +85,7 @@ class PostgresTenantBaselineRestoreProvider {
         await query(targetClient,this.#program.restoreSql,[],signal);
       }
       await this.#verify(targetClient,signal);
-      const fresh=await readPreparedSlot(managementClient,input,signal);
+      const fresh=await this.#readPreparedSlot(managementClient,input,signal);
       if(!managementAlive||!targetAlive||canonicalJson(fresh)!==canonicalJson(before))
         fail('TENANT_BASELINE_RESTORE_FENCE_MISMATCH','The prepare fence changed or a locked session was lost.');
       if(!already){
@@ -95,7 +98,7 @@ class PostgresTenantBaselineRestoreProvider {
       await query(managementClient,'SELECT 1',[],signal);
       if(!managementAlive||!targetAlive)fail('TENANT_BASELINE_RESTORE_FENCE_MISMATCH','A fenced session was lost before commit.');
       await query(targetClient,'COMMIT',[],signal);inTransaction=false;
-      const after=await readPreparedSlot(managementClient,input,signal);
+      const after=await this.#readPreparedSlot(managementClient,input,signal);
       if(after.databaseOid!==before.databaseOid||after.roleOid!==before.roleOid||canonicalJson(after.observation.marker)!==canonicalJson(next))
         fail('TENANT_BASELINE_COMMIT_UNPROVEN','The exact committed OIDs and marker were not observed.');
       return {outcome:already?'already_applied':'applied',observation:after.observation};
