@@ -54,13 +54,16 @@ def main():
     (OUTPUT / 'usr/bin/python3').symlink_to('../local/bin/python3.14')
     python_library = OUTPUT / 'usr/local/lib/python3.14'
     shutil.copytree('/usr/local/lib/python3.14', python_library,
-                    ignore=shutil.ignore_patterns('site-packages', '__pycache__', '*.pyc'))
+                    ignore=shutil.ignore_patterns('site-packages', '__pycache__', '*.pyc',
+                                                 '_tkinter*', 'tkinter', 'idlelib', 'turtledemo', 'turtle.py'))
     (python_library / 'site-packages').mkdir(exist_ok=True)
-    # CPython's exact patched interpreter + stdlib are kept, including ssl;
-    # no pip/npm installation tools are copied into the runtime.
+    # Keep the exact patched interpreter and non-GUI stdlib, including ssl.
+    # Tk/IDLE/turtle are not used by this one-shot schema compiler; no GUI
+    # libraries, pip or npm installation tools enter the runtime.
     binaries = [Path('/usr/local/bin/pg_restore16'), Path('/usr/local/bin/python3.14'),
                 Path('/usr/local/lib/libpython3.14.so.1.0')]
-    binaries += sorted(Path('/usr/local/lib/python3.14/lib-dynload').glob('*.so'))
+    binaries += [file for file in sorted(Path('/usr/local/lib/python3.14/lib-dynload').glob('*.so'))
+                 if not file.name.startswith('_tkinter')]
     dependencies = set()
     for binary in binaries:
         listing = command('ldd', str(binary))
@@ -97,7 +100,8 @@ def main():
         'schemaVersion': 1, 'pythonVersion': '3.14.8', 'pythonSourceImage': PYTHON_IMAGE,
         'pgRestoreVersion': '16.14', 'pgSourceImage': PG_IMAGE, 'debianPackages': packages,
         'copiedBinaryFiles': files, 'basePackageMetadataPreserved': True,
-        'upstreamPythonIsDebianPackage': False}, sort_keys=True))
+        'upstreamPythonIsDebianPackage': False,
+        'excludedPythonFeatures': ['pip', 'tkinter', 'idlelib', 'turtle']}, sort_keys=True))
     (OUTPUT / 'tmp/tenant-lifecycle').mkdir(parents=True)
     (OUTPUT / 'tmp/tenant-lifecycle').chmod(0o700)
     print(json.dumps({'outcome': 'MINIMAL_RUNTIME_OVERLAY_BUILT', 'python': '3.14.8',

@@ -15,8 +15,8 @@ test('application image is pinned, non-root and checks database readiness', () =
     'node:24.18.0-bookworm-slim@sha256:' +
     '6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d';
   const expectedRuntimeImage =
-    'gcr.io/distroless/cc-debian12:nonroot@sha256:' +
-    'fccdbb0a547c14e23fcf4ce8ad62ca5d43b4faae8d22cd292f490fef9946c96e';
+    'gcr.io/distroless/cc-debian13:nonroot@sha256:' +
+    'e792ab3d241a468a4fd7519ddbbebe66b49b5f365771716ea688ad40b6c6f1c2';
   const fromImages = Array.from(
     dockerfile.matchAll(/^FROM\s+(\S+)\s+AS\s+\S+$/gm),
     (match) => match[1]
