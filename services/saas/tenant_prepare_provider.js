@@ -134,7 +134,7 @@ async function readCleanupReservation(client,input,signal){
     fail('TENANT_NORMAL_CLEANUP_PREDECESSOR_UNPROVEN','Exact completed prepare reservation required.');
   return {row,current:await resources(client,fence,row,signal),fence};
 }
-async function readActiveProvisionSlotV2(client,input,signal){
+async function readProvisionReservationV2(client,input,signal){
   if(await journalIdentity(client)!==PREPARE_V2_IDENTITY_SHA256)fail('TENANT_PREPARE_JOURNAL_INVALID','Explicit prepare v2 catalog required.');
   await assertProvisionNotCleaning(client,input,signal);
   const row=await journal(client,input,signal);
@@ -144,6 +144,15 @@ async function readActiveProvisionSlotV2(client,input,signal){
   const expected=buildMarker(input,marker.lifecycleState,marker.baselineDigest,marker.migrationContract);
   if(canonicalJson(marker)!==canonicalJson(expected)||(input.approvedBaselineDigest&&marker.lifecycleState!=='empty'&&
     marker.baselineDigest!==input.approvedBaselineDigest))fail('TENANT_PREPARE_FENCE_MISMATCH','Exact active provision marker required.');
+  if(row.phase!=='prepared'||row.database_deleted||row.role_deleted||!row.guard_deleted||current.guard||
+    current.db?.oid!==String(row.database_oid)||current.app?.oid!==String(row.role_oid)||
+    current.db.comment!==envelope(input,DATABASE_METADATA_KINDS.database,marker)||
+    current.app.comment!==envelope(input,DATABASE_METADATA_KINDS.role,marker))
+    fail('TENANT_PREPARE_RESOURCE_CHANGED','Exact immutable prepared reservation and both resource OIDs required.');
+  return {row,current,marker};
+}
+async function readActiveProvisionSlotV2(client,input,signal){
+  const {row,current,marker}=await readProvisionReservationV2(client,input,signal);
   assertPrepared(input,row,current,marker);
   return {databaseOid:String(row.database_oid),roleOid:String(row.role_oid)};
 }
@@ -298,4 +307,4 @@ class PostgresTenantPrepareProvider {
 function makeObservation(input){return {databaseExists:true,roleExists:true,databaseOwnershipMarker:input.ownershipMarker,
   roleOwnershipMarker:input.ownershipMarker,marker:buildMarker(input,'empty',null,null)};}
 module.exports={PostgresTenantPrepareProvider,journalIdentity,JOURNAL_IDENTITY_SQL,JOURNAL_IDENTITY_SHA256,JOURNAL,validateInput,
-  sqlLiteral:literal,readPreparedSlot,readPreparedSlotV2,readCleanupReservation,readActiveProvisionSlotV2,assertOwnedRole:assertRole};
+  sqlLiteral:literal,readPreparedSlot,readPreparedSlotV2,readCleanupReservation,readProvisionReservationV2,readActiveProvisionSlotV2,assertOwnedRole:assertRole};

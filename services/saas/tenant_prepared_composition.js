@@ -3,7 +3,8 @@ const {TenantLifecycleService,TenantLifecycleContractError,validateTaskInput,ass
 const {PostgresTenantPrepareProvider,readActiveProvisionSlotV2}=require('./tenant_prepare_provider');
 const {PostgresTenantBaselineRestoreProvider}=require('./tenant_baseline_restore_provider');
 const {PostgresTenantSaasTransactionProvider,SESSION_IDENTITY_SQL}=require('./tenant_saas_transaction_provider');
-const {PostgresTenantNormalCleanupProvider}=require('./tenant_normal_cleanup_provider');
+const {PostgresTenantApplicationCleanupProvider}=require('./tenant_normal_cleanup_provider');
+const {PreparedTenantApplicationAccess}=require('./tenant_application_access');
 const {assertProvisionNotCleaning}=require('./tenant_cleanup_journal');
 const {INSPECT_RESOURCES_SQL,DATABASE_METADATA_KINDS,parseMetadataComment,DESTROY_ADVISORY_LOCK_SQL,DESTROY_ADVISORY_UNLOCK_SQL}=require('./tenant_lifecycle_production');
 const RAW_KEYS=['schemaVersion','operation','runtimeSecretArn','managementTarget','resourceGeneration','ownershipMarker',
@@ -34,7 +35,7 @@ class PreparedTenantLifecycleDatabasePort {
     this.#sessions=sessionProvider;this.#prepare=new PostgresTenantPrepareProvider(2);
     this.#restore=new PostgresTenantBaselineRestoreProvider({program,prepareJournalVersion:2});
     this.#saas=new PostgresTenantSaasTransactionProvider({manifestBytes,manifestSha256:program.manifestSha256,archiveSha256:program.archiveSha256});
-    this.#cleanup=new PostgresTenantNormalCleanupProvider();brandedPorts.add(this);
+    this.#cleanup=new PostgresTenantApplicationCleanupProvider({sessionProvider});brandedPorts.add(this);
   }
   async inspect({input,runtimeSecret,signal}){
     parsedInput(input);assertRuntimeDatabaseReference(runtimeSecret,input);
@@ -111,6 +112,7 @@ class PreparedTenantLifecycleService extends TenantLifecycleService {
 function createPreparedTenantLifecycleComposition({secretProvider,sessionProvider,program,manifestBytes}){
   const databasePort=new PreparedTenantLifecycleDatabasePort({sessionProvider,program,manifestBytes});
   const service=new PreparedTenantLifecycleService({secretProvider,databasePort});
-  return Object.freeze({status:'prepared_not_activated',runtimeEnabled:false,service,databasePort});
+  const applicationAccess=new PreparedTenantApplicationAccess({secretProvider,sessionProvider});
+  return Object.freeze({status:'prepared_not_activated',runtimeEnabled:false,service,databasePort,applicationAccess});
 }
 module.exports={PreparedTenantLifecycleService,createPreparedTenantLifecycleComposition};

@@ -7,8 +7,8 @@ const { Client } = require('pg');
 const { run, cleanEnvironment, unusedPort, inside } = require('../verify-empty-tenant-baseline-pg16');
 const literal = (value) => "'" + value.replaceAll("'", "''") + "'";
 
-async function withIsolatedPg16({output,bin,python,receiptKind='prepare'},body) {
-  if(!['prepare','restore','cleanup'].includes(receiptKind))throw new Error('Invalid isolated receipt kind');
+async function withIsolatedPg16({output,bin,python,receiptKind='prepare',hardenDatabaseConnect=false},body) {
+  if(!['prepare','restore','cleanup','access'].includes(receiptKind))throw new Error('Invalid isolated receipt kind');
   const root=await fs.realpath('F:/ChatGPT_workshop');
   output=path.resolve(output);bin=await fs.realpath(bin);python=await fs.realpath(python);
   if(!inside(root,output)||!inside(root,bin)||await fs.realpath(path.dirname(output))!==root)
@@ -68,6 +68,10 @@ async function withIsolatedPg16({output,bin,python,receiptKind='prepare'},body) 
       throw new Error('Wrong isolated fixture cluster');
     await rootClient.query(`CREATE ROLE cell_admin LOGIN CREATEDB CREATEROLE NOSUPERUSER PASSWORD ${literal(adminPassword)}`);
     await rootClient.query('CREATE DATABASE cell_admin OWNER cell_admin TEMPLATE template0');
+    // Explicit test-only fresh bootstrap policy. Never hardens an existing or
+    // production cell as a side effect of tenant activation.
+    if(hardenDatabaseConnect)for(const name of ['postgres','template1','cell_admin'])
+      await rootClient.query(`REVOKE CONNECT ON DATABASE "${name}" FROM PUBLIC`);
     await rootClient.end();clients.delete(rootClient);
     const managementClient=await connect();
     const pgEnvironment=(database='cell_admin',readonly=false)=>cleanEnvironment({PGHOST:'127.0.0.1',PGPORT:String(port),
@@ -84,7 +88,7 @@ async function withIsolatedPg16({output,bin,python,receiptKind='prepare'},body) 
       receipt.isolatedServerStopped=true;
     }catch{failure||=new Error('Owned isolated server stop not proved');}}
     if(result?.receipt)Object.assign(result.receipt,receipt);
-    const failures={prepare:'PREPARE_TEST_FAILED',restore:'BASELINE_RESTORE_TEST_FAILED',cleanup:'PREPARED_COMPOSITION_CLEANUP_TEST_FAILED'};
+    const failures={prepare:'PREPARE_TEST_FAILED',restore:'BASELINE_RESTORE_TEST_FAILED',cleanup:'PREPARED_COMPOSITION_CLEANUP_TEST_FAILED',access:'APPLICATION_ACCESS_TEST_FAILED'};
     const final={schemaVersion:1,...receipt,...result?.receipt,outcome:failure?failures[receiptKind]:result?.outcome,
       ...(failure?{code:/^[A-Z0-9_]{5,100}$/.test(failure.code||'')?failure.code:'ISOLATED_TEST_FAILED'}:{}),
       finishedAt:new Date().toISOString()};

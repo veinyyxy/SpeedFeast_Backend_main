@@ -2,6 +2,22 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+2026-10-07 F2e 完成：单独 prepared 应用最小授权、实际 TLS 数据库登录和对应的安全退役清理；默认 Worker/旧生产 CLI 不启用。下一步 F2f：固定 RDS owned-session factory、应用登录 source、SQL verify/activation 的 CLI/receipt/幂等恢复和镜像接线。以下记录保留历史状态。
+
+## F2e：固定授权、数据库登录与准确退役
+
+`tenant_application_access.js` 单独 `applicationAccess.activate(exactVerifyTask)` 要求 immutable prepare-v2 reservation、双 OID/ownership/完整 provision fence、准确 SQL verified marker、固定 baseline 和 migrated catalog pin `a1df988bfa23beca2f8c241872d00913205f1b9348ce14ad800d4d634d835263`。policy `speedfeast-application-access/v1` 仅准确 DB CONNECT/public USAGE/73 表 DML/sequences USAGE；无 DDL/TEMP/TRUNCATE/grant option/default grants/ownership。函数保留准确审阅 PUBLIC EXECUTE。授权/LOGIN 原子提交，active replay 完整 schema/ACL 只读复验；再用同一 Secret 的 URL 实际 TLS 登录、核对 server/datOid/role、逐表与 singleton 只读访问，管理 fence 最后回读。登录失败不误报 ready，不隐式撤销已提交授权，诊断脱敏。
+
+激活前只读核验应用 role 对所有其他 connectable databases 无 CONNECT，未硬化的 Cell 拒绝，不自动跨库 revoke。fresh local fixture 显式硬化 postgres/template1/cell_admin；真实 RDS/Cell 必须单独 fresh SHA 审阅。PUBLIC grant 会作用于新 role，不能用单 role REVOKE 当作隔离。[PG16 GRANT](https://www.postgresql.org/docs/16/sql-grant.html)。
+
+prepared composition 接独立编译 `PostgresTenantApplicationCleanupProvider`，默认旧 cleanup 仍 NOLOGIN/owner-only，boolean 不能放宽。active cleanup 先精确 schema ACL 回读，然后永久 destroying claim；管理事务 NOLOGIN/撤销准确 DB CONNECT/ALLOW_CONNECTIONS false。现有准确 datOid 会话返回 `TENANT_APPLICATION_SESSIONS_ACTIVE`，调用方关闭 pool 后恢复同一 cleanup fence，不 FORCE/terminate/wildcard/ownership cascade。原 journal 无新升级，双 OID/tombstone/后继 generation/旧 replay 保留 F2d 逻辑；retiring 也允许尚未激活的 SQL 状态。[PG16 ALLOW_CONNECTIONS](https://www.postgresql.org/docs/16/sql-alterdatabase.html)。
+
+最终真实目录 `F:/ChatGPT_workshop/techlong-pg16-application-access-20261007-f2e4`；access receipt SHA `f7d34f3f883cc70ec8321550add7801e1e37fcc8a5da93018e32ad55c11246aa`，结果 `APPLICATION_ACCESS_RETIREMENT_REAL_PG16_VERIFIED`。非 superuser/TLS 实测未激活登录拒绝、其他 DB CONNECT 开放拒绝、部分授权 rollback、COMMIT 响应丢失恢复、真实登录与只读 replay、业务 UPDATE rollback、DDL/TRUNCATE/SET ROLE/CREATE DATABASE/TEMP/跨库拒绝、额外 ACL 在 claim 前拒绝、退役保留旧会话/阻止重新激活、关闭后准确 cleanup、新 generation/旧 replay 与独立只读 psql。第一代测试 DB/role 准确删除，不可恢复原 OID；永久记录/candidate 保留，第二代停止实例中的证据不删除。
+
+另一个 fresh 实例 `F:/ChatGPT_workshop/techlong-pg16-lifecycle-cleanup-20261007-f2e-regression` 完整回归 F2d partial prepare/SQL chain/NoLOGIN cleanup/DROP 和 terminal COMMIT 响应丢失/后继 generation/旧 replay。75 项 Node、28 项 Python 与 typecheck 通过，五实例独立 pg_ctl status 停止。f2e1 固定 pin 校准、f2e2/3 退役后 activation 前置检查失败均保留。私有 archive/catalog/manifest/TLS keys/cluster/原始 receipt 不入 Git。
+
+没有源 PG15/AWS/Neon 写入、baseline 生产批准/发布、paid Cell、ECS/Worker 运行。SQL verified、databaseLoginVerified、HTTP ready 是不同证据；默认 CLI 不能直接重放 SQL verify 到 active 业务库。50 USD/月不代替云执行批准。[完整证据与下一步](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2e-application-access.md)。
+
 2026-10-07 F2d 已完成 prepared service、准确部分恢复、NoLOGIN 正常 cleanup 与新 generation 释放的真实闭环。应用授权/LOGIN/退役、RDS session factory/CLI/receipt/镜像仍待接线，runtime 和生产 baseline 批准保持 false。以下记录保留当时状态。
 
 ## F2d：显式版本与正常 cleanup
