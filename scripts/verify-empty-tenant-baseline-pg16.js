@@ -244,7 +244,7 @@ async function main(argv) {
   return receipt;
 }
 
-module.exports = { parseArguments, cleanEnvironment, assertIdentity, inside, run, IDENTITY_SQL, main };
+module.exports = { parseArguments, cleanEnvironment, assertIdentity, inside, run, unusedPort, IDENTITY_SQL, main };
 if (require.main === module) main(process.argv.slice(2)).catch((error) => {
   process.stderr.write(`${JSON.stringify({ outcome: 'PG16_LOCAL_ENTRY_FAILED',
     phase: error instanceof VerificationError ? error.phase : 'input',

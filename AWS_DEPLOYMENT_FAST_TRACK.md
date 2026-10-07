@@ -2,7 +2,19 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
-2026-10-06 F2b 已完成：准确候选在独立 PostgreSQL 16.14 上真实恢复成功，独立只读核验 73 张表全零行、10 个固定程序对象，并已停止临时实例。没有升级源 PG15、上传 AWS 或批准/发布 baseline。下一步 F2c 实现真实 production provision 操作。
+2026-10-07 F2c 第一批已完成：新增真实 `PostgresTenantSaasTransactionProvider` 的 `migrate_saas/verify` SQL phase。在隔离 PG16.14 TLS、非 superuser cell_admin 上验证真实迁移、rollback、重放、COMMIT 响应丢失恢复、管理会话丢失中止和旧 epoch 拒绝，独立只读进程证明 1 条 singleton、8 条默认 entitlement、其余业务表零行。所有临时实例停止，无源 PG15/AWS/Neon 写入；baseline 未批准，runtime 未启用。prepare/restore/RDS/生产 CLI/镜像接线仍待完成。
+
+## F2c 第一批：真实 SaaS 事务 provider
+
+新模块不导入 `.env` 或开发数据库 pool，仅装载两个固定 image SQL 文件（LF canonical SHA：saas_control `4da7a9d7974efa0cbab6196bc21a7618c052c11bec8cdd4390e2e24f0d22c8bf`，theme_config `eec8838c01101f009b18f838525a64e100e59300c460a52006cb96568c809c14`）。接受已连接的管理/租户会话，核对 PG16.14/TLS/实际同一 server 和准确 role/database，在 cleanup 同一 management advisory lock 下核验完整 ownership/epoch/operation/baseline 前驱，目标事务里执行迁移/种子回读并原子更新两项 marker。不创建/接管部分资源、不采用不同 epoch、不启用默认 factory。未来 caller 仍须绑定真实 RDS endpoint/CA、Secret/receipt/连接生命周期。
+
+实际工具 `scripts/verify-tenant-saas-transactions-pg16.js` 使用全新本地 cluster、自签短期本地 TLS（没有系统信任库修改）、SCRAM 随机密码，fixture 初始化账号/基线不作为 prepare/restore provider 实现证明。成功目录 `F:/ChatGPT_workshop/techlong-pg16-saas-transactions-20261007-f2c4`，收据 SHA `47628692f09207e3596b221d4318991796ca73be322832543aa46a440b6957e9`，结果 `SAAS_TRANSACTION_REAL_PG16_VERIFIED`。原 archive/manifest 未变，所有失败/先前成功目录保留，四个实例均已停止；私有证书/key/archive/cluster/收据不入 Git。
+
+41 项 Node 相邻回归、28 项既有 Python baseline/profile 测试、typecheck/语法/diff check 通过。现有生产 CLI/factory 仍仅 inspect/cleanup-only destroy；SQL phase 的 verified 不等于运行账户/ECS/对外 tenant ready。[完整本批次证据和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2c-saas-transactions.md)。
+
+下一批实现 prepare 的非事务创建/准确 ownership/崩溃恢复/失败清理，restore 的受批 immutable artifact 校验/原子 marker，再接 RDS/CLI/receipt/镜像。真实云发布、baseline 批准仍各按新的准确清单，不沿用过期 Grant。
+
+2026-10-06 F2b 完成真实独立 PG16.14 baseline 恢复验收；以下记录保留原阶段状态。
 
 2026-10-05 F2a 完成空 baseline 候选工具和真实 schema-only 导出/逐项 schema profile 核验；以下 F2a 记录按当时状态保留。
 
@@ -16,7 +28,7 @@ PG16.14 官方 EDB 便携 ZIP 仅展开 bin/lib/share 到 `F:/ChatGPT_workshop/t
 
 本批次 14 项 Node 必要相邻回归、28 项既有 Python baseline/profile 测试、类型检查通过。仅本地临时实例 `ssl=off`，生产 RDS verify-full/CA、IAM/ownership/runtime 拒绝边界均未改。工具/测试入 Git，私有 binary、archive、SQL、cluster、日志、收据不入 Git。[完整真实验收证据与边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2b-pg16.md)。
 
-F2c 注意：`saas_control.sql` 会产生 singleton/entitlement，`theme_config.sql` 会产生两项 system_config seed；必须区分 baseline 全空验收与迁移后允许初始化行。不能直接调用读取 `.env` 的 `db/apply_saas_control.js`，也不能把当前本地恢复称为 Aurora/镜像/Worker 在线证明。
+2026-10-07 准确 seed 口径补充：空 baseline 迁移产生 1 条 singleton、8 条 entitlement；主题是两类 × 每 store × 四环境，无 store 时 system_config 为 0 行，不是无条件两行。必须区分 baseline 全空与迁移后初始化行。不能调用读取 `.env` 的开发迁移入口，也不能把本地恢复称为 Aurora/镜像/Worker 在线证明。
 
 ## 候选导出
 
