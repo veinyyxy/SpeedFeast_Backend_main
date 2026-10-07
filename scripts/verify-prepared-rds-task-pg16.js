@@ -24,8 +24,8 @@ function taskEnvironment(input,label){
     TENANT_RECEIPT_KEY:`tenant-lifecycle/v1/${input.stableIdentityHashPrefix}/g${input.resourceGeneration}/${token}.json`};
 }
 async function main(argv){
-  const o={};for(let i=0;i<argv.length;i+=2){if(!['--output','--pg-bin','--python','--candidate-dir','--rds-ca-file'].includes(argv[i])||!argv[i+1]||o[argv[i]])throw new Error('Invalid local RDS task arguments');o[argv[i]]=argv[i+1];}
-  if(Object.keys(o).length!==5)throw new Error('Missing local RDS task arguments');
+  const o={};for(let i=0;i<argv.length;i+=2){if(!['--output','--pg-bin','--python','--candidate-dir','--rds-ca-file','--admission-test'].includes(argv[i])||!argv[i+1]||o[argv[i]])throw new Error('Invalid local RDS task arguments');o[argv[i]]=argv[i+1];}
+  if(Object.keys(o).length!==(o['--admission-test']?6:5)||(o['--admission-test']&&o['--admission-test']!=='prepared-v2'))throw new Error('Missing local RDS task arguments');
   const root=await fs.realpath('F:/ChatGPT_workshop'),output=path.resolve(o['--output']),bin=await fs.realpath(o['--pg-bin']),candidate=await fs.realpath(o['--candidate-dir']);
   const rdsCaFile=await fs.realpath(o['--rds-ca-file']);
   if(!inside(root,output)||!inside(root,bin)||!inside(root,candidate)||!inside(root,rdsCaFile))throw new Error('Unsafe local RDS task path');
@@ -40,7 +40,7 @@ async function main(argv){
     await admin.query(await fs.readFile(path.join(__dirname,'../db/tenant_prepare_journal.sql'),'utf8'));
     assert.equal(await journalIdentity(admin),JOURNAL_IDENTITY_SHA256);
     for(const name of ['tenant_normal_cleanup_journal.sql','tenant_prepare_release_gate_v2.sql'])await admin.query(await fs.readFile(path.join(__dirname,'../db',name),'utf8'));
-    const input=lifecycleInput(),secret=privateSecret(input),signal=new AbortController().signal;let configurations=0,productionCaConfigurations=0;
+    const input=o['--admission-test']?require('./lib/prepared-admission-test-fixture').fixture().input:lifecycleInput(),secret=privateSecret(input),signal=new AbortController().signal;let configurations=0,productionCaConfigurations=0;
     const dependencies=fixture.localRdsTestDependencies(config=>{
       assert.equal(config.host,input.managementTarget.managementEndpoint);assert.equal(config.port,5432);
       assert.equal(config.ssl.rejectUnauthorized,true);assert.equal(config.ssl.servername,config.host);assert.equal(config.connectionString,undefined);
@@ -83,8 +83,24 @@ async function main(argv){
         if(putLoss){putLoss=false;throw Object.assign(new Error('Test-only accepted receipt response loss'),{name:'TimeoutError'});}
       }};
     const publisher=new TenantLifecycleReceiptPublisher({objectStore,receiptSchemaVersion:2});let factoryCalls=0;
-    const run=(operation,label=operation)=>runPreparedTenantLifecycleTaskWithReceipt({command:operation,environment:taskEnvironment(lifecycleInput(operation),label),
+    const admittedRun=async(operation,label)=>{
+      const f=require('./lib/prepared-admission-test-fixture').fixture(lifecycleInput(operation,1,operation==='destroy'?2:1)),task=f.input,admission=await f.admit();
+      const {runAdmittedPreparedTask}=require('../services/saas/tenant_lifecycle_admitted_root');
+      const {createHash}=require('node:crypto');
+      class GetObjectCommand{constructor(value){this.input=value;}}
+      class S3Client{
+        async send(command){const pin=command.input.Key.endsWith('baseline.dump')?f.descriptor.baseline.archive:f.descriptor.baseline.manifest;
+          assert.equal(command.input.ExpectedBucketOwner,input.aws.accountId);assert.equal(command.input.Bucket,pin.bucket);assert.equal(command.input.Key,pin.key);
+          const bytes=await fs.readFile(path.join(candidate,command.input.Key.endsWith('baseline.dump')?'empty-baseline.dump':'empty-baseline.manifest.json'));
+          return {Body:bytes,ContentLength:bytes.length,ChecksumType:'FULL_OBJECT',ChecksumSHA256:createHash('sha256').update(bytes).digest('base64')};}
+      }
+      return runAdmittedPreparedTask({input:task,environment:taskEnvironment(task,label),admission,signal,createPublisher:()=>publisher,
+        dependencies:{s3:{S3Client,GetObjectCommand},rds:{SecretsManagerClient,GetSecretValueCommand,Client:dependencies.Client,readFileSync:()=>caBytes},
+          compileProgram:async args=>{factoryCalls++;assert.equal(createHash('sha256').update(args.archiveBytes).digest('hex'),program.archiveSha256);assert.deepEqual(args.manifestBytes,manifestBytes);return program;}}});
+    };
+    const run=(operation,label=operation)=>o['--admission-test']?admittedRun(operation,label):runPreparedTenantLifecycleTaskWithReceipt({command:operation,environment:taskEnvironment(lifecycleInput(operation),label),
       createComposition:()=>{factoryCalls++;return composition;},receiptPublisher:publisher,signal});
+    if(o['--admission-test']){receipt.admittedRootUsed=true;receipt.admissionAwsTransportOverride=true;receipt.realAwsAdmissionVerified=false;}
     receipt.phase='real-owned-session-sql-chain';
     for(const op of ['prepare_empty_database','restore_approved_baseline','migrate_saas']){receipt.phase='owned-source-'+op;await run(op);}
     receipt.phase='combined-verify-and-login';putLoss=true;const verified=await run('verify');
@@ -105,7 +121,7 @@ async function main(argv){
       const pending=client.query('SELECT pg_sleep(30)');controller.abort();await pending;
     }}),{code:'TENANT_RDS_CANCELLED'});receipt.ownedSessionCancellationVerified=true;
     receipt.phase='cleanup-through-owned-source';const cleanup=lifecycleInput('destroy',1,2);
-    const deleted=await runPreparedTenantLifecycleTaskWithReceipt({command:'destroy',environment:taskEnvironment(cleanup,'cleanup'),
+    const deleted=o['--admission-test']?await admittedRun('destroy','cleanup'):await runPreparedTenantLifecycleTaskWithReceipt({command:'destroy',environment:taskEnvironment(cleanup,'cleanup'),
       createComposition:()=>composition,receiptPublisher:publisher,signal});assert.equal(deleted.outcome,'deleted');
     receipt.applicationCleanupThroughOwnedSourceVerified=true;
     const check=path.join(output,'independent-sessions-readback.sql');

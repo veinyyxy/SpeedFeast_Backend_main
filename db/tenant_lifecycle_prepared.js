@@ -40,11 +40,14 @@ function checkPreparedImageBundle({readFileSync=require('node:fs').readFileSync,
   return Object.freeze({status:'prepared_not_activated',runtimeEnabled:false,receiptSchemaVersion:2,
     pgRestoreVersion:'16.14',cloudMutationPerformed:false,databaseAccessPerformed:false});
 }
-if(require.main===module){
+async function main(){
+  if(process.argv.length===3&&process.argv[2]==='--check-bundle')return process.stdout.write(JSON.stringify(checkPreparedImageBundle())+'\n');
+  const guard=require('../services/saas/tenant_task_guard').createTenantLifecycleTaskGuard();
+  process.once('SIGTERM',guard.abortForSignal);process.once('SIGINT',guard.abortForSignal);
   try{
-    if(process.argv.length!==3||process.argv[2]!=='--check-bundle')
-      throw new TenantLifecycleContractError('TENANT_PREPARED_STANDALONE_DISABLED','Standalone writes require a separately reviewed production authority root.');
-    process.stdout.write(JSON.stringify(checkPreparedImageBundle())+'\n');
-  }catch(e){process.stderr.write((/^[A-Z0-9_]{5,100}$/.test(e?.code||'')?e.code:'TENANT_PREPARED_ENTRY_FAILED')+': prepared entry failed closed\n');process.exitCode=1;}
+    await require('../services/saas/tenant_lifecycle_admitted_root').runPreparedProductionCli({argv:process.argv,environment:process.env,signal:guard.signal});
+    process.stdout.write('TENANT_PREPARED_RECEIPT_PUBLISHED\n');
+  }finally{guard.complete();process.removeListener('SIGTERM',guard.abortForSignal);process.removeListener('SIGINT',guard.abortForSignal);}
 }
+if(require.main===module)main().catch(e=>{process.stderr.write((/^[A-Z0-9_]{5,100}$/.test(e?.code||'')?e.code:'TENANT_PREPARED_ENTRY_FAILED')+': prepared entry failed closed\n');process.exitCode=1;});
 module.exports={runPreparedTenantLifecycleTaskWithReceipt,createPreparedLifecycleReceiptPublisher,checkPreparedImageBundle,PG_RESTORE_IMAGE_PATH,PYTHON_IMAGE_PATH};

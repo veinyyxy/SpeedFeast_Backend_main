@@ -39,6 +39,7 @@ COPY scripts/ci/check-lifecycle-image-toolchain.js ./scripts/ci/check-lifecycle-
 ENV PATH=/usr/local/bin:/usr/bin:/bin NODE_ENV=production PGSSLMODE=verify-full PGSSL_REJECT_UNAUTHORIZED=true \
     PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 USER 65532:65532
+VOLUME ["/tmp/tenant-lifecycle"]
 RUN ["/usr/local/bin/pg_restore16", "--version"]
 RUN ["/usr/bin/python3", "-I", "-c", "import sys,ssl; assert sys.version_info[:3] == (3,14,8); print(sys.version); ctx=ssl.create_default_context(); assert ctx.check_hostname; failed=False\ntry: ctx.wrap_bio(ssl.MemoryBIO(),ssl.MemoryBIO())\nexcept ValueError: failed=True\nassert failed, 'CVE-2026-19553 regression'"]
 RUN ["/usr/local/bin/node", "db/tenant_lifecycle_prepared.js", "--check-bundle"]
