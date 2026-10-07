@@ -56,6 +56,9 @@ jobs:
           node --check scripts/ci/check-lifecycle-image-toolchain.js
           node --check scripts/ci/record-image-candidate.js
 
+      - name: Gate high and critical production dependency advisories
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build local linux/amd64 candidate
         env:
           CANDIDATE_KIND: ${{ matrix.kind }}
