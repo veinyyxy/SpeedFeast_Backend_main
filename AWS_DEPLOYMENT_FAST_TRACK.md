@@ -2,6 +2,16 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2f 第三批：实际ECR写入、扫描门禁失败与Locked收尾
+
+2026-10-07 原清单 `ce32e46450cd18f382d67de843eeaf208be9421beed80dc7cb94ed6d335abc10` 获用户明确批准。Source创建专用栈 `techlong-sandbox-github-image-publication`，仅publisher role和boundary两IAM资源，独立Grant回读通过；[单次发布运行37668582570](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37668582570)在publisher main `9520858b0331c4e43017f27258293618c79d83e2`上实际完成ZIP/receipt/checksum/image校验与OIDC登录，并写入两个精确immutable tags。
+
+app registry digest `sha256:1c60a09f37c84cc45979e218bd5c221b60cd51200fea7cfd2b0701d334dfb610`，BASIC scan COMPLETE/空findingSeverityCounts；lifecycle digest `sha256:c24f2c8847ffd5e95faf815a39d7ac7387334e5602f61be94c7774159c5d1014`，COMPLETE/6 CRITICAL、19 HIGH、12 MEDIUM、5 LOW。独立Source BatchGetImage验证两个原config pin和registry原始manifest bytes SHA，未混用两种digest。阻断来自bookworm运行层系统包（gcc-12/pcre2/perl/python3.11/util-linux/zlib），不是MFA/Source/权限错误或npm audit失败。未豁免扫描门禁。
+
+Source finally立即应用原Revoke模板，栈UPDATE_COMPLETE；boundary default v2与inline为DenyAll，OIDCtrust为Deny，零attached policies、原两资源完整独立回读。两个镜像和历史记录保留，无rebuild、第二dispatch/Grant/Push、ECS/Cell/源PG15/Neon/Secret/baseline写入；旧Worker/生产CLI仍disabled。执行非零反映扫描阻断，`PUBLICATION_INCOMPLETE`不表示镜像未写入。
+
+私有证据目录 `F:/ChatGPT_workshop/techlong-reviewed-ecr-publication-ce32e464-20261007` 永久占用；Locked读回SHA `254edf45b0b4879c299ea7af81fea8fafc741eee2b2f15baa8f1a4a9bda696a3`；云端receipt SHA `e62be0f857e9db13fd66a23a662b73e9b718f910b82fd853a1588369817e9829`。[完整执行记录与下一步](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f3-ecr-scan-blocked.md)。下一步先更新/精简lifecycle系统依赖、Actions重新构建自检，新发布必须fresh image/manifest及对现有Locked栈的明确更新批准；不重放本清单或降低HIGH/CRITICAL门槛。50USD/月目标保留。以下为历史状态。
+
 ## F2f 第二批：Actions 真实镜像与 ECR 发布准备
 
 2026-10-07 用户选择云端构建，不安装本地 Docker/WSL。源 `acc8ae648119e8ad5cca98b8af1907eef09bf213` 的 [镜像运行 37662382372](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37662382372) 与 [完整 CI 37662382268](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37662382268) 实际 success；app/lifecycle linux/amd64 容器隔离 smoke/bundle/pg_restore/Python/compiler 通过。lifecycle 合成五表结构不读取、上传或批准私有 baseline；CLI 写 root 仍 disabled。app health200/无数据库 ready503 不等于租户就绪。
