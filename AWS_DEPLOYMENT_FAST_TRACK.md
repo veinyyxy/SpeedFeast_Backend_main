@@ -2,6 +2,18 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2f 第四批：最小运行层与发布前OS门禁通过
+
+2026-10-07 源 `40b1ce6e487dc4c1187da3014a89b9379d50d578` 的 [双镜像运行37674970489](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37674970489) 和 [完整Backend CI37674970442](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37674970442) success。app/lifecycle采用精确distroless cc-debian13 nonroot层，Node24.18.0不变；lifecycle精确pg_restore16.14 trixie＋官方Python3.14.8，真实SSL补丁/CA/SQL/bundle/依赖bytes与metadata/五表合成compiler/read-only-network-none/write-gate自检通过，无生产baseline或CLI授权变更。
+
+`build-lifecycle-runtime.py` 只保留所需ELF、非GUI stdlib和准确包metadata，实际去除Perl/包管理器/Tk/curses/readline/nativeuuid；不通过删保留组件metadata或ignore-unfixed规避扫描。COPY/tmpfs的sticky1777/nonroot0700子目录问题修复。应用旧OpenSSL HIGH由新前置扫描实际发现并同步更新基底；业务代码不改。
+
+新Trivy0.75.0固定tar SHA、job-local新DB、准确image/受支持OS/完整包清单/48h DB校验，OS HIGH/CRITICAL门禁先于镜像保留。app14包/lifecycle32包，两者HIGH0/CRITICAL0，npm audit gate与完整CI通过；这不等同未来ECR BASIC扫描，原ECR门禁不降低。小scan proof绑定candidate receipt，四文件promotion ZIP结构不变。各失败run和日志保留，私有完整索引在F工作区，不入Git。
+
+新app config digest `sha256:f82596ef5dae6229a629a07b37cfce5b0ece9b99fc63d939af997fbde9c40f49`、receipt SHA `fcdcc0abee0393820a4c190e593330a9af3357d37d2f2a00b4eec488fc1b65d0`；lifecycle config `sha256:cc342bcc242b9c3ae9d61d9b94c27053e7e8c8a2bc32347f54368848d76ea5af`、receipt SHA `46a825ce303b87312075db66417f20731aa28989035fa5ff1dfcc0aca57bc45e`。尚未产生新ECR registry digest，候选最早2026-10-08T19:30:55Z过期。
+
+Source结束只读核验原IAM栈UPDATE_COMPLETE、boundary v2/inline DenyAll和trust Deny；本批无AWS/ECR/数据库写入、付费Cell或Worker运行，旧镜像不删除，50USD/月目标保留。下一步准备精确新候选与现有Locked栈显式更新的fresh发布清单，单独批准后再发布/独立ECR扫描/立即Revoke；不得复用已消费旧创建清单。见 [完整修复、验证与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f4-minimal-runtime.md)。以下为历史状态。
+
 ## F2f 第三批：实际ECR写入、扫描门禁失败与Locked收尾
 
 2026-10-07 原清单 `ce32e46450cd18f382d67de843eeaf208be9421beed80dc7cb94ed6d335abc10` 获用户明确批准。Source创建专用栈 `techlong-sandbox-github-image-publication`，仅publisher role和boundary两IAM资源，独立Grant回读通过；[单次发布运行37668582570](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37668582570)在publisher main `9520858b0331c4e43017f27258293618c79d83e2`上实际完成ZIP/receipt/checksum/image校验与OIDC登录，并写入两个精确immutable tags。
