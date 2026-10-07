@@ -2,6 +2,16 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2f6：修复镜像已实际发布，独立扫描通过并Locked收尾
+
+2026-10-07 用户确认fresh SHA `15d30e5ec70feb4712c572a404f437405b5d5b9704acd59937423ac4bbd62f80` 后，唯一更新现有两项publisher IAM并完整Grant回读，唯一 [Actions发布37694984927](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37694984927) 在publisher main `41b5645dd91c99547dd88d4ac570802c96e4de02` success。准确修复源仍 `40b1ce6e487dc4c1187da3014a89b9379d50d578`，先原始ZIP/checksum/receipt/image load校验再OIDC，没有rebuild/overwrite。两新immutable tag均实际写入，ECR BASIC scan COMPLETE/空severity counts，HIGH/CRITICAL门禁通过；不是普遍无漏洞或ECS ready保证。
+
+app registry manifest digest `sha256:4a92824790cf005c35ab9fd77c4f9756070bf98c74fcd5d16f2dbeae0c80e315`，lifecycle `sha256:a0a0abb59c2acbc370aee39556cae4cf536451387109fe97f9d616817369e858`；独立Source重新Hash每份原始registry manifest、核对各自config digest与受审pin，再独立读扫描通过，未混用digest。发布后Source立即Revoke，22:17:00Z revoke intent、22:17:58Z完整Locked回读；栈UPDATE_COMPLETE/default v4、boundary/唯一inline DenyAll/trust Deny、零attached policy及原两资源，另进程Inspect和完整GetTemplate与原Revoke比较均通过。
+
+旧两个ECR镜像独立读回原digest不变；IAM role/boundary和所有本地/Git策略/模板/执行原文保留。**AWS策略历史版本不是全部保留**：真实列表只有v3/v4，us-east-1 CloudTrail准确记录CloudFormation在本次两更新中分别DeletePolicyVersion v1/v2。不是另发删除role/policy/image资源请求，旧v1/v2云端版本不能恢复同一ID；原策略原文证据已保留。后续审阅必须显式说明CloudFormation的版本清理副作用，不把Retain解释为保留所有IAM历史版本。
+
+私有永久槽位 `F:/ChatGPT_workshop/techlong-reviewed-ecr-republish-15d30e5ec70f`；raw publication receipt SHA `c083333347de746c9b8a66856f944621991ae2b0a4877946214ce3aea019b454`，Locked SHA `ced12daf4562b9688d45809aacd76ab12a85623a3cc2fb8ec523b7664ecd1d2d`，独立verification SHA `fce55ceec12231fd638460f794a550b7cf858b3c69140d266fdc43d2d15717e3`。此SHA/槽位已消费，禁止重放；旧c9fa未执行记录也保留。没有ECS/付费Cell、数据库/Neon/源PG15、baseline/Secret写入或生产Worker/root启用，50USD/月目标保留。下一批仅生产admission/CLI root与准确已发布digest接线，再另审资源/预算和ECS执行；见 [实际发布、版本清理与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f6-ecr-published.md)。以下保留历史状态。
+
 ## F2f5 登录前置检查修正：旧批准未执行，新SHA待确认
 
 2026-10-07 用户批准 `c9fa6086...` 后，前置只读检查发现AWS Login导出的当前临时凭据仅约14分钟，而旧执行器要求一小时，未进入写入口/永久执行槽位。这个检查把可自动刷新的15分钟凭据误当成整个登录会话期限；不是用户刷新失败。额度恢复后Source真实只读调用仍成功，当前profile实际为login provider。
