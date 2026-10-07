@@ -5,6 +5,7 @@ const {parseTenantLifecycleTaskInput,TenantLifecycleContractError}=require('../s
 const {parseTenantLifecycleReceiptTarget,TenantLifecycleReceiptError,TenantLifecycleReceiptPublisher,AwsSdkTenantLifecycleReceiptObjectStore}=require('../services/saas/tenant_lifecycle_receipt_publisher');
 const {loadPinnedRdsCa}=require('../services/saas/tenant_rds_sessions');
 const {loadSaasPrograms}=require('../services/saas/tenant_saas_transaction_provider');
+const {isPgRestore16_14}=require('../services/saas/tenant_postgres_tools');
 const PG_RESTORE_IMAGE_PATH='/usr/local/bin/pg_restore16';
 const PYTHON_IMAGE_PATH='/usr/bin/python3';
 function createPreparedLifecycleReceiptPublisher({input,dependencies}){
@@ -33,7 +34,7 @@ async function runPreparedTenantLifecycleTaskWithReceipt({command,environment,cr
 function checkPreparedImageBundle({readFileSync=require('node:fs').readFileSync,run=execFileSync}={}){
   loadPinnedRdsCa(readFileSync);loadSaasPrograms(readFileSync);
   const options={encoding:'utf8',timeout:10_000,maxBuffer:4096,env:{PATH:'/usr/local/bin:/usr/bin:/bin',LC_ALL:'C'}};
-  if(run(PG_RESTORE_IMAGE_PATH,['--version'],options).trim()!=='pg_restore (PostgreSQL) 16.14'||
+  if(!isPgRestore16_14(run(PG_RESTORE_IMAGE_PATH,['--version'],options))||
     !/^Python 3\./.test(run(PYTHON_IMAGE_PATH,['--version'],options).trim()))
     throw new TenantLifecycleContractError('TENANT_PREPARED_IMAGE_INVALID','Fixed pg_restore16.14 and Python3 required.');
   return Object.freeze({status:'prepared_not_activated',runtimeEnabled:false,receiptSchemaVersion:2,

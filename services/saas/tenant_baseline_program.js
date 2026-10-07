@@ -98,7 +98,7 @@ async function compileTenantBaselineProgram({archiveBytes,manifestBytes,archiveS
   if(new Set(tables).size!==tables.length||!path.isAbsolute(workspace)||!path.isAbsolute(pgRestorePath)||!path.isAbsolute(pythonPath))fail();
   const environment=cleanEnvironment();
   try{
-    if((await run(pgRestorePath,['--version'],environment,'baseline-compiler-version')).output.trim()!=='pg_restore (PostgreSQL) 16.14')fail();
+    if(!require('./tenant_postgres_tools').isPgRestore16_14((await run(pgRestorePath,['--version'],environment,'baseline-compiler-version')).output))fail();
     await fs.mkdir(workspace); // occupied slots are never overwritten/reset
     const archiveFile=path.join(workspace,'baseline.dump'),manifestFile=path.join(workspace,'baseline.manifest.json');
     await fs.writeFile(archiveFile,archive,{flag:'wx'});await fs.writeFile(manifestFile,manifest,{flag:'wx'});

@@ -31,6 +31,7 @@ RUN install -d -m 0700 -o node -g node /tmp/tenant-lifecycle
 ENV NODE_ENV=production PGSSLMODE=verify-full PGSSL_REJECT_UNAUTHORIZED=true \
     PGSSLROOTCERT=/usr/local/share/ca-certificates/aws-rds-global-bundle.pem
 USER node
+RUN /usr/local/bin/pg_restore16 --version && /usr/bin/python3 --version
 RUN ["node", "db/tenant_lifecycle_prepared.js", "--check-bundle"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["node", "db/tenant_lifecycle_prepared.js"]
