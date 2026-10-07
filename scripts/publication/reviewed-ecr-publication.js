@@ -14,6 +14,9 @@ const ACCOUNT = '402010193138';
 const REGION = 'ca-central-1';
 const ECR = 'techlong-sandbox-speedfeast';
 const ROLE = `arn:aws:iam::${ACCOUNT}:role/TechlongSandboxGitHubImagePublisherRole`;
+const STACK = `arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/techlong-sandbox-github-image-publication/62c806e0-c27e-11f1-88a8-0e6ce3fed11f`;
+const BOUNDARY = `arn:aws:iam::${ACCOUNT}:policy/TechlongSandboxGitHubImagePublisherBoundary`;
+const SCANNER_ARCHIVE_SHA = 'c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f';
 const REGISTRY = `${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com`;
 const ROOT = path.resolve(__dirname, '../..');
 const MANIFEST = 'deployment/reviewed-ecr-publication.json';
@@ -21,23 +24,36 @@ const EXECUTORS = [
   '.github/workflows/backend-reviewed-ecr-publish.yml',
   'scripts/publication/reviewed-ecr-publication.js',
   'scripts/publication/extract-checked-artifact.py',
+  'scripts/publication/run-reviewed-ecr-republish.ps1',
 ];
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const textSha = bytes => sha(bytes.toString('utf8').replace(/\r\n/g, '\n'));
 const check = (condition, message) => { if (!condition) throw new Error(message); };
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
+const canonical = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
+  ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 
 function validateManifest(bytes, approvedSha, now = Date.now()) {
   check(/^[a-f0-9]{64}$/.test(approvedSha || '') && textSha(bytes) === approvedSha,
     'Fresh manifest approval mismatch; no AWS write');
   const m = JSON.parse(bytes.toString('utf8'));
-  check(m.schemaVersion === 1 && m.operation === 'PUBLISH_CHECKED_IMAGES_ONLY' &&
+  check(m.schemaVersion === 2 && m.operation === 'PUBLISH_CHECKED_IMAGES_ONLY' &&
     m.repository === REPOSITORY && m.accountId === ACCOUNT && m.region === REGION &&
     m.ecrRepository === ECR && m.publisherRoleArn === ROLE &&
+    m.sourceInstallerArn === `arn:aws:iam::${ACCOUNT}:user/techlong-sandbox-dev` &&
+    m.iamStackName === 'techlong-sandbox-github-image-publication' &&
+    m.executorHashFormat === 'sha256-utf8-lf' && m.noAutomaticWriteRetry === true &&
+    m.noAutomaticExpiredManifestRefresh === true &&
     m.ecsDeploymentAuthorized === false && m.baselinePublicationAuthorized === false &&
-    m.resourceDeletionAuthorized === false, 'Publication scope mismatch');
+    m.resourceDeletionAuthorized === false && m.requirePrePublicationOsScan === true &&
+    m.iamUpdate?.mode === 'UPDATE_LOCKED_STACK' && m.iamUpdate.stackArn === STACK &&
+    m.iamUpdate.expectedBoundaryArn === BOUNDARY && m.iamUpdate.expectedBoundaryDefaultVersionId === 'v2' &&
+    m.iamUpdate.expectedStackStatus === 'UPDATE_COMPLETE' && m.iamUpdate.creationAuthorized === false &&
+    m.iamUpdate.replacementAuthorized === false, 'Publication scope mismatch');
   check(Number.isFinite(Date.parse(m.expiresAt)) && now < Date.parse(m.expiresAt),
     'Publication approval expired; no replay or extension');
+  check(Number.isFinite(Date.parse(m.installBy)) && Date.parse(m.installBy) + 45 * 60 * 1000 <= Date.parse(m.expiresAt),
+    'Installation/revoke safety margin mismatch');
   check(/^[a-f0-9]{40}$/.test(m.sourceCommit) && /^\d+$/.test(m.candidateRunId) &&
     /^\d+$/.test(m.candidateRunAttempt) && m.candidateWorkflow === '.github/workflows/backend-image-candidate.yml',
   'Candidate identity mismatch');
@@ -51,6 +67,7 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
       x.tag === `${x.kind}-sha${m.sourceCommit}-r${m.candidateRunId}-a${m.candidateRunAttempt}` &&
       Number.isFinite(Date.parse(x.artifactExpiresAt)) && Date.parse(m.expiresAt) <= Date.parse(x.artifactExpiresAt),
     'Artifact pin, immutable tag or expiry mismatch');
+    validateOsScan(x.expectedOsSecurityScan, x.imageConfigDigest, now);
   }
   check(Object.keys(m.executorTextSha256 || {}).sort().join('|') === EXECUTORS.slice().sort().join('|'),
     'Executor inventory mismatch');
@@ -58,7 +75,7 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
     check(textSha(fs.readFileSync(path.join(ROOT, file))) === m.executorTextSha256[file], 'Executor changed since approval');
   }
   for (const kind of ['grant', 'revoke']) {
-    const file = `deployment/ecr-publisher.${kind}.template.json`;
+    const file = kind === 'grant' ? 'deployment/ecr-publisher.regrant-20261007.template.json' : 'deployment/ecr-publisher.revoke.template.json';
     check(m.iamTemplates?.[kind]?.path === file &&
       textSha(fs.readFileSync(path.join(ROOT, file))) === m.iamTemplates[kind].textSha256,
     'IAM template changed since review');
@@ -66,7 +83,22 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
   return m;
 }
 
-function validateCandidate(m, image, receipt, selfCheck) {
+function validateOsScan(scan, configDigest, now = Date.now()) {
+  check(scan?.schemaVersion === 1 && scan.outcome === 'OS_HIGH_CRITICAL_ZERO' &&
+    scan.scanner === 'Trivy' && scan.scannerVersion === '0.75.0' && scan.scope === 'os' &&
+    scan.scannerArchiveSha256 === SCANNER_ARCHIVE_SHA &&
+    scan.imageConfigDigest === configDigest && scan.os?.Family === 'debian' &&
+    /^(12|13)(\.\d+)*$/.test(scan.os.Name) && Number.isSafeInteger(scan.packageCount) && scan.packageCount >= 10 &&
+    scan.findingSeverityCounts?.HIGH === 0 && scan.findingSeverityCounts?.CRITICAL === 0 &&
+    scan.ignoredFindingsAllowed === false && scan.ignoreUnfixedAllowed === false &&
+    scan.ecrScanPerformed === false && scan.cloudMutationPerformed === false &&
+    ['reportSha256', 'databaseMetadataSha256', 'databaseSha256', 'scannerArchiveSha256'].every(key => /^[a-f0-9]{64}$/.test(scan[key])),
+  'Prepublication OS scan evidence mismatch');
+  const age = now - Date.parse(scan.databaseUpdatedAt);
+  check(Number.isFinite(age) && age >= -300000 && age <= 48 * 60 * 60 * 1000, 'Prepublication security DB is stale');
+}
+
+function validateCandidate(m, image, receipt, selfCheck, now = Date.now()) {
   check(receipt.schemaVersion === 1 && receipt.status === 'BUILT_SELF_CHECKED_NOT_PUBLISHED' &&
     receipt.kind === image.kind && receipt.sourceCommit === m.sourceCommit &&
     receipt.runId === m.candidateRunId && receipt.runAttempt === m.candidateRunAttempt &&
@@ -77,6 +109,16 @@ function validateCandidate(m, image, receipt, selfCheck) {
     selfCheck.outcome === (image.kind === 'app' ? 'APP_CONTAINER_SMOKE_VERIFIED' : 'LIFECYCLE_CONTAINER_TOOLCHAIN_VERIFIED') &&
     selfCheck.cloudMutationPerformed === false &&
     JSON.stringify(receipt.selfCheck) === JSON.stringify(selfCheck), 'Checked candidate evidence mismatch');
+  validateOsScan(receipt.osSecurityScan, image.imageConfigDigest, now);
+  check(canonical(receipt.osSecurityScan) === canonical(image.expectedOsSecurityScan), 'Candidate scan is not the reviewed scan');
+  check(selfCheck.schemaVersion === 1 && selfCheck.nodeVersion === 'v24.18.0' &&
+    selfCheck.uid === 65532 && selfCheck.platform === 'linux/amd64', 'Candidate runtime identity mismatch');
+  if (image.kind === 'lifecycle') check(selfCheck.fixtureOnly === true && selfCheck.pgRestoreVersion === '16.14' &&
+    selfCheck.pythonVersion === '3.14.8' && selfCheck.runtimePackageMetadataVerified === true &&
+    selfCheck.minimalRuntimeVerified === true && selfCheck.baselineApproved === false && selfCheck.runtimeEnabled === false,
+  'Candidate patched lifecycle proof mismatch');
+  else check(selfCheck.healthStatus === 200 && selfCheck.readyStatus === 503 && selfCheck.network === 'none',
+    'Candidate app fail-closed readiness proof mismatch');
 }
 
 function command(name, args, options = {}) {
@@ -248,7 +290,7 @@ async function main() {
   const [mode, approvedSha, output] = process.argv.slice(2);
   check(['verify', 'prepare', 'publish'].includes(mode), 'Unknown publication mode');
   const m = validateManifest(fs.readFileSync(path.join(ROOT, MANIFEST)), approvedSha);
-  if (mode === 'verify') return console.log(JSON.stringify({ outcome: 'REVIEWED_NOT_EXECUTED', approvedSha, expiresAt: m.expiresAt, images: m.images.map(x => x.tag) }));
+  if (mode === 'verify') return console.log(JSON.stringify({ outcome: 'REVIEWED_NOT_EXECUTED', approvedSha, installBy: m.installBy, expiresAt: m.expiresAt, images: m.images.map(x => x.tag) }));
   check(process.env.GITHUB_REPOSITORY === REPOSITORY && process.env.GITHUB_REF === 'refs/heads/main' &&
     process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && path.isAbsolute(output || '') &&
     path.dirname(path.resolve(output)) === path.resolve(process.env.RUNNER_TEMP || '') &&
@@ -257,5 +299,5 @@ async function main() {
   else await publish(m, approvedSha, output);
 }
 
-module.exports = { validateManifest, validateCandidate, verifyCandidateFiles, sha, textSha };
+module.exports = { validateManifest, validateCandidate, validateOsScan, verifyCandidateFiles, sha, textSha };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

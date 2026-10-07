@@ -2,6 +2,16 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2f 第五批：修复镜像 fresh 发布审阅，尚未执行
+
+2026-10-07 新清单 `deployment/reviewed-ecr-publication.json` schema2、UTF-8 LF SHA `c9fa6086f28c8e599f40baf1d1f20ef937d2fcb9d2346bdd5376cc1d2a1c4790` 已绑定第四批成功源/run、两个原始ZIP/receipt/config/前置OS scan与四个执行器。原已消费清单原文保留在 `deployment/history/reviewed-ecr-publication-ce32e464.json`，原Grant/Revoke模板未改；新增日期固定的Regrant模板只更新现有Locked栈的两项IAM资源，不创建或替换。
+
+新 `scripts/publication/run-reviewed-ecr-republish.ps1` 默认ReviewOnly，RunReviewed须准确fresh SHA、Source至少一小时剩余会话、Locked/v2和准确两资源回读、本地/远端main一致、成功候选/未过期artifact与两个新immutable槽位未占用。永久新槽位和冻结模板先于写入；至多一次Source Update、一次manual dispatch，成功或失败finally立即Source Revoke并独立Locked。Inspect可在候选/清单过期后只读恢复；不自动重试、清空槽位或延长日期。
+
+16项发布/镜像/扫描相邻Node测试、JS与PowerShell语法通过。两ZIP约154MB实际下载并流式核验完整ZIP和全部成员checksum/receipt；真实收据runtime及OS scan与清单一致，没有本地Docker加载。AWS只读ValidateTemplate两模板通过，新控制器真实ReviewOnly证明准确栈UPDATE_COMPLETE、boundary default v2/唯一inline DenyAll/trust Deny、零attached policies和两原资源。私有review index SHA `b91491f367ffdfa220299fd57b9f12b49a64c3908975f37fc3aaaf476319b399`，目录 `F:/ChatGPT_workshop/techlong-reviewed-ecr-republish-f2f5-20261007`；无AWS/数据库写入或新ECR镜像。
+
+安装最迟温尼伯2026-10-08 **13:00 CDT**（18:00Z），权限/发布截止13:45（18:45Z），最早artifact失效14:30:55（19:30:55Z）。本轮仅审阅；用户新SHA确认且Source刷新后才能更新existing publisher role/boundary、在现有sandbox ECR发布这两个修复镜像，独立BASIC/HIGH-CRITICAL扫描和manifest/config回读，再立即Locked Revoke。旧镜像/资源/所有记录保留；没有ECS/Cell、Worker/root、真实baseline或源PG15/Neon授权，50USD/月目标不变。详见 [准确发布范围与确认](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2f5-republish-review.md)。以下为历史状态。
+
 ## F2f 第四批：最小运行层与发布前OS门禁通过
 
 2026-10-07 源 `40b1ce6e487dc4c1187da3014a89b9379d50d578` 的 [双镜像运行37674970489](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37674970489) 和 [完整Backend CI37674970442](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37674970442) success。app/lifecycle采用精确distroless cc-debian13 nonroot层，Node24.18.0不变；lifecycle精确pg_restore16.14 trixie＋官方Python3.14.8，真实SSL补丁/CA/SQL/bundle/依赖bytes与metadata/五表合成compiler/read-only-network-none/write-gate自检通过，无生产baseline或CLI授权变更。

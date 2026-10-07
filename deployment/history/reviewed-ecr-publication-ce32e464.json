@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "operation": "PUBLISH_CHECKED_IMAGES_ONLY",
+  "repository": "veinyyxy/SpeedFeast_Backend_main",
+  "accountId": "402010193138",
+  "region": "ca-central-1",
+  "ecrRepository": "techlong-sandbox-speedfeast",
+  "publisherRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxGitHubImagePublisherRole",
+  "sourceInstallerArn": "arn:aws:iam::402010193138:user/techlong-sandbox-dev",
+  "iamStackName": "techlong-sandbox-github-image-publication",
+  "reviewedAt": "2026-10-07T18:11:08Z",
+  "expiresAt": "2026-10-08T17:40:00Z",
+  "sourceCommit": "acc8ae648119e8ad5cca98b8af1907eef09bf213",
+  "candidateRunId": "37662382372",
+  "candidateRunAttempt": "1",
+  "candidateWorkflow": ".github/workflows/backend-image-candidate.yml",
+  "images": [
+    {
+      "kind": "app",
+      "artifactId": 11500584446,
+      "artifactName": "checked-app-acc8ae648119e8ad5cca98b8af1907eef09bf213-37662382372-1",
+      "artifactZipDigest": "sha256:9af64690c7d5776707adf7f3f2f62c874aa347e9dad9121b4c2a4a0166b3ace9",
+      "artifactExpiresAt": "2026-10-08T17:52:31Z",
+      "receiptSha256": "1e54047dff34ab5253b675d4f92ae3762b4fd93920aebdbd02b018abee99940b",
+      "imageConfigDigest": "sha256:8a9638e792f0a8b4446ddf34c9c7f9e64bf9d246610a424055f6110e579c7d22",
+      "tag": "app-shaacc8ae648119e8ad5cca98b8af1907eef09bf213-r37662382372-a1"
+    },
+    {
+      "kind": "lifecycle",
+      "artifactId": 11501637024,
+      "artifactName": "checked-lifecycle-acc8ae648119e8ad5cca98b8af1907eef09bf213-37662382372-1",
+      "artifactZipDigest": "sha256:ec37272efc3bd564e42e6c438844b5ee14925c4a491e68dbc0af9c3b6a6ba8ee",
+      "artifactExpiresAt": "2026-10-08T17:52:43Z",
+      "receiptSha256": "dbb5cd13a77e26a383229c0d7b36d1b58590488b40eee78c9f5ec1af97dd2cd2",
+      "imageConfigDigest": "sha256:0e5667f5d6dc02eebb16f32af205f16f00c92cf30f99d4e767f28876299b2ea3",
+      "tag": "lifecycle-shaacc8ae648119e8ad5cca98b8af1907eef09bf213-r37662382372-a1"
+    }
+  ],
+  "executorHashFormat": "sha256-utf8-lf",
+  "executorTextSha256": {
+    ".github/workflows/backend-reviewed-ecr-publish.yml": "43b832e20fd87e8d6aa9607670f9d53bbeb6d2b94e6c5c99b8742bef6f530dcd",
+    "scripts/publication/reviewed-ecr-publication.js": "8539543a46fa67c788412a0185eda64f0547d9415440d6383305a90db193e6ab",
+    "scripts/publication/extract-checked-artifact.py": "9fb2ccdd9a573cdd09e253c747894f540bb80cdd821c7a85e0c2df8ced8f0d50"
+  },
+  "iamTemplates": {
+    "grant": {
+      "path": "deployment/ecr-publisher.grant.template.json",
+      "textSha256": "f5ba5a89fa48b6a409ea9bbb4961196a62b66ed5a2b5f7f4905bfb071a73744a"
+    },
+    "revoke": {
+      "path": "deployment/ecr-publisher.revoke.template.json",
+      "textSha256": "5ef0c95edfc88901c74e62366de6127cc28b2bc7c65eb3c96044efe74bfc5ebe"
+    }
+  },
+  "installationScope": [
+    "Create one dedicated IAM managed boundary and one bounded IAM role in the specified new stack using Source; no historical role/boundary/grant updates",
+    "Reuse existing GitHub OIDC provider without modifications",
+    "Dispatch the manual workflow on main with this fresh manifest SHA; push at most two checked image tags to the existing immutable repository",
+    "On success or failure immediately apply the exact Source revoke template and independently verify DenyAll boundary, inline policy and denied trust; preserve IAM resources and images"
+  ],
+  "trustScope": "GitHub OIDC aud sts.amazonaws.com; only this repository main ref (not a per-workflow AWS claim)",
+  "monthlyBudgetTargetUsd": 50,
+  "ecrStoragePlanningAllowanceGb": 1,
+  "ecrStoragePlanningAllowanceUsdPerMonth": 0.1,
+  "noAutomaticWriteRetry": true,
+  "noAutomaticExpiredManifestRefresh": true,
+  "ecsDeploymentAuthorized": false,
+  "baselinePublicationAuthorized": false,
+  "resourceDeletionAuthorized": false
+}
