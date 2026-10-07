@@ -2,7 +2,21 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
-本批次完成 F2a 空 baseline 候选工具和真实 schema-only 导出/逐项 schema profile 核验，不自动批准、不恢复数据库、不上传 AWS。
+2026-10-06 F2b 已完成：准确候选在独立 PostgreSQL 16.14 上真实恢复成功，独立只读核验 73 张表全零行、10 个固定程序对象，并已停止临时实例。没有升级源 PG15、上传 AWS 或批准/发布 baseline。下一步 F2c 实现真实 production provision 操作。
+
+2026-10-05 F2a 完成空 baseline 候选工具和真实 schema-only 导出/逐项 schema profile 核验；以下 F2a 记录按当时状态保留。
+
+## F2b 真实 PG16 验收
+
+新增 `scripts/verify-empty-tenant-baseline-pg16.js`：不读源 `.env`，仅接受 artifact workspace 内的 candidate/便携 binary/新输出目录及明确 archive/manifest SHA；冻结副本、恢复前再复算、SCRAM 随机密码、loopback/非 5432 端口、data directory/version/role/database 实读绑定。`pg_restore` 单事务恢复后，独立只读 psql 会话执行现有零行/profile SQL，再另起 Node pg 只读 inventory/行数回读；成功或失败都尝试停止准确临时实例，不覆盖、清空或重放占用目录。
+
+成功目录 `F:/ChatGPT_workshop/techlong-pg16-baseline-verification-20261006-f2b3`，结果 `PG16_RESTORE_EMPTY_PROFILE_VERIFIED`；实际版本 160014、73 张表、0 行、10 个程序对象、`isolatedServerStopped=true`。收据 SHA `9b4b2ce704f87c08676a6b7d3f74514296d8d2863c6f25ec59dc5bba57735b27`。原 archive/manifest 与下文 F2a SHA 一致，`baselineApproved=false`；原候选收据保持原状，真实恢复证据保存在独立新收据，不改写历史。
+
+PG16.14 官方 EDB 便携 ZIP 仅展开 bin/lib/share 到 `F:/ChatGPT_workshop/techlong-pg16-20261006/portable`；没有 Windows 安装器、服务注册或 PATH 修改。前两个全新实例分别遇到 pg_ctl 输出句柄等待、inet::text 含 /32 的 identity 误判，均在 restore 前拦截并停止；修复和必要回归后才完成真实恢复，失败目录保留。没有用 source PG15 作为验收目标。
+
+本批次 14 项 Node 必要相邻回归、28 项既有 Python baseline/profile 测试、类型检查通过。仅本地临时实例 `ssl=off`，生产 RDS verify-full/CA、IAM/ownership/runtime 拒绝边界均未改。工具/测试入 Git，私有 binary、archive、SQL、cluster、日志、收据不入 Git。[完整真实验收证据与边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f2b-pg16.md)。
+
+F2c 注意：`saas_control.sql` 会产生 singleton/entitlement，`theme_config.sql` 会产生两项 system_config seed；必须区分 baseline 全空验收与迁移后允许初始化行。不能直接调用读取 `.env` 的 `db/apply_saas_control.js`，也不能把当前本地恢复称为 Aurora/镜像/Worker 在线证明。
 
 ## 候选导出
 
@@ -36,7 +50,7 @@ node scripts/build-empty-tenant-baseline.js `
 - candidate manifest SHA：`62b5dc8cadcf276df140be86e002a08b64d9b713bd0257e14ac515c12a996971`
 - 收据结果：`CANDIDATE_REQUIRES_PG16_RESTORE_AND_APPROVAL`；`baselineApproved=false`、`pg16RestoreVerified=false`。
 
-没有源库写入、restore、AWS/Neon 调用或上传。仅有本地 pg_dump 15.3；Docker/Podman 不在 PATH，WSL 未安装，尚无 PostgreSQL 16.14 验收环境。下一步在独立 PG16 环境恢复此准确 archive 并回读空行/profile，绝不能恢复到当前源开发数据库；验收/批准通过后再发布 immutable baseline。
+F2a 当时没有源库写入、restore、AWS/Neon 调用或上传，仅有本地 pg_dump 15.3，尚无 PostgreSQL 16.14 验收环境。F2b 现已通过上述独立便携实例真实验收，原开发源库未作为 restore 目标；生产批准/immutable baseline 发布仍未执行。
 
 接着需要完成 production `prepare_empty_database / restore_approved_baseline / migrate_saas / verify` provider，以及镜像构建/准确 readback。现有 production runtime 仍只允许 inspect/cleanup-only destroy，没有打开新命令，未运行 ECS task。
 
