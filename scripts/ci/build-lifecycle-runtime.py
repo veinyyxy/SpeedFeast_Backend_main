@@ -65,7 +65,8 @@ def main():
     for binary in binaries:
         listing = command('ldd', str(binary))
         if 'not found' in listing:
-            raise ValueError('Unresolved runtime dependency')
+            missing = '; '.join(line.strip() for line in listing.splitlines() if 'not found' in line)
+            raise ValueError('Unresolved runtime dependency for ' + str(binary) + ': ' + missing)
         dependencies.update(re.findall(r'=> (/[^\s]+)', listing))
     installed = status_packages(Path('/var/lib/dpkg/status').read_text())
     original_pg = status_packages(PG_STATUS.read_text())
