@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：准确旧计划已永久登记密封，自动部署运行时仍关闭
+
+2026-10-08 Winnipeg。用户批准1fba989e681c6e7bb0c71178adfde6686f618359ad9e422db549b7b038aab333后，平台按原受审代码仅执行一次准确证书INSERT/内部fence finalize，COMMIT确认、新连接独立回读及另一次VerifyRegistration均通过；registry1、fence sealed=true/revision2、sealed_at1791480771883。两份完整证书canonical SHA `dc093614188a8f0a086b4fc6a7e251c43312495a60db2efffc654cf3d48b066f` 一致，protection SHA41eea5ac8b64801144fa568dce2b42d5dcb350a520a82df91f973c23bedab168不变。原行/plan/实例pending/订阅active/旧trigger/角色未变，拟议控制角色仍0，未改AWS、授权或启用runtime。
+
+submission SHA `b805b34f8186c5bccede66cefb5d05e0b39d754368da6459e2d399588e29564d`，独立readback SHA `d7f609f0e7c341c8cb0e847f2fab90f8749292ab9265af654159e655ad2d712a`，另次Verify SHA `2b8b75e2fa4d20a17c5d9cad8561d1a6f1e9321cb056b6b9f5c4786f8ce3651e`。install/register两个固定槽位均永久占用，禁止Run/down/复位或刷新清单重放；后续source expected完整证书必须来自批准提交后的私有独立receipt pin，不能从event/任意DB行生成。下一阶段v3持久authority/CAS/永久journal/独立root/新包及最小DB角色/Secret精确审批范围，实际新权限/云部署仍单独批准；50USD/月目标/旧Budget和镜像不变。本仓仅同步记录，生产代码不动。[准确密封登记与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-plan-sealed.md)。以下保留历史。
+
 ## F3b3：Neon保护schema实际安装完成，准确旧计划仍未登记
 
 2026-10-08 Winnipeg。用户批准安装清单ce844c9096de5c71cf3d3447916143260d336292180dbf2193f3b256d67fb36b后，平台按原554b125/code38c479及C088 SQL执行一次，COMMIT确认、新连接独立回读及另一次VerifyInstall均通过。实际两表/八函数/十六Always触发器/一条未密封内部fence，registry0/fence revision0，protection SHA `41eea5ac8b64801144fa568dce2b42d5dcb350a520a82df91f973c23bedab168`；原行、实例pending/订阅active、旧trigger与现有角色未改变，未创建角色或授权。install固定槽位永久占用，禁止再次RunInstall/自动down或复位。submission SHA `f3e3f493f4c7173b6237695696418ba52f2d3c293b5fe19d626bc545e32dc371`，独立readback SHA `2f99cc6974a27799023a1d72fd533bc97de738527aa6c8bd679649b2839f6726`，另次Verify SHA `a78d2fc1b4ba374ea09a0dbd7438aa7d2e4ab34d047c89ce57d45638a023ea5b`。
