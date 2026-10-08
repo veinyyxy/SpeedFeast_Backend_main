@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：第一批NOLOGIN控制角色安装入口已验证，等待新SHA确认
+
+2026-10-08 Winnipeg。平台新增独立角色审阅/单事务一次性执行/提交不明只读恢复入口，不改原schema/install/register代码和slot。两个准确角色techlong_cell_cleanup_reader/techlong_cell_drain初始NOLOGIN/NOINHERIT/非admin；reader八表SELECT，drain四表SELECT、admission七列UPDATE、jobs十一列INSERT、行锁timestamp UPDATE。列能力不是单行/单环境限制，也不是纯读；创建者自动获得ADMIN=true/SET=false/INHERIT=false，须随具体scope批准。密码/LOGIN/Secrets/AWS/runtime均不在本批。
+
+57项定向/type/lint/语法/build通过；[真实PG18 run37842882331](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37842882331)/head8c5080e/attempt1 success、26组证明，覆盖本协议非super CREATEROLE、完整有效权限、失COMMIT后独立回读、不重放及额外列写拒绝；两自有DB drop/容器stop与artifact独立verification SHA `d47e14f4955360e4959664706d7d148bca826314ef873bb54628dc249534213c`。四个失败试验artifact保留；修复序列谓词类型保护/负测试search_path，不扩权限；AWS/DDB/删除仍mock。
+
+Neon最终只读role/别名0、原seal一致、role-install slot空；Source只读新IAM两角色/两Secret/v3 Lambda仍ABSENT。fresh清单 SHA `4ef39a5995c8a0d394e1cbb72b2c3e51d8588bd86e8b75e3d6287ba138171cac`、文件SHA551c2c95...、code binding03a91abc...，过期2026-10-08 21:55:47.776UTC，尚未批准/执行。确认后仅两NOLOGIN角色/GRANT及独立回读，接受短暂写锁/提交后不自动down/永久slot无复位重试；本批无需AWS/MFA。下一批LOGIN/随机凭据/两个Secret再单独scope，随后IAM/Lambda/authority。没有Neon/AWS写入，自动部署/Worker关闭，50USD/月目标不变。本仓只同步文档，生产源码/镜像不改。[完整安装清单与恢复入口](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-control-role-installation.md)。以下保留历史。
+
 ## F3b3：平台持久v3执行入口/新包与最小权限候选完成，未安装
 
 2026-10-08 Winnipeg。平台独立v3完整authority解码/前驱原子读/一次CAS安装器、永久intent/receipt journal、专属root/SDK/Lambda3完成，完整已批准证书pin与raw witness入新hash；旧v2不桥接，只有CAS赢家一次准确STANDARD DeleteStack能力，失slot/重启/失响应只读恢复，无reset/down/重试。source补RLS隐藏行、列级写与非trigger definer执行拒绝，默认Worker不启用。45项定向、137项相邻回归（有重叠）/type/lint/语法/build通过；[PG18 run37829262726](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37829262726) head3477818/attempt1 success/23组证明，两个CI自有DB drop/容器stop独立核验；AWS/DDB/actuator明确mock，不是云删除。verification SHA `655fdd4e59078d75953b040ff8d8e893c05dc63d47e54915a0841488142a7f4b`。
