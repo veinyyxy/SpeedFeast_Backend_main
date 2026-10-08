@@ -109,7 +109,14 @@ function WaitStack([string]$Expected){
 function Github([string]$Endpoint,[string]$Method='Get',$Body=$null){
   $arguments=@{Uri=('https://api.github.com/repos/'+$repo+'/'+$Endpoint);Headers=$script:githubHeaders;Method=$Method;TimeoutSec=30}
   if($null -ne $Body){$arguments.Body=($Body | ConvertTo-Json -Depth 8 -Compress);$arguments.ContentType='application/json'}
-  try{return (Invoke-RestMethod @arguments)}catch{throw ('GitHub '+$Method+' request failed; dispatch is not retried.')}
+  try{
+    # Invoke-RestMethod auto-converts ISO timestamps to DateTime, which does
+    # not compare as the manifest's exact String despite the same displayed
+    # value. Preserve all GitHub JSON strings just like the reviewed manifest.
+    $response=Invoke-WebRequest @arguments
+    if([string]::IsNullOrWhiteSpace([string]$response.Content)){return $null}
+    return ($response.Content | ConvertFrom-Json -DateKind String)
+  }catch{throw ('GitHub '+$Method+' request failed; dispatch is not retried.')}
 }
 
 $identity=AwsJson @('sts','get-caller-identity')

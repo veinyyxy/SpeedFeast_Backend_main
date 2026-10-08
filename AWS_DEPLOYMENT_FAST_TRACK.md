@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3a1：808批准尝试在云写入前停止，新解析修复清单待确认
+
+2026-10-07 Winnipeg。唯一RunReviewed在候选expiry元数据检查line155退出，永久slot未创建、没有Grant/AWS写或GHA dispatch；Source独立Inspect仍UPDATE_COMPLETE/Locked/v4。原候选id/name/digest/source/run/expiry均未变，失败原因仅Invoke-RestMethod把expires_at自动解析为DateTime，与manifest String被判不等。
+
+GitHub helper现用raw Invoke-WebRequest Content+ConvertFrom-Json -DateKind String，保留空204响应行为；实际两候选GET证明所有pin准确匹配。9项scope/历史/transport回归、typecheck/AST通过。新SHA `1ab97e7b380947662e54920a3150e4c314fd8d8f8a29c320a74f7abe46b51c6a` 与808严格保持同images/IAM templates/iamUpdate/installBy/expiry；只更新执行器hash/审阅时间和解析说明，必须新确认，不自动重跑。808原件保存history并校验旧SHA不变，两slot均未占用；原02:00Z安装cutoff/03:00Z权限expiry不延长。未部署ECS/上传baseline/改其他资源，publisher仍Locked。平台详情 `docs/aws-auto-deployment-fast-track-f3a1-timestamp-preflight-fix.md`。以下保留历史。
+
 ## F3a：在线只读preflight与仅新root镜像发布审阅完成
 
 2026-10-07 Winnipeg / 10-08 UTC。实际Source53-read与补充检查确认Aurora16.14/db.serverless可用、Cell不存在、publisher仍Locked/v4；当前Janitor PLAN_ONLY/global schedule DISABLED、无Sandbox wildcard/trust store/hosted zone，baseline bucket缺失、lifecycle IAM缺admission/baseline、DDB读cap5、tagged Budget仍10USD，ELB service-linked role不存在。未做AWS写、角色登录、Lambda调用、Neon/源PG连接或付费部署；50USD目标未静默更新到云。

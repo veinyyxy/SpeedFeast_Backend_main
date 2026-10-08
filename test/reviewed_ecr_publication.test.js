@@ -182,6 +182,15 @@ test('consumed approval and original grant/revoke evidence remain byte-preserved
   assert.notDeepEqual(parse().images, priorRun.images);
   assert.notEqual(parse().iamTemplates.grant.path, priorRun.iamTemplates.grant.path);
   for (const pin of Object.values(priorRun.iamTemplates)) assert.equal(textSha(fs.readFileSync(pin.path)), pin.textSha256);
+  const priorF3Bytes = fs.readFileSync('deployment/history/reviewed-ecr-publication-8081815c0843.json');
+  assert.equal(textSha(priorF3Bytes), '8081815c08436a219d1701867bcaf9f16d19bfb0437c66270bee52822163a8c2');
+  const priorF3 = JSON.parse(priorF3Bytes);
+  assert.equal(parse().previousApprovedUnexecutedF3ManifestSha, textSha(priorF3Bytes));
+  assert.deepEqual(parse().images, priorF3.images);
+  assert.deepEqual(parse().iamTemplates, priorF3.iamTemplates);
+  assert.deepEqual(parse().iamUpdate, priorF3.iamUpdate);
+  assert.equal(parse().installBy, priorF3.installBy);
+  assert.equal(parse().expiresAt, priorF3.expiresAt);
 });
 
 test('Source controller is read-only by default, one-shot update/dispatch, with finally revoke and expiry-safe Inspect', () => {
@@ -197,6 +206,9 @@ test('Source controller is read-only by default, one-shot update/dispatch, with 
   assert.match(controller, /SaveJson 'locked-iam-pregrant.json' \$locked/);
   assert.match(controller, /boundary-pregrant-/);
   assert.match(controller, /\$m=\$raw \| ConvertFrom-Json -DateKind String/);
+  assert.match(controller, /\$response=Invoke-WebRequest @arguments/);
+  assert.match(controller, /\$response\.Content \| ConvertFrom-Json -DateKind String/);
+  assert.match(controller, /IsNullOrWhiteSpace\(\[string\]\$response\.Content\)/);
   assert.match(controller, /Installation cutoff crossed during backups; slot retained, no AWS write/);
   assert.match(controller, /SaveJson 'source-login-prerevoke.json' \(SourceLoginReady\)/);
   assert.ok(controller.indexOf('Exact main candidate run did not succeed') < controller.indexOf("'cloudformation','update-stack'"));

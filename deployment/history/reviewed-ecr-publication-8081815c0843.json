@@ -8,7 +8,7 @@
   "publisherRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxGitHubImagePublisherRole",
   "sourceInstallerArn": "arn:aws:iam::402010193138:user/techlong-sandbox-dev",
   "iamStackName": "techlong-sandbox-github-image-publication",
-  "reviewedAt": "2026-10-08T01:39:10Z",
+  "reviewedAt": "2026-10-08T00:49:18Z",
   "expiresAt": "2026-10-08T03:00:00Z",
   "sourceCommit": "19cc3e096df4d37be0a6570ce3116d47c472ace2",
   "candidateRunId": "37702693753",
@@ -90,7 +90,7 @@
   ],
   "executorHashFormat": "sha256-utf8-lf",
   "executorTextSha256": {
-    "scripts/publication/run-reviewed-ecr-republish.ps1": "199670acafd0e749c6288c770fa32d250b02e2f621fff24ec45585a4dc3e59a8",
+    "scripts/publication/run-reviewed-ecr-republish.ps1": "a80b482ab063b50c8c997e9e261d384c93aec817fdf8ff371e2b942d60603d15",
     "scripts/publication/extract-checked-artifact.py": "9fb2ccdd9a573cdd09e253c747894f540bb80cdd821c7a85e0c2df8ced8f0d50",
     ".github/workflows/backend-reviewed-ecr-publish.yml": "43b832e20fd87e8d6aa9607670f9d53bbeb6d2b94e6c5c99b8742bef6f530dcd",
     "scripts/publication/reviewed-ecr-publication.js": "39ace5a09a6e2f277009aeb62c20cf43582d9e930e7adad7e7660364fb4c3fed"
@@ -155,7 +155,5 @@
     "receiptSha256": "a04520ddfe02c4f56d4192e422849aa7038cf0adf088cd4552a3d29ec7e88f5b",
     "dockerLoadPerformed": false,
     "registryManifestDigestVerified": false
-  },
-  "previousApprovedUnexecutedF3ManifestSha": "8081815c08436a219d1701867bcaf9f16d19bfb0437c66270bee52822163a8c2",
-  "executionPreconditionChange": "Preserve GitHub API JSON ISO timestamp fields as String instead of Invoke-RestMethod automatic DateTime conversion; exact field values, resources, images, installation cutoff and permission expiry unchanged"
+  }
 }
