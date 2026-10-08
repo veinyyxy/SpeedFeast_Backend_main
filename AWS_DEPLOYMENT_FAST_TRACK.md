@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：Neon两NOLOGIN控制角色已安装并两次独立回读
+
+2026-10-08 Winnipeg。用户批准4ef39a5995c8a0d394e1cbb72b2c3e51d8588bd86e8b75e3d6287ba138171cac后，平台原code03a91abc/SQL7fc82e...单事务一次COMMIT确认；21:27:03.106/21:27:38.185UTC两次独立Serializable READ ONLY Deferrable回读完整状态一致。techlong_cell_cleanup_reader/drain均NOLOGIN/NOINHERIT/非管理员，无owner上行membership，reader八表SELECT/无列写，drain四表SELECT/准确20项列权限；创建者neondb_owner ADMIN=true/SET=false/INHERIT=false符合已批scope。原seal=true/revision2/完整证书dc093614.../原业务/其余权限保持，preserved SHA `993506a66f586d9ad447b77769769cbf372dee9be9a30cc556af9d9de00426fa` 未变。
+
+poststate SHA `1528e1e2888bb191200d8bc2224318512cfa63f5aaa138eb324870674f3fe0ef`，submission `229e15ec8e7ddf045dbb767a156429beaa5930549a930f231e5bdf72a6f60ab7`，两独立readback文件SHA同为 `e995627f19eb029c88ec0b474cdaaed240264ff22d3507c89aed329f9830757f`（稳定内容不含时间，不同时间observation另有不同SHA）。role-install slot永久消费，原schema/register两slot保留，禁止Run/down/reset/GRANT重放。本轮没有设置密码、LOGIN/Secret、AWS调用或runtime启用；50USD/月目标不变。下一批仅准备角色LOGIN/随机凭据/两准确Secret的具体scope供fresh SHA批准，随后IAM/Lambda/authority另批，自动部署仍未整体上线。本仓仅文档同步，生产源码/镜像未改变。[实际安装证据与下一阶段](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-control-roles-installed.md)。以下保留历史。
+
 ## F3b3：第一批NOLOGIN控制角色安装入口已验证，等待新SHA确认
 
 2026-10-08 Winnipeg。平台新增独立角色审阅/单事务一次性执行/提交不明只读恢复入口，不改原schema/install/register代码和slot。两个准确角色techlong_cell_cleanup_reader/techlong_cell_drain初始NOLOGIN/NOINHERIT/非admin；reader八表SELECT，drain四表SELECT、admission七列UPDATE、jobs十一列INSERT、行锁timestamp UPDATE。列能力不是单行/单环境限制，也不是纯读；创建者自动获得ADMIN=true/SET=false/INHERIT=false，须随具体scope批准。密码/LOGIN/Secrets/AWS/runtime均不在本批。
