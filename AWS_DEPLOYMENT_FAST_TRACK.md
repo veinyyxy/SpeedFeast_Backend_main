@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：旧计划与控制面只读审阅完成，独立executor身份待修订
+
+2026-10-08 Winnipeg。准确旧dep_d00144511731f1c20991aa56 planned/plan_only/attempts0、无job/resource/capacity/schedule/step，但实例pending且订阅active；用户选择保留业务。Neon实际启用的trigger禁止修改environment_id，不能直接迁移或绕过。平台保存原行/业务状态/trigger私有证据并加入严格审阅器与密封非执行登记设计；review SHA `113f62e2dd5ee643466818d6ea100ff4539e12745c421d646724d214218112f6` 是设计hash、不是执行许可。现有零租户协议未改，activeTenant/nonterminalDeployment仍1/1，新schema/登记/协议候选均未安装；没有取消、暂停、删除或改订阅。
+
+Source刷新后真实控制面只读报告SHA `f0c8fd4ccf68171dc24a2872bb71d648173fdc2bfa45979cda95797a89c484d0`：旧函数仍PLAN_ONLY，两新函数/DrainCoordinatorRole/两boundary/两Secret均ABSENT。关键发现Janitor boundary v2同时作为身份策略附加且无条件Deny变更，仅换boundary不能复用；原草案/产物保留不安装。推荐独立TechlongSandboxCellTtlExecutorRole，保留旧IAM与函数；当前core/Secret/executor artifact绑定旧Janitor，需要独立版本化精确入口和新产物。新候选role存在性尚未读取，不假定ABSENT。
+
+6项定向审阅器、type/lint/AST通过；没有AWS/Neon写、Lambda调用、角色/Secret创建或镜像重建，Worker仍关闭。本次审阅切片完成，F3b3尚未整体完成；继续精确身份修订和密封隔离协议候选，新数据库/云安装仍具体scope及freshSHA单批。服务端仅同步记录，生产app/lifecycle源码与source19cc镜像不变。[完整证据与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-isolation-review.md)。以下保留历史。
+
 ## F3b2：平台draining/清理事件协调与独立Lambda候选完成
 
 2026-10-07 Winnipeg。平台实际接通Neon admission writer、owned cleanup/rollback INSERT-only producer和六查询serializable snapshot，独立drain与F3b1 executor Lambda候选已自包含构建/ZIP字节回读/重复hash与无凭据启动自检；读写Secret及拟议DB角色分离，未安装。131项相邻清理、type/lint/build通过；Neon真正READ ONLY EXPLAIN验证SQL（无ANALYZE/无mutation），SQL SHA78ca4315bcfcd853030aa41c3dd76fbf92d91c3371ce34abba9f757d8bf05a92。
