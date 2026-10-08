@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：Neon保护schema实际安装完成，准确旧计划仍未登记
+
+2026-10-08 Winnipeg。用户批准安装清单ce844c9096de5c71cf3d3447916143260d336292180dbf2193f3b256d67fb36b后，平台按原554b125/code38c479及C088 SQL执行一次，COMMIT确认、新连接独立回读及另一次VerifyInstall均通过。实际两表/八函数/十六Always触发器/一条未密封内部fence，registry0/fence revision0，protection SHA `41eea5ac8b64801144fa568dce2b42d5dcb350a520a82df91f973c23bedab168`；原行、实例pending/订阅active、旧trigger与现有角色未改变，未创建角色或授权。install固定槽位永久占用，禁止再次RunInstall/自动down或复位。submission SHA `f3e3f493f4c7173b6237695696418ba52f2d3c293b5fe19d626bc545e32dc371`，独立readback SHA `2f99cc6974a27799023a1d72fd533bc97de738527aa6c8bd679649b2839f6726`，另次Verify SHA `a78d2fc1b4ba374ea09a0dbd7438aa7d2e4ab34d047c89ce57d45638a023ea5b`。
+
+已仅只读生成后继登记清单SHA `1fba989e681c6e7bb0c71178adfde6686f618359ad9e422db549b7b038aab333`，过期2026-10-08 18:21:21UTC，尚未批准/执行，登记槽位空；下一步仅准确单行永久证书登记及fence finalize，必须具体新SHA批准，安装批准不外延。源schema2门禁/source-v3/Worker/runtime未放宽或启用，AWS/镜像/Lambda包/旧Budget不动，50USD/月目标不变。本仓仅同步记录，无服务端生产代码改变。[真实安装与登记继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-schema-installed.md)。以下保留历史。
+
 ## F3b3：平台Neon管理审批入口完成，schema安装待具体确认
 
 2026-10-08 Winnipeg。平台代码554b125实现独立Review/Run/Verify Install与Registration，准确目标/代码/完整prestate SHA及一小时审批窗口；RW事务短暂锁准确表、二次读比对后才领取固定一次性槽位，失败不复位/重试，未知COMMIT只读恢复，不自动down。32项定向/type/lint/语法/AST/build通过。[真实PG18 run37813739467](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37813739467) attempt1/head554b125 success，19组证明，两隔离CI数据库均drop、容器stop独立核验，覆盖真实安装、准确登记和丢失commit响应恢复；verification SHA `9cbc3261d32baf5ad062b2c582c03e83108cba3c5601ac64a3f2b854091dad32`。
