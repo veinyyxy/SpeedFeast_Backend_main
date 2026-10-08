@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b2：平台draining/清理事件协调与独立Lambda候选完成
+
+2026-10-07 Winnipeg。平台实际接通Neon admission writer、owned cleanup/rollback INSERT-only producer和六查询serializable snapshot，独立drain与F3b1 executor Lambda候选已自包含构建/ZIP字节回读/重复hash与无凭据启动自检；读写Secret及拟议DB角色分离，未安装。131项相邻清理、type/lint/build通过；Neon真正READ ONLY EXPLAIN验证SQL（无ANALYZE/无mutation），SQL SHA78ca4315bcfcd853030aa41c3dd76fbf92d91c3371ce34abba9f757d8bf05a92。
+
+最终a5 artifact报告SHA `3e7ee33443b69a3e50aa5c49501e44f9e0a759e2bce26b5f02629ce9a0841615`；drain ZIP `5e9e7253e2666793fd7c981444255d8bec368049b7057bc039732fed4f6a5160`、executor ZIP `c08cd0618fa9116f97031bb9ed49fb726ebed1698eff4a82a470dc8b39cf2fd3`，私有F工作区，未上传。新函数/专属boundary/两DB角色与Secret及现有Janitor受限权限仅未授权资源草案，不替换旧PLAN_ONLY，不改共享七role boundary；authority writer/调度/真实云TTL仍未完成。
+
+只读Neo库存环境准确402010193138/ca-central-1/cell-sandbox-1/open/live resource0；旧记录 `dep_d00144511731f1c20991aa56` planned/plan_only/cell-demo-1，owned resource0/active job0，未终结数量1，两拟议DB role不存在。旧记录保留、不自动取消/删除/忽略，它仍阻止严格零租户证明。下一F3b3准备旧计划最小处置review、控制DB角色/Secret/准确IAM/函数/调度安装材料，再按fresh范围批准；不能凭动态SHA自动授权。没有AWS/Neon写、付费Cell、镜像重建或Worker启用，服务端source19cc两镜像和已消费发布slot不重放，50USD目标不变。[完整产物、验证与边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b2-drain-coordinator.md)。以下保留历史。
+
 ## F3b1：平台Cell TTL持久化执行入口已准备，服务端镜像不重建
 
 2026-10-07 Winnipeg。平台复用原严格Cell删除core，新增prepared一次性intent/immutable receipt执行入口和真实SDK组合，共用懒凭据、固定区域/忽略endpoint override、maxAttempts1；只准准确受审SHA，提交不确定/重启/并发走只读恢复，不再次DeleteStack。102项相邻清理与129项租户TTL/rollback主链、type/lint/build通过；生产runtime检查仍disabled/offline_only、50USD目标、cloudMutationPerformed/databaseAccessPerformed=false。
