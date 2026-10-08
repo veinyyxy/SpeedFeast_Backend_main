@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：平台PG18.6真实CI与独立ownership source v3完成，未安装
+
+2026-10-08 Winnipeg。[PG18 schema run37800779231](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37800779231) head9a31c7a/11组，[source-v3 run37804488475](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37804488475) headf83d1fb/14组，均attempt1 success、固定官方18.6-alpine镜像digest；独立下载校验raw ZIP/GitHub digest、report/receipt和临时DB drop/容器stop。a2独立verification SHA `f28fbe6d3a9707e547f84b3f7be7dbefe0b6ea5ad4f23db2725a93f8f8391340`；仅GitHub自有临时服务与合成数据，无AWS/Neon凭据或写入。复用原SQL候选C088 SHA未变，不再把PG16当PG18证明；CI不是Neon安装后在线proof。
+
+平台新source v3只有只读Serializable/deferrable入口，固定cleanup_reader/无owner或write资格、完整预期证书/原件/永久fence与独立inline catalog重算，拒绝helper替换且不执行该helper；raw witness和所有分类集合进新hash，future部署/资源/容量/调度保持可见。152项相邻回归/type/lint/build通过；未接旧schema2/root、未Neon schema/登记或Worker启用，下一步v3 freshness/admission/authority/deletion适配。新安装/准确登记/IAM/云资源仍fresh范围各批批准，50USD目标不变；本仓只同步文档，source19cc镜像和生产代码不动。[完整证据与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-pg18-ownership-v3.md)。以下保留历史。
+
 ## F3b3：平台密封schema/永久引用guard候选完成，Neon仍未安装
 
 2026-10-08 Winnipeg。未注册SQL候选SHA `c088d1a8c75705c88d3f2bfc38cc6070c731de4cac6cd891c91af821a4e3a57a`，两内部表/八函数/十六Always触发器，覆盖九类表十个旧deployment引用列及原行永久保留；内部fence真实revision更新防止旧RR/Serializable快照越过登记。完整列/约束/索引/trigger/function/RLS/owner与跨schema FK闭包指纹，不改旧immutable trigger，不自动注册migration。完整平台schema+合成数据的隔离PG16.14通过11组真实保护/并发/业务连续性证明，server已停止；最终报告SHA `d4ff47efc5a7744794e982a2398f57881dcdda1d63a70cbc08870d54895d9add`、stopped receipt SHA `a73f329395b542704582b184cc10db7ddbe9b5b5482de980dc13d5523b58acfd`。9项定向检查/type/lint通过。
