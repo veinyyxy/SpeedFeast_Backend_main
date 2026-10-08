@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：平台持久v3执行入口/新包与最小权限候选完成，未安装
+
+2026-10-08 Winnipeg。平台独立v3完整authority解码/前驱原子读/一次CAS安装器、永久intent/receipt journal、专属root/SDK/Lambda3完成，完整已批准证书pin与raw witness入新hash；旧v2不桥接，只有CAS赢家一次准确STANDARD DeleteStack能力，失slot/重启/失响应只读恢复，无reset/down/重试。source补RLS隐藏行、列级写与非trigger definer执行拒绝，默认Worker不启用。45项定向、137项相邻回归（有重叠）/type/lint/语法/build通过；[PG18 run37829262726](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37829262726) head3477818/attempt1 success/23组证明，两个CI自有DB drop/容器stop独立核验；AWS/DDB/actuator明确mock，不是云删除。verification SHA `655fdd4e59078d75953b040ff8d8e893c05dc63d47e54915a0841488142a7f4b`。
+
+最终新ZIP SHA `921046b3bddf8cb5c399b4ebad5c1f99957215b412d94fd13366b24f466d8bb7`、review86597e1d...，自包含/重复hash/ZIP回读/无凭据启动通过，未上传/安装；旧包和app/lifecycle镜像不改。Neon真实只读roles0/owner可CREATEROLE/PUBLIC非trigger definer0，源证书/guard完整；最小两角色SQL SHA7fc82e...仅未注册NOLOGIN候选，reader八表SELECT，writer包含明确需审的admission/job列权限及行锁用timestamp UPDATE，不是行过滤/纯读能力。Source只读两IAM角色/两Secret/新Lambda-v3均ABSENT，现有authority表ACTIVE/PAY_PER_REQUEST，库存SHA `b5ca5f323bc728e6411669491054e2beafc36584f4e05c8f1a0c18831eba4634`。
+
+下一阶段具体DB角色/GRANT/LOGIN凭据/Secrets/IAM/boundary/Lambda/authority可执行安装清单，按fresh SHA分别确认；当前无新增权限/Neon/AWS写，runtime关闭，50USD/月目标不变，两Neon固定槽位永久保留不重放。本仓仅同步文档，生产源码/镜像不变。[完整v3入口与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-durable-executor-v3.md)。以下保留历史。
+
 ## F3b3：准确旧计划已永久登记密封，自动部署运行时仍关闭
 
 2026-10-08 Winnipeg。用户批准1fba989e681c6e7bb0c71178adfde6686f618359ad9e422db549b7b038aab333后，平台按原受审代码仅执行一次准确证书INSERT/内部fence finalize，COMMIT确认、新连接独立回读及另一次VerifyRegistration均通过；registry1、fence sealed=true/revision2、sealed_at1791480771883。两份完整证书canonical SHA `dc093614188a8f0a086b4fc6a7e251c43312495a60db2efffc654cf3d48b066f` 一致，protection SHA41eea5ac8b64801144fa568dce2b42d5dcb350a520a82df91f973c23bedab168不变。原行/plan/实例pending/订阅active/旧trigger/角色未变，拟议控制角色仍0，未改AWS、授权或启用runtime。
