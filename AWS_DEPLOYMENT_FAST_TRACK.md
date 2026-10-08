@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F2g2：平台新协议接线与未安装部署草案完成
+
+2026-10-07（Winnipeg）。平台runner/SDK显式prepared-v2与raw receipt-v2、完整identity/owner、租户database/role动态override、固定baseline pin、request hash/readback隔离已接通，默认legacy协议不变。65项协议/收据测试、129项部署主链、类型/lint/production build通过。平台跨仓脚本实际调用本仓task parser、production invocation、activationFromItem，六操作均通过；只有fixture坐标，无AWS/数据库连接，未重复PG演练。
+
+本仓生产代码及F2g1云端候选源 `19cc3e096df4d37be0a6570ce3116d47c472ace2` 未改变。平台新增只读数据编译器生成TaskDefinition/activation/一个租户代次最小权限草案，无writer/installer，全部readiness和安装授权false。`ecs:DescribeTaskDefinition`不支持资源级权限，需Resource *+region并由admission钉准确ARN；不能用语法合法的image URI/修订ARN冒充真实发布/注册证据。
+
+Source实际只读Inspect仍UPDATE_COMPLETE/Locked/v4，无云写入；未发布新候选、上传私有baseline、注册TaskDefinition、安装IAM/authority、创建ECS/Cell或启动Worker。下一阶段F3集中只读preflight与fresh资源/费用审批；特别核对Aurora实际可用PG版本（session provider当前严格16.14）、原始candidate ZIP/receipt bytes、IAM/boundary和50USD目标。新IAM更新需披露CloudFormation旧managed-policy version清理副作用；新镜像、baseline、activation、付费Cell仍逐项批准。完整记录在平台 `docs/aws-auto-deployment-fast-track-f2g2-prepared-runner.md`。以下保留历史状态。
+
 ## F2g1：受审生产admission/CLI root代码与真实PG验证完成，未云启用
 
 2026-10-07 服务端源 `19cc3e096df4d37be0a6570ce3116d47c472ace2` 的 [双镜像候选37702693753](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37702693753) 与 [完整CI37702693776](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37702693776)实际success。新 `tenant_lifecycle_admission.js` 只读核验固定TaskRole、Fargate metadata/TaskDefinition/registry image、运行窗口、完整平台ownership preimage与ownerDeploymentId，再强一致读取固定authority table的独立runtime descriptor及租户epoch；旧SQL scope hash不冒充平台hash。新 `tenant_lifecycle_admitted_root.js` 校验opaque capability、准确S3 owner/FULL_OBJECT checksum/bytes SHA、进程内baseline compiler品牌，接既有RDS SQL/应用/cleanup；每个SQL query和receipt transport前后重验围栏。
