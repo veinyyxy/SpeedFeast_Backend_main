@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：平台Neon管理审批入口完成，schema安装待具体确认
+
+2026-10-08 Winnipeg。平台代码554b125实现独立Review/Run/Verify Install与Registration，准确目标/代码/完整prestate SHA及一小时审批窗口；RW事务短暂锁准确表、二次读比对后才领取固定一次性槽位，失败不复位/重试，未知COMMIT只读恢复，不自动down。32项定向/type/lint/语法/AST/build通过。[真实PG18 run37813739467](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37813739467) attempt1/head554b125 success，19组证明，两隔离CI数据库均drop、容器stop独立核验，覆盖真实安装、准确登记和丢失commit响应恢复；verification SHA `9cbc3261d32baf5ad062b2c582c03e83108cba3c5601ac64a3f2b854091dad32`。
+
+实际Neon仅TLS/Serializable只读：PG18.6、13表owner neondb_owner、十个引用闭包、新对象0/拟议reader-writer-registrar角色0；原计划planned/plan_only、九类执行引用0、实例pending/订阅active与旧trigger保留。最终仅安装清单SHA `ce844c9096de5c71cf3d3447916143260d336292180dbf2193f3b256d67fb36b`，过期2026-10-08 18:07:22UTC，未批准/执行；scope仅两表/八函数/十六Always trigger/一条未密封内部fence，不登记、授权、改业务/旧trigger或AWS。install/register固定槽位均空；过期只读刷新后再明确确认。实际单行登记、最小角色/Secrets、v3持久authority/journal/root及云资源各另批，runtime仍关闭/50USD目标不变。本仓仅同步文档，生产代码/镜像/旧slot不变。[完整管理与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-management.md)。以下保留历史。
+
 ## F3b3：平台v3新鲜证据与完整候选/计划绑定完成，未云启用
 
 2026-10-08 Winnipeg。平台实现独立v3 authority/deletion evidence适配，严格30秒时钟、到期和准确admission lineage、五类真实零集合、进程内live provenance及第二次读取完整state漂移核对。完整证书/raw witness进入新authority候选和删除plan SHA，不降级schema2，固定专属Executor身份、不开放override。候选安装许可与plan mutation/runtime许可均false；没有v3持久authority/CAS/journal/root安装或DeleteStack执行方法，旧Janitor/v2 core/默认Worker保持不变。
