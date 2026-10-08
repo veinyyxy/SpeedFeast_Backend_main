@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：平台密封schema/永久引用guard候选完成，Neon仍未安装
+
+2026-10-08 Winnipeg。未注册SQL候选SHA `c088d1a8c75705c88d3f2bfc38cc6070c731de4cac6cd891c91af821a4e3a57a`，两内部表/八函数/十六Always触发器，覆盖九类表十个旧deployment引用列及原行永久保留；内部fence真实revision更新防止旧RR/Serializable快照越过登记。完整列/约束/索引/trigger/function/RLS/owner与跨schema FK闭包指纹，不改旧immutable trigger，不自动注册migration。完整平台schema+合成数据的隔离PG16.14通过11组真实保护/并发/业务连续性证明，server已停止；最终报告SHA `d4ff47efc5a7744794e982a2398f57881dcdda1d63a70cbc08870d54895d9add`、stopped receipt SHA `a73f329395b542704582b184cc10db7ddbe9b5b5482de980dc13d5523b58acfd`。9项定向检查/type/lint通过。
+
+Neon真实只读报告SHA `bbf6e8354d6efdda719176f2f3a85c1f1d13073f91a8c3cf84ccbfc1a1d0a7b8`：原行planned/plan_only/attempts0，十个FK闭包符合、新对象槽位0、原trigger启用；**实际版本18.6，PG16结果不是Neon运行证明**。未Neon/AWS写、生产登记、ownership source升级或Worker启用；下一步PG18隔离验证与独立版本化ownership proof，实际schema/准确登记/IAM/云部署仍分别按fresh具体scope批准。服务端本轮仅同步记录，复用本仓现有isolated fixture helper未修改，source19cc镜像及Lambda包保持原样。[完整候选与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-sealed-schema-candidate.md)。以下保留历史。
+
 ## F3b3：平台独立Executor v2代码与候选包完成，未安装
 
 2026-10-08 Winnipeg。平台新core/root/SDK journal/Secret入口仅接受TechlongSandboxCellTtlExecutorRole，schema2删除计划SHA绑定完整role ARN和dedicated-cell-ttl-v2，旧Janitor schema1/PLAN_ONLY/IAM保持不变；持久化intent/receipt schema2拒绝旧记录，单次CAS赢家删除、失响应只读恢复。143项相邻回归/type/lint/build及自包含ZIP自检通过。新ZIP SHA `201775955cc3b80bdbabf89b84a163c174442c81f3a0f2ea48429d4333f5f23c`、报告SHA `ba1d328eb650f33e35eef239c7a8dfe7442efe963d7e74bee7c52d3b48d02331`，尚未上传/安装、非Linux/AWS proof。14:03Z Source真实只读核对新role ABSENT，证据SHA `e5390a8bf836a46d3e265040d74e258fa30c11118419cd947863c1e4ef16e5a5`；未创建资源/权限。
