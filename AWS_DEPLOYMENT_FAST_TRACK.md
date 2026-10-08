@@ -2,6 +2,18 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3a2：新root双镜像已发布，立即撤权与独立回读完成
+
+2026-10-07 Winnipeg / 10-08 UTC。用户批准新清单 `1ab97e7b380947662e54920a3150e4c314fd8d8f8a29c320a74f7abe46b51c6a` 后唯一RunReviewed成功：仅更新既有publisher role/boundary两资源，[Actions run37714817734](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37714817734) attempt1/head91cbf44 success，发布原候选run37702693753/source19cc3e096df4d37be0a6570ce3116d47c472ace2，不重建镜像。Source立即Revoke后独立准确template/inventory证明UPDATE_COMPLETE、Deny-all boundary/inline/trust、attached0、Locked/v6；窗口截止后再次Inspect仍Locked。
+
+app tag `app-sha19cc3e096df4d37be0a6570ce3116d47c472ace2-r37702693753-a1`，registry digest `sha256:2af648ae122dad46dcba313481797a49766744c4de167d33642dba124908df07`，config `sha256:75140a5e88550b04f458e2aa2c1b6b7b4326dc1225e11d8491dc2f440ac63206`。lifecycle tag同source/run的 `lifecycle-` 前缀，registry digest `sha256:2ab7017dcebd64083e7804001685272a3a5461faa4b7a4bec37adab059980bb4`，config `sha256:8cd975a2f73c11e4363ef5fbf298416323f2723a24a68738e72dfdf273342d9e`。Source下载实际manifest/config bytes并计算SHA；两BASIC scan均COMPLETE/空finding，无报告HIGH/CRITICAL。原始GHA receipt SHA `a304540fe1a729c6ca8a80a69af27467cfa0feb24ebf2838293d0a2f79e6bb50` 与独立两组pin准确一致，不以config digest冒充registry digest。
+
+实际CloudFormation在01:48:26Z删除旧policy v3（request603c1232-283a-44dd-b73d-46b4f66d2d90）、01:50:57Z删除v4（requestdf545569-bb21-4c9a-bf49-845d2a756c96）；us-east-1准确CloudTrail均为Source IAM user/userAgent cloudformation.amazonaws.com。这是已批准的版本清理副作用；写前v3/v4原文备份保留，云version ID不可恢复，不能把resourcesDeleted=false说成所有云历史仍在。当前版本v5/v6、default v6；role/policy本体及六份旧镜像保留，共八份镜像。Cell准确cluster仍MISSING。
+
+私有执行slot `F:/ChatGPT_workshop/techlong-reviewed-ecr-republish-1ab97e7b3809` 已永久消费，summary SHA `ee71cd83a907844a57ec52d6bb8d0bbdf36adad0bca6a7bdd7356bf15b3ac4a3`；独立ECR bytes/scan报告 SHA `a62b3f2791f9586fe9123e8cfebb282b72510e506da6b1e70550499b7dd0d032`；中断后完整只读closure SHA `6f35d0027363a5e179205976a3c265c88c1e8e3bc2545c6510b89cc47c2182b3`。原件/备份/CloudTrail私有目录不提交，旧清单/template/slot不删除。9项publisher相邻回归再次通过，执行器完整CI37714234982及真实publish均success；不改本次批准manifest/执行器。
+
+安装02:00Z/权限03:00Z窗口已过期，**不要RunReviewed、reset slot、复用批准或dispatch重试**；只读恢复用Inspect。未部署ECS/付费Cell、上传baseline、安装其他权限/authority、写Neon/源PG、启用Worker。下一代码切片优先owned-resource可执行TTL/失败清理，专属IAM/baseline/读cap/Budget/证书mTLS/DNS和实际Cell按新准确范围另批。50USD/月仍为目标、非硬限额；真实Fargate metadata/卷/RDS/lease/cleanup/HTTP ready待验收。[完整记录](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3a2-ecr-published.md)。以下保留历史状态。
+
 ## F3a1：808批准尝试在云写入前停止，新解析修复清单待确认
 
 2026-10-07 Winnipeg。唯一RunReviewed在候选expiry元数据检查line155退出，永久slot未创建、没有Grant/AWS写或GHA dispatch；Source独立Inspect仍UPDATE_COMPLETE/Locked/v4。原候选id/name/digest/source/run/expiry均未变，失败原因仅Invoke-RestMethod把expires_at自动解析为DateTime，与manifest String被判不等。
