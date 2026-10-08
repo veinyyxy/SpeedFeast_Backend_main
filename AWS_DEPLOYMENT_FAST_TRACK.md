@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：平台独立Executor v2代码与候选包完成，未安装
+
+2026-10-08 Winnipeg。平台新core/root/SDK journal/Secret入口仅接受TechlongSandboxCellTtlExecutorRole，schema2删除计划SHA绑定完整role ARN和dedicated-cell-ttl-v2，旧Janitor schema1/PLAN_ONLY/IAM保持不变；持久化intent/receipt schema2拒绝旧记录，单次CAS赢家删除、失响应只读恢复。143项相邻回归/type/lint/build及自包含ZIP自检通过。新ZIP SHA `201775955cc3b80bdbabf89b84a163c174442c81f3a0f2ea48429d4333f5f23c`、报告SHA `ba1d328eb650f33e35eef239c7a8dfe7442efe963d7e74bee7c52d3b48d02331`，尚未上传/安装、非Linux/AWS proof。14:03Z Source真实只读核对新role ABSENT，证据SHA `e5390a8bf836a46d3e265040d74e258fa30c11118419cd947863c1e4ef16e5a5`；未创建资源/权限。
+
+旧规划密封隔离协议具体化为append-only登记、原行/所有执行引用永久围栏、完整证书/新source schema3契约；未实现DDL/注册migration/新ownership adapter，当前严格零租户source及1/1门禁不改。下一小阶段准备未注册schema/永久guard与版本化证明，新Neon安装/准确登记/IAM/云部署仍各按fresh具体范围批准。服务端仅同步记录，生产代码/source19cc双镜像与旧发布slot不动，无AWS/Neon业务写、Lambda调用或Worker/Scheduler启用。[完整产物与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-dedicated-executor-v2.md)。以下保留历史。
+
 ## F3b3：旧计划与控制面只读审阅完成，独立executor身份待修订
 
 2026-10-08 Winnipeg。准确旧dep_d00144511731f1c20991aa56 planned/plan_only/attempts0、无job/resource/capacity/schedule/step，但实例pending且订阅active；用户选择保留业务。Neon实际启用的trigger禁止修改environment_id，不能直接迁移或绕过。平台保存原行/业务状态/trigger私有证据并加入严格审阅器与密封非执行登记设计；review SHA `113f62e2dd5ee643466818d6ea100ff4539e12745c421d646724d214218112f6` 是设计hash、不是执行许可。现有零租户协议未改，activeTenant/nonterminalDeployment仍1/1，新schema/登记/协议候选均未安装；没有取消、暂停、删除或改订阅。
