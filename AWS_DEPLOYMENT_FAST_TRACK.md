@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b1：平台Cell TTL持久化执行入口已准备，服务端镜像不重建
+
+2026-10-07 Winnipeg。平台复用原严格Cell删除core，新增prepared一次性intent/immutable receipt执行入口和真实SDK组合，共用懒凭据、固定区域/忽略endpoint override、maxAttempts1；只准准确受审SHA，提交不确定/重启/并发走只读恢复，不再次DeleteStack。102项相邻清理与129项租户TTL/rollback主链、type/lint/build通过；生产runtime检查仍disabled/offline_only、50USD目标、cloudMutationPerformed/databaseAccessPerformed=false。
+
+服务端app/lifecycle生产代码与此前source19cc两镜像不变，不重复构建/发布，不重放1ab永久消费slot；旧云PLAN_ONLY Janitor/Scheduler/Worker未启用，没有AWS/Neon/源PG写入或新权限/Cell。新DDB intent/receipt键仅准备，未授予/写入；代码测试不是线上TTL删除证明。下一步F3b2接自动drain/租户清理→强一致零租户→authority/plan的生产协调、Janitor artifact和准确权限/调度范围，实际安装/删除另批，F3未完成。[完整代码切片与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b1-cell-ttl-execution.md)。以下保留历史。
+
 ## F3a2：新root双镜像已发布，立即撤权与独立回读完成
 
 2026-10-07 Winnipeg / 10-08 UTC。用户批准新清单 `1ab97e7b380947662e54920a3150e4c314fd8d8f8a29c320a74f7abe46b51c6a` 后唯一RunReviewed成功：仅更新既有publisher role/boundary两资源，[Actions run37714817734](https://github.com/veinyyxy/SpeedFeast_Backend_main/actions/runs/37714817734) attempt1/head91cbf44 success，发布原候选run37702693753/source19cc3e096df4d37be0a6570ce3116d47c472ace2，不重建镜像。Source立即Revoke后独立准确template/inventory证明UPDATE_COMPLETE、Deny-all boundary/inline/trust、attached0、Locked/v6；窗口截止后再次Inspect仍Locked。
