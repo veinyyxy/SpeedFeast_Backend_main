@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：AWS两Secret已创建，Neon LOGIN未证明提交，禁止重放
+
+2026-10-08 Winnipeg。用户批准85b500...后一次Run创建/读回两准确Secret/AWSCURRENT/Approval标签/完整载荷：readonly-v3-AWZoLG，drain-control-QDFwQ9，UUID仍3f8047d4.../72eb93b3...。两角色SCRAM/LOGIN语句在事务内执行和校验后，DATABASE_COMMIT抛错未确认，submission SHA `3096211ad3a9edc0621c0ef8f6abab677e2ebf5685f034ec8205cebdfe6fe0fb`。23:16:16/23:17:23UTC两次独立Inspect仍NOLOGIN、原roleState1528e1e.../preserved993506.../seal和业务保持，credentialReady=false；文件SHA5c305770.../d44a8754...。不是成功激活/部署完成，未做受限角色认证，不能证明密码或Neon控制面绝对未变。
+
+credential slot永久消费，旧slot保留，没有Run重试/改密码/重造Secret/down/delete、IAM/Cell/ECS/Lambda变更或runtime启用；两Secret仍保留收费，基础约0.80USD/月加请求相关费用，50USD目标不变。只读provider检查9ce8c5f...显示pooler=true、neon.forward_ddl=on；官方密码DDL PRE_COMMIT控制面hook是排查线索，原SQLSTATE未记录，具体原因未确证。新增独立只读脚本，不改原9文件binding3ec...；下一阶段托管提交诊断及复用现有准确Secret版本的恢复设计，所有新写另fresh批准，禁止关闭forward_ddl绕过/原bootstrap重放。本仓仅文档同步，生产源码/镜像未改变。[真实部分状态与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-control-credentials-partial.md)。以下保留历史。
+
 ## F3b3：Secret-first/SCRAM控制凭据审批入口已验证，未执行
 
 2026-10-08 Winnipeg。平台独立新credential slot/Review/单次两Secret先存+一个事务SCRAM密码/LOGIN/只读Inspect实现；旧角色安装代码/SQL/已消费slot不改。每角色32随机字节密码，无生产密码/URL/SecretString/verifier本地持久化，DDL不发明文密码，但不能保证JS清零或PG服务端不记录verifier。LOGIN将真正开启受限认证能力（drain原列写不是纯读）；不追加GRANT、IAM、rotation/replica/policy/Put/Delete、Lambda/Worker/runtime/Cell。
