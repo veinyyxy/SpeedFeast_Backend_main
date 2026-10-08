@@ -15,7 +15,7 @@ $repo='veinyyxy/SpeedFeast_Backend_main'
 $manifestPath=Join-Path $backend 'deployment/reviewed-ecr-publication.json'
 $raw=[IO.File]::ReadAllText($manifestPath).Replace("`r`n","`n")
 $sha=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.UTF8Encoding]::new($false).GetBytes($raw))).ToLowerInvariant()
-$m=$raw | ConvertFrom-Json
+$m=$raw | ConvertFrom-Json -DateKind String
 if($Mode -cne 'Inspect'){
   & node (Join-Path $PSScriptRoot 'reviewed-ecr-publication.js') verify $sha
   if($LASTEXITCODE -ne 0){throw 'Manifest/executor verification failed; no AWS write.'}
@@ -31,7 +31,7 @@ if($Mode -ceq 'RunReviewed' -and $ApprovedManifestSha -cne $sha){throw 'Exact fr
 function AwsJson([string[]]$Arguments){
   $result=& aws @Arguments --profile $source --region $region --output json --no-cli-pager 2>&1
   if($LASTEXITCODE -ne 0){throw ('AWS '+($Arguments[0..1] -join ' ')+' failed; no automatic write retry. '+($result -join [char]10))}
-  return (($result -join [char]10) | ConvertFrom-Json)
+  return (($result -join [char]10) | ConvertFrom-Json -DateKind String)
 }
 function Canonical($Value){
   if($null -eq $Value){return 'null'}
@@ -72,6 +72,7 @@ function ReadIam($Template,[string]$Label){
   $role=(AwsJson @('iam','get-role','--role-name',$roleName)).Role
   if($role.Arn -cne ('arn:aws:iam::402010193138:role/'+$roleName) -or $role.PermissionsBoundary.PermissionsBoundaryArn -cne $boundaryArn -or $role.MaxSessionDuration -ne 3600){throw 'Role identity/boundary mismatch.'}
   $policy=(AwsJson @('iam','get-policy','--policy-arn',$boundaryArn)).Policy
+  $versions=@((AwsJson @('iam','list-policy-versions','--policy-arn',$boundaryArn)).Versions)
   $document=(AwsJson @('iam','get-policy-version','--policy-arn',$boundaryArn,'--version-id',$policy.DefaultVersionId)).PolicyVersion.Document
   $inline=(AwsJson @('iam','get-role-policy','--role-name',$roleName,'--policy-name','ExactSandboxEcrPublication')).PolicyDocument
   $names=@((AwsJson @('iam','list-role-policies','--role-name',$roleName)).PolicyNames)
@@ -84,7 +85,7 @@ function ReadIam($Template,[string]$Label){
   $roles=@($resources | Where-Object LogicalResourceId -CEQ 'PublisherRole')
   $boundaries=@($resources | Where-Object LogicalResourceId -CEQ 'PublisherBoundary')
   if($resources.Count -ne 2 -or $roles.Count -ne 1 -or $boundaries.Count -ne 1 -or $roles[0].PhysicalResourceId -cne $roleName -or $roles[0].ResourceType -cne 'AWS::IAM::Role' -or $boundaries[0].PhysicalResourceId -cne $boundaryArn -or $boundaries[0].ResourceType -cne 'AWS::IAM::ManagedPolicy'){throw 'Exact two-resource inventory mismatch.'}
-  return @{label=$Label;role=$role;policy=$policy;boundary=$document;inline=$inline;resources=$resources;at=[DateTimeOffset]::UtcNow.ToString('o')}
+  return @{label=$Label;role=$role;policy=$policy;policyVersions=$versions;boundary=$document;inline=$inline;resources=$resources;at=[DateTimeOffset]::UtcNow.ToString('o')}
 }
 function WriteNew([string]$File,[byte[]]$Bytes){$stream=[IO.File]::Open($File,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write);try{$stream.Write($Bytes,0,$Bytes.Length)}finally{$stream.Dispose()}}
 function SaveJson([string]$Name,$Value){WriteNew (Join-Path $script:output $Name) ([Text.UTF8Encoding]::new($false).GetBytes(($Value | ConvertTo-Json -Depth 40)+[char]10))}
@@ -113,11 +114,14 @@ function Github([string]$Endpoint,[string]$Method='Get',$Body=$null){
 
 $identity=AwsJson @('sts','get-caller-identity')
 if($identity.Account -cne '402010193138' -or $identity.Arn -cne $m.sourceInstallerArn){throw 'Source identity mismatch; no AWS write.'}
-$grant=Get-Content -LiteralPath (Join-Path $backend $m.iamTemplates.grant.path) -Raw | ConvertFrom-Json
-$revoke=Get-Content -LiteralPath (Join-Path $backend $m.iamTemplates.revoke.path) -Raw | ConvertFrom-Json
+$grant=Get-Content -LiteralPath (Join-Path $backend $m.iamTemplates.grant.path) -Raw | ConvertFrom-Json -DateKind String
+$revoke=Get-Content -LiteralPath (Join-Path $backend $m.iamTemplates.revoke.path) -Raw | ConvertFrom-Json -DateKind String
 $stack=ReadStack
 $locked=ReadIam $revoke 'LOCKED_VERIFIED'
-if($Mode -cne 'Inspect' -and ($stack.StackStatus -cne 'UPDATE_COMPLETE' -or $locked.policy.DefaultVersionId -cne 'v2')){throw 'Reviewed Locked/v2 prestate changed; no AWS write.'}
+if($Mode -cne 'Inspect'){
+  if($stack.StackStatus -cne 'UPDATE_COMPLETE' -or $locked.policy.DefaultVersionId -cne $m.iamUpdate.expectedBoundaryDefaultVersionId){throw 'Reviewed Locked/v4 prestate changed; no AWS write.'}
+  AssertEqual @($locked.policyVersions.VersionId | Sort-Object) @($m.iamUpdate.expectedExistingBoundaryVersionIds | Sort-Object) 'Reviewed policy version inventory'
+}
 if($Mode -cne 'RunReviewed'){
   $loginProof=if($Mode -ceq 'ReviewOnly'){SourceLoginReady}else{$null}
   @{mode=$Mode;approvedManifestSha=$sha;installBy=$m.installBy;stackArn=$stackArn;stackStatus=$stack.StackStatus;boundaryVersion=$locked.policy.DefaultVersionId;lockedVerified=$true;sourceLogin=$loginProof;mutationPerformed=$false} | ConvertTo-Json -Depth 8
@@ -165,6 +169,11 @@ FreezeTemplate 'grant';FreezeTemplate 'revoke'
 SaveJson 'approved-manifest.json' $m
 SaveJson 'prestate-locked.json' $locked
 SaveJson 'source-login-pregrant.json' $sourceProof
+SaveJson 'locked-iam-pregrant.json' $locked
+foreach($policyVersion in $locked.policyVersions){
+  SaveJson ('boundary-pregrant-'+$policyVersion.VersionId+'.json') (AwsJson @('iam','get-policy-version','--policy-arn',$boundaryArn,'--version-id',$policyVersion.VersionId))
+}
+if([DateTimeOffset]::UtcNow -ge [DateTimeOffset]::Parse($m.installBy)){throw 'Installation cutoff crossed during backups; slot retained, no AWS write.'}
 SaveJson 'update-intent.json' @{approvedManifestSha=$sha;source=$identity;publisherHead=$localHead;stackArn=$stackArn;at=[DateTimeOffset]::UtcNow.ToString('o');grantAttemptsAllowed=1;dispatchAttemptsAllowed=1;revokeRequired=$true}
 $submitted=$false;$runId=$null;$failure=$null;$lockedVerified=$false;$grantVerified=$false
 try{

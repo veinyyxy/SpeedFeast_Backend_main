@@ -1,0 +1,76 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Reviewed UPDATE of existing Locked/v4 sandbox publisher only; expires 2026-10-08T03:00:00Z; no ECS/IAM/resource deletion authority.",
+  "Resources": {
+    "PublisherBoundary": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "ManagedPolicyName": "TechlongSandboxGitHubImagePublisherBoundary",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RegionalRegistryAuthenticationAndRead",
+              "Effect": "Allow",
+              "Action": ["ecr:GetAuthorizationToken", "ecr:GetRegistryScanningConfiguration"],
+              "Resource": "*",
+              "Condition": {"StringEquals": {"aws:RequestedRegion": "ca-central-1"}, "DateLessThan": {"aws:CurrentTime": "2026-10-08T03:00:00Z"}}
+            },
+            {
+              "Sid": "ExactSandboxRepositoryPublicationAndVerification",
+              "Effect": "Allow",
+              "Action": ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:DescribeRepositories", "ecr:DescribeImages", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:DescribeImageScanFindings"],
+              "Resource": "arn:aws:ecr:ca-central-1:402010193138:repository/techlong-sandbox-speedfeast",
+              "Condition": {"StringEquals": {"aws:RequestedRegion": "ca-central-1"}, "DateLessThan": {"aws:CurrentTime": "2026-10-08T03:00:00Z"}}
+            }
+          ]
+        }
+      }
+    },
+    "PublisherRole": {
+      "Type": "AWS::IAM::Role",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "RoleName": "TechlongSandboxGitHubImagePublisherRole",
+        "MaxSessionDuration": 3600,
+        "PermissionsBoundary": {"Ref": "PublisherBoundary"},
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Federated": "arn:aws:iam::402010193138:oidc-provider/token.actions.githubusercontent.com"},
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+              "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com", "token.actions.githubusercontent.com:sub": "repo:veinyyxy/SpeedFeast_Backend_main:ref:refs/heads/main"},
+              "DateLessThan": {"aws:CurrentTime": "2026-10-08T03:00:00Z"}
+            }
+          }]
+        },
+        "Policies": [{
+          "PolicyName": "ExactSandboxEcrPublication",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": ["ecr:GetAuthorizationToken", "ecr:GetRegistryScanningConfiguration"],
+                "Resource": "*",
+                "Condition": {"StringEquals": {"aws:RequestedRegion": "ca-central-1"}, "DateLessThan": {"aws:CurrentTime": "2026-10-08T03:00:00Z"}}
+              },
+              {
+                "Effect": "Allow",
+                "Action": ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:DescribeRepositories", "ecr:DescribeImages", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:DescribeImageScanFindings"],
+                "Resource": "arn:aws:ecr:ca-central-1:402010193138:repository/techlong-sandbox-speedfeast",
+                "Condition": {"StringEquals": {"aws:RequestedRegion": "ca-central-1"}, "DateLessThan": {"aws:CurrentTime": "2026-10-08T03:00:00Z"}}
+              }
+            ]
+          }
+        }]
+      }
+    }
+  },
+  "Outputs": {"PublisherRoleArn": {"Value": {"Fn::GetAtt": ["PublisherRole", "Arn"]}}}
+}

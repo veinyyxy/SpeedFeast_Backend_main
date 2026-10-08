@@ -2,6 +2,16 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3a：在线只读preflight与仅新root镜像发布审阅完成
+
+2026-10-07 Winnipeg / 10-08 UTC。实际Source53-read与补充检查确认Aurora16.14/db.serverless可用、Cell不存在、publisher仍Locked/v4；当前Janitor PLAN_ONLY/global schedule DISABLED、无Sandbox wildcard/trust store/hosted zone，baseline bucket缺失、lifecycle IAM缺admission/baseline、DDB读cap5、tagged Budget仍10USD，ELB service-linked role不存在。未做AWS写、角色登录、Lambda调用、Neon/源PG连接或付费部署；50USD目标未静默更新到云。
+
+新script `inspect-checked-candidates.js` 已真实GET原始run37702693753/source19cc3e0两ZIP并核验原始receipt bytes/SHA256SUMS/OS self-check，私有目录 `F:/ChatGPT_workshop/techlong-f3-artifacts-20261008-a1`、报告SHA `a04520ddfe02c4f56d4192e422849aa7038cf0adf088cd4552a3d29ec7e88f5b`。无Docker load、registry digest或云发布证明；app/runtime生产源未变，不重复构建，原候选和旧ECR镜像保留。
+
+fresh schema3发布清单SHA `8081815c08436a219d1701867bcaf9f16d19bfb0437c66270bee52822163a8c2`：只从default v4/库存v3-v4更新既有两IAM资源，GHA一次发布两source19cc固定tag并回读BASIC scan，成功/失败立即SourceRevoke/独立Locked；没有ECS/baseline/其他权限/资源创建或主动删除授权。明确接受CloudFormation可能清理旧非默认policy version（包括v3/v4）；写前备份所有原版本，不能恢复被删version ID。CLI Login自动刷新但外层session未独立保证。执行器已修正UTC String日期解析，备份后再检cutoff；slot/过期/失败均不自动重试。**未执行Grant、未dispatch，必须确认此新SHA。** installBy02:00Z（Winnipeg10月7日21:00），expires03:00Z（22:00）。已消费15d30原件移入history且旧SHA不变，ce32/c9/旧templates/私有slots保留。
+
+9项publisher、3项平台F3诊断、65项协议回归、两仓type/lint/AST与真实UTC解析通过。官方区域核心4h验收约0.84USD，不含其他费用/非硬上限；0.5–1ACU持续活跃的常驻核心估算100–152USD/月，仍应沿用50USD目标做短TTL验收。下一代码优先owned-resource可执行TTL/失败清理，然后逐项新IAM/baseline/读cap/Budget/证书mTLS/DNS，付费Cell最后批准。F3尚未完成，详情在平台 `docs/aws-auto-deployment-fast-track-f3a-readonly-preflight.md`。以下保留历史状态。
+
 ## F2g2：平台新协议接线与未安装部署草案完成
 
 2026-10-07（Winnipeg）。平台runner/SDK显式prepared-v2与raw receipt-v2、完整identity/owner、租户database/role动态override、固定baseline pin、request hash/readback隔离已接通，默认legacy协议不变。65项协议/收据测试、129项部署主链、类型/lint/production build通过。平台跨仓脚本实际调用本仓task parser、production invocation、activationFromItem，六操作均通过；只有fixture坐标，无AWS/数据库连接，未重复PG演练。

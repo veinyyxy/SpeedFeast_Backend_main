@@ -26,6 +26,14 @@ test('publication approval binds all executor/template hashes and cannot extend 
   changed = Buffer.from(JSON.stringify(tampered));
   assert.throws(() => validateManifest(changed, textSha(changed), reviewTime), /Executor changed/);
   assert.equal(textSha(Buffer.from('a\r\nb\r\n')), textSha(Buffer.from('a\nb\n')));
+  for (const patch of [{ expectedBoundaryDefaultVersionId: 'v2' }, { expectedExistingBoundaryVersionIds: ['v4'] },
+    { managedPolicyVersionCleanupAccepted: false }, { cloudFormationManagedPolicyVersionCleanupMayOccur: false }]) {
+    const changedScope = { ...m, iamUpdate: { ...m.iamUpdate, ...patch } };
+    const changedBytes = Buffer.from(JSON.stringify(changedScope));
+    assert.throws(() => validateManifest(changedBytes, textSha(changedBytes), reviewTime), /scope mismatch/);
+  }
+  const old = Buffer.from(JSON.stringify({ ...m, schemaVersion: 2 }));
+  assert.throws(() => validateManifest(old, textSha(old), reviewTime), /scope mismatch/);
 });
 
 test('candidate proof cannot substitute registry digest, unrelated run or runtime approval', () => {
@@ -73,7 +81,7 @@ test('OS admission binds the scanner, exact image and fresh DB without severity 
   assert.throws(() => validateOsScan(scan, image.imageConfigDigest, Date.parse(scan.databaseUpdatedAt) - 300001), /stale/);
 });
 
-test('fresh review can update only the exact Locked/v2 stack and cannot enable retries or deployment', () => {
+test('fresh review can update only the exact Locked/v4 stack and cannot enable retries or deployment', () => {
   const m = parse();
   for (const patch of [{ schemaVersion: 1 }, { noAutomaticWriteRetry: false }, { noAutomaticExpiredManifestRefresh: false },
     { sourceInstallerArn: m.publisherRoleArn }, { ecsDeploymentAuthorized: true }, { requirePrePublicationOsScan: false },
@@ -163,10 +171,17 @@ test('consumed approval and original grant/revoke evidence remain byte-preserved
   assert.equal(textSha(unexecuted), 'c9fa6086f28c8e599f40baf1d1f20ef937d2fcb9d2346bdd5376cc1d2a1c4790');
   assert.equal(parse().previousApprovedUnexecutedManifestSha, textSha(unexecuted));
   const previous = JSON.parse(unexecuted);
-  assert.deepEqual(parse().images, previous.images);
-  assert.deepEqual(parse().iamTemplates, previous.iamTemplates);
-  assert.equal(parse().installBy, previous.installBy);
-  assert.equal(parse().expiresAt, previous.expiresAt);
+  const consumed = fs.readFileSync('deployment/history/reviewed-ecr-publication-15d30e5ec70f.json');
+  assert.equal(textSha(consumed), '15d30e5ec70feb4712c572a404f437405b5d5b9704acd59937423ac4bbd62f80');
+  assert.equal(parse().previousConsumedRepublishApprovalSha, textSha(consumed));
+  const priorRun = JSON.parse(consumed);
+  assert.deepEqual(priorRun.images, previous.images);
+  assert.deepEqual(priorRun.iamTemplates, previous.iamTemplates);
+  assert.equal(priorRun.installBy, previous.installBy);
+  assert.equal(priorRun.expiresAt, previous.expiresAt);
+  assert.notDeepEqual(parse().images, priorRun.images);
+  assert.notEqual(parse().iamTemplates.grant.path, priorRun.iamTemplates.grant.path);
+  for (const pin of Object.values(priorRun.iamTemplates)) assert.equal(textSha(fs.readFileSync(pin.path)), pin.textSha256);
 });
 
 test('Source controller is read-only by default, one-shot update/dispatch, with finally revoke and expiry-safe Inspect', () => {
@@ -179,6 +194,10 @@ test('Source controller is read-only by default, one-shot update/dispatch, with 
   assert.match(controller, /verify-source-login/);
   assert.ok(!controller.includes('AddHours(1)'));
   assert.match(controller, /SaveJson 'source-login-pregrant.json' \$sourceProof/);
+  assert.match(controller, /SaveJson 'locked-iam-pregrant.json' \$locked/);
+  assert.match(controller, /boundary-pregrant-/);
+  assert.match(controller, /\$m=\$raw \| ConvertFrom-Json -DateKind String/);
+  assert.match(controller, /Installation cutoff crossed during backups; slot retained, no AWS write/);
   assert.match(controller, /SaveJson 'source-login-prerevoke.json' \(SourceLoginReady\)/);
   assert.ok(controller.indexOf('Exact main candidate run did not succeed') < controller.indexOf("'cloudformation','update-stack'"));
   assert.equal([...controller.matchAll(/'cloudformation','update-stack'/g)].length, 2);
