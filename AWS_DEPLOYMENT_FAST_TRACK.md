@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：Secret-first/SCRAM控制凭据审批入口已验证，未执行
+
+2026-10-08 Winnipeg。平台独立新credential slot/Review/单次两Secret先存+一个事务SCRAM密码/LOGIN/只读Inspect实现；旧角色安装代码/SQL/已消费slot不改。每角色32随机字节密码，无生产密码/URL/SecretString/verifier本地持久化，DDL不发明文密码，但不能保证JS清零或PG服务端不记录verifier。LOGIN将真正开启受限认证能力（drain原列写不是纯读）；不追加GRANT、IAM、rotation/replica/policy/Put/Delete、Lambda/Worker/runtime/Cell。
+
+67项定向/type/lint/语法/build通过；最终 [PG18 run37853428469](https://github.com/veinyyxy/TechlongSoftware/actions/runs/37853428469) headdf9a135/attempt1 success/29组，两自有DB drop/容器stop与artifact独立verification `8a6873b703ad12be193f2d011b35943d584b4e71c37b5c6368d8e94d8e07d621`。SCRAM LOGIN/正确错误密码/失COMMIT只读恢复是真PG；AWS Secret明确mock，非实机写证明。Source当前有效，两Secret/新IAM/Lambda ABSENT；原NeonNOLOGIN状态1528e1e...不变，六相关权限只读模拟allowed，但不是实际创建保证。
+
+最终fresh清单 SHA `85b500511452328329159ebe0ce13ea5aeeaa36dd9cb6aef64bd19f103d27a54`，文件f8cf6afa...，code3ec561f3...，2026-10-08 23:26:12.968UTC过期，**尚未批准/执行**。仅两准确Secret（readonly-v3及drain-control）初始版本/标签/default AWS-managed key，再两现有角色原子设置密码/LOGIN；接受跨服务非原子/失败可能留收费Secret或LOGIN角色，不自动delete/down/reset/重试。ca-central-1官方价表9bea1ef2...约0.80USD/月基础+请求/KMS适用费用/税费，50USD/月目标非cap。旧slot全部保留、新slot空，无生产密码生成/SecretString读取/Neon或AWS写。本仓仅文档同步；IAM/Lambda/authority仍后继单独批准。[具体清单与恢复入口](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-control-credentials.md)。以下保留历史。
+
 ## F3b3：Neon两NOLOGIN控制角色已安装并两次独立回读
 
 2026-10-08 Winnipeg。用户批准4ef39a5995c8a0d394e1cbb72b2c3e51d8588bd86e8b75e3d6287ba138171cac后，平台原code03a91abc/SQL7fc82e...单事务一次COMMIT确认；21:27:03.106/21:27:38.185UTC两次独立Serializable READ ONLY Deferrable回读完整状态一致。techlong_cell_cleanup_reader/drain均NOLOGIN/NOINHERIT/非管理员，无owner上行membership，reader八表SELECT/无列写，drain四表SELECT/准确20项列权限；创建者neondb_owner ADMIN=true/SET=false/INHERIT=false符合已批scope。原seal=true/revision2/完整证书dc093614.../原业务/其余权限保持，preserved SHA `993506a66f586d9ad447b77769769cbf372dee9be9a30cc556af9d9de00426fa` 未变。
