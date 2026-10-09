@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：现有两个Secret的Neon控制凭据已就绪，runtime仍关闭
+
+2026-10-08 Winnipeg。用户批准3610895c...恢复清单，在原窗口内一次Run、两既有角色各一次原密码+LOGIN，COMMIT确认；00:15:46.139/00:16:19.641UTC两独立只读Inspect均LOGIN=[true,true]、准确Secret初始UUID/AWSCURRENT/真实受限密码认证通过，credentialReady=true。新完整roleState `6ec32bd06b5f4323602bd77d37533922ca24182e9382d51f657496fbd52075ed`，仅LOGIN归一后仍原1528e1e...；preserved993506.../权限/seal/业务保持。reader八表SELECT，drain原20列能力未放宽，非纯读/行过滤角色。
+
+submission文件SHA `5d8dedfef5b07704e312cb490661b34a21c0373ac053c82d3427ccac0c6c2cf2`；两独立Inspect文件1458ec56.../9537b004...。原binding3ec...和所有旧slot保持，新恢复slot永久消费，禁止Run/reset/更换密码/自动补偿或重试；两Secret ARN/UUID/标签/版本未改，secretWrites/AWSwrites=0，无新GRANT/IAM/Lambda/Cell/ECS/runtime。真实Neon托管提交已证明，但原失败SQLSTATE仍未知、外部日志风险不能消除。本仓仅同步文档，生产源码/镜像不改，50USD/月目标不变。下一阶段准确IAM/boundary/Lambda/authority清单准备，云写各fresh SHA批准；当前不是自动部署上线。[完整实际就绪证据与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-credentials-ready.md)。以下保留历史。
+
 ## F3b3：Neon兼容恢复入口已准备，仍需另批密码原值传输范围
 
 2026-10-08 Winnipeg。官方Neon文档明确SQL密码不支持预哈希形式，原SCRAM入口存在托管兼容性差异；原错误没有SQLSTATE，不能声称唯一根因已证明。平台独立恢复module/CLI绑定原失败回执3096211...和两准确已存Secret ARN/UUID/AWSCURRENT，仅拟经认证TLS各一次原密码+LOGIN、一个本地事务，保持forward_ddl=on，不生成密码/新建或写Secret/改标签或IAM。原9文件binding3ec...、所有旧槽位保留，新恢复slot空；明确服务端/提供者日志风险、跨系统非原子和不自动down/delete/重试，实际写入仍fresh SHA单独批准。
