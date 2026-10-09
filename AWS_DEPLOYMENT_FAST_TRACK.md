@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：只读IAM基础已安装，两次独立回读通过，运行时路径待证明
+
+2026-10-08 Winnipeg。用户批准748999ae...清单后，平台在原有效期内一次Run完成两执行role、两boundary、两inline共6次IAM写。01:17:32.615/01:17:47.584UTC两独立只读Inspect均准确匹配，第二次为新进程；TTL RoleId AROAV3GNMXTZLB4NZQLZY、drain RoleId AROAV3GNMXTZPRETOTXTS，iamFoundationReady=true、runtimeEnabled=false。永久IAM slot已消费，原记录/旧slot保留，不自动删除/补齐/reset/重试；非原子及RoleId非服务端CAS风险不变。
+
+提交回执文件SHA03be3aa6...，两Inspect文件SHA3d6f5719.../f75357bd...，前置SHA191a3784...未漂移；两目标函数/Cell Stack/两authority key仍ABSENT，两现有Secret元数据/初始版本保持。本轮无Secret值/Neon连接，无Lambda部署/调用、authority写、日志组或付费Cell/ECS创建，旧Janitor/PLAN_ONLY不动；本仓仅文档同步，生产源码/镜像未改。原8个模拟允许案例仍未证明，不能将安装成功称完整权限或自动部署上线。下一阶段准确Lambda/日志/只读实机清单，核对环境加密与drain密封v3接线；安装/调用/策略修正各fresh SHA批准，authority等待真实Cell/provision及到期draining/zero/raw witness，50USD月目标不变。[完整实际安装与证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-readonly-runtime-iam-installed.md)。以下保留历史。
+
 ## F3b3：只读IAM基础安装清单已准备，允许路径未证明
 
 2026-10-08 Winnipeg。平台独立新IAM入口提供Review/一次Run/Inspect，拟两新role、两boundary、两inline（最多6IAM写）；仅准确来源函数/region下AWS读取和自身既有日志流写，拒绝DeleteStack、DDB写/扫描、PassRole/管理、Secret写，不创建/调用Lambda/日志组/Cell/authority或改Neon。本批实际无AWS/Neon写，原Secret和全部旧slot保留，50USD/月目标不变。本仓仅同步文档，生产源码/镜像不改。
