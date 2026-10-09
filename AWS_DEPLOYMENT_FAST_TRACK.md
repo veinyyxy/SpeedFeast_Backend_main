@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：只读IAM基础安装清单已准备，允许路径未证明
+
+2026-10-08 Winnipeg。平台独立新IAM入口提供Review/一次Run/Inspect，拟两新role、两boundary、两inline（最多6IAM写）；仅准确来源函数/region下AWS读取和自身既有日志流写，拒绝DeleteStack、DDB写/扫描、PassRole/管理、Secret写，不创建/调用Lambda/日志组/Cell/authority或改Neon。本批实际无AWS/Neon写，原Secret和全部旧slot保留，50USD/月目标不变。本仓仅同步文档，生产源码/镜像不改。
+
+8项定向/type/lint/语法通过；在线32IAM策略案例24拒绝符合预期、8允许路径未证明（来源函数相等仍拒绝，原因未唯一确定），不去掉围栏或宣称完整可用；Source10创建/标签/inline权限模拟allowed仅预检。只读00:51:46UTC4新IAM/两函数/Cell/两authority key均ABSENT，已有Secret元数据/版本保持、表ACTIVE/PAY_PER_REQUEST。不能安装假authority，真实记录须先有Cell/provision与到期draining/zero/raw witness。待批清单SHA `748999ae1ebb298670243d1dae36cf29accb75046daaab981f136534f77764aa`，到2026-10-09 01:51:52.106UTC过期，必须明确接受来源允许路径缺口/后续只读实机门禁、非原子/RoleId非服务端CAS/不自动恢复重试；新slot空、runtime关闭。后继Lambda/日志/只读调用、drain密封接线及环境加密范围再单独批准。[完整IAM范围与验证缺口](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-readonly-runtime-iam.md)。以下保留历史。
+
 ## F3b3：现有两个Secret的Neon控制凭据已就绪，runtime仍关闭
 
 2026-10-08 Winnipeg。用户批准3610895c...恢复清单，在原窗口内一次Run、两既有角色各一次原密码+LOGIN，COMMIT确认；00:15:46.139/00:16:19.641UTC两独立只读Inspect均LOGIN=[true,true]、准确Secret初始UUID/AWSCURRENT/真实受限密码认证通过，credentialReady=true。新完整roleState `6ec32bd06b5f4323602bd77d37533922ca24182e9382d51f657496fbd52075ed`，仅LOGIN归一后仍原1528e1e...；preserved993506.../权限/seal/业务保持。reader八表SELECT，drain原20列能力未放宽，非纯读/行过滤角色。
