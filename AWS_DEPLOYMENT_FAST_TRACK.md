@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：Lambda只读安装与两探针fresh清单已核验，未执行
+
+2026-10-08 Winnipeg。Source刷新后准确身份确认；最初只读失败定位IAM SimulatePrincipalPolicy Throttling/HTTP400，不是需重复登录或已证缺权限。平台只为IAM读取/模拟增共享600ms节流，每请求maxAttempts仍1，r5实际18.152秒完成新鲜集合：两准确函数/日志组均ABSENT，两角色ID/信任/boundary/inline/标签完整匹配，14项Source创建标签/保留/调用/PassRole模拟allowed，仅权限预检不是实机权限证明。旧IAM/Neonbinding、p2ZIP/旧slot/失败记录保持，本仓生产源码/镜像不改。
+
+待批SHA `e49ce088cffc18273bcd43d87dd44bf042c51665667f25ee1790cc548d24291e`，代码064119b9...，到2026-10-09 05:19:58.561UTC / Winnipeg10月9日00:19:58.561过期。范围仅两准确日志组7天保留/两只读函数共6安装写+各一次同步探针/独立核验；复用IAM、不连Neon/改Secret/authority/Cell/业务runtime，Secret仅各自准确固定版本内存校验。明确接受非原子/并发竞态、失败可能遗留计费资源、永久slot不自动删除补齐复位或写/调用重试；当前未批准、slot空、实际云写调用=0，50USD目标保持。过期只读刷新不重放，不把候选或模拟当AWS自动部署完成。[完整fresh清单与批准范围](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-readonly-lambda-reviewed.md)。以下保留历史。
+
 ## F3b3：Lambda只读探针候选完成，Source过期待刷新只读Review
 
 2026-10-08 Winnipeg。平台两个专用只读Lambda handler、自包含可重复ZIP、Review/一次安装与各一次同步调用/独立Inspect入口已完成，15项定向/type/lint/语法及启动拒绝自检通过。候选p2报告文件SHA6cb4c116...，TTL ZIP ec0ef747...、drain ZIP b4f82193...，不复用业务drain/delete处理器、不开Neon连接；准确Secret版本只在Lambda内存校验，AWS读取固定key/Stack。Invoke原始响应不落盘，闭合回执和云日志完整响应SHA绑定。拟两准确日志组7天保留+两函数共6安装写/各一次同步探针，不改既有IAM/Neon/Secret/authority，不建付费Cell/ECS，不启用Worker。
