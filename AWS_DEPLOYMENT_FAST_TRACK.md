@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：两只读Lambda真实安装完成，Secret/KMS读取门禁未通过
+
+Winnipeg2026-10-08 23:47–23:49用户批准e49ce088...后，一次Run完成全部6安装写（两日志组/7天保留/两准确只读函数）及各一次同步Invoke。两独立Inspect准确代码/配置/标签/RoleId/IAM foundation均OWN_READY，永久slot消费，无Run/reset/补齐/delete或调用重试。两探针身份/DDB及TTL的CF缺失读取通过，但自身Secret读取均AccessDenied，liveReadProof=false；没有Secret值返回或Neon连接，没有IAM/Secret/authority写、付费Cell/ECS或业务runtime。已有两Secret元数据/初始UUID/AWSCURRENT/无resource policy保持，本仓仅同步进度、生产源码/镜像不动。
+
+CloudTrail两准确GetSecretValue参数UUID/AWSCURRENT均匹配且拒绝指向KMS；默认AWS-managed key ARN尾3af8de5c-dbb7-451a-83f3-983fb1673570/Enabled，现有identity/boundary的DenyAllOtherActions明确覆盖kms:Decrypt。未观察独立Decrypt事件，不宣称所有转发条件已证明。第二次Inspect日志第一页无记录，追加只读分页d1/d2各第3页匹配完整响应SHA，保留原差异结果不补调。回执文件020fdb1c...，两Inspect84e6171d.../1c92427b...，诊断21a8c086.../分页ae9e33d6...；已批10文件binding064119b9.../p2候选/旧slot保持。
+
+下一阶段最小KMS读取例外（准确key/自身Secret+UUID/ViaService/CallerAccount）与转发上下文审阅，新IAM和新探针调用各fresh SHA/新入口批准，不重放本次、不创建/更换KMS key或改Secret、不开业务runtime/authority或删除权限；50USD月目标保持。[真实结果与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-readonly-lambda-installed.md)。以下保留历史。
+
 ## F3b3：Lambda只读安装与两探针fresh清单已核验，未执行
 
 2026-10-08 Winnipeg。Source刷新后准确身份确认；最初只读失败定位IAM SimulatePrincipalPolicy Throttling/HTTP400，不是需重复登录或已证缺权限。平台只为IAM读取/模拟增共享600ms节流，每请求maxAttempts仍1，r5实际18.152秒完成新鲜集合：两准确函数/日志组均ABSENT，两角色ID/信任/boundary/inline/标签完整匹配，14项Source创建标签/保留/调用/PassRole模拟allowed，仅权限预检不是实机权限证明。旧IAM/Neonbinding、p2ZIP/旧slot/失败记录保持，本仓生产源码/镜像不改。
