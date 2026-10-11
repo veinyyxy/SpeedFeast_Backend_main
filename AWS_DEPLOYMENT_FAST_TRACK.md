@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：Neon TLS / 密封v3只读探针已准备，等待准确更新/调用批准
+
+2026-10-11 Winnipeg。平台独立候选/core/一次更新-调用-Inspect入口完成，仅拟现有TTL一次RevisionId比较更新代码（无publish/配置变更）+一次同步Invoke；reader/自身固定Secret via Neon HTTPS/TLS提交十SELECT只读Serializable Deferrable批次，实测事务设置/完整证书/保护catalog/原件/关联。生产source-v3围栏不改，admission=open只能报告非draining门禁，不能伪造certified清理证据。drain/IAM/Key/Secret/Neon角色或业务数据/admission/authority/Cell/ECS/Worker不改，新slot空，失败可能留新代码，不自动回滚撤权删除补齐reset或重试；提供者日志、远端只读请求可能继续和外部额外调用风险明确。本仓仅同步文档，生产源码/镜像不变，50USD月目标保持。
+
+16定向/type/lint/语法+可重复ZIP/字节回读/无凭据启动通过（Neon网络测试明确mock）；p1 ZIP0f2330af.../277794bytes，未上传。r1 AWS只读前序anchor/KMS v2/p2配置/Secret/Key均保持，Source准确UpdateFunctionCode/Invoke两项模拟allowed。当前代码更新/调用0、Secret值读取0、Neon连接0/业务runtime关闭。待批SHA `c3635097594bdd1443fe4cf814507da14a33ab4723c668ab7a068b5e1cd756f1`，截止2026-10-11 16:37:04.870UTC / Winnipeg11:37:04.870，新17文件d7919f4a...；确认才一次Run和独立新进程Inspect，过期只读刷新另批，旧slot不重放。[完整范围与fresh清单](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-readonly-probe.md)。以下保留历史。
+
 ## F3b3：最小KMS修正完成，实机Secret读取与独立日志核验通过
 
 2026-10-11 Winnipeg。用户批准5d1485cf...清单后原窗口内一次Run，准确两existing boundary默认v2（保留原v1）、两inline共4IAM写，随后两次新同步只读探针。各自固定Secret/身份/DDB及TTL的CF缺失读取均通过；15:07:59.154UTC与15:08:29.999UTC两独立Inspect（第二次新进程）均OWN_V2/OWN_REPAIRED/全anchor保持，两完整响应SHA各第3页日志匹配，liveReadProofVerified=true。回执90987b54...、两Inspect13d7b6ba.../7a7ac97a...；新KMS slot永久消费，4写/2调用无重试，原slot/失败记录保留，已批准只读权限保持、不自动撤销删除回滚补齐reset。
