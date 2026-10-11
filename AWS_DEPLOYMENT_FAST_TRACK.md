@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：最小KMS修正完成，实机Secret读取与独立日志核验通过
+
+2026-10-11 Winnipeg。用户批准5d1485cf...清单后原窗口内一次Run，准确两existing boundary默认v2（保留原v1）、两inline共4IAM写，随后两次新同步只读探针。各自固定Secret/身份/DDB及TTL的CF缺失读取均通过；15:07:59.154UTC与15:08:29.999UTC两独立Inspect（第二次新进程）均OWN_V2/OWN_REPAIRED/全anchor保持，两完整响应SHA各第3页日志匹配，liveReadProofVerified=true。回执90987b54...、两Inspect13d7b6ba.../7a7ac97a...；新KMS slot永久消费，4写/2调用无重试，原slot/失败记录保留，已批准只读权限保持、不自动撤销删除回滚补齐reset。
+
+函数p2字节/配置、Key/Secret/版本/旧10文件binding064119b9...不变，没有Neon连接/authority写/删除grant/付费Cell/ECS或业务runtime启用，50USD月目标保持；本仓仅同步文档，生产源码/镜像未改。下一小阶段准备受限Neon TLS只读与密封v3 source准确验收范围，函数更新/新调用再fresh SHA批准；当前正向读取成功不证明真实Cell CF、业务drain/清理或端到端部署完成。[完整实际修正与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-kms-read-repair-verified.md)。以下保留历史。
+
 ## F3b3：最小KMS读取修正fresh清单已准备，未执行
 
 2026-10-11 Winnipeg。平台独立KMS修正module/SDK/一次Run与独立Inspect完成，保留旧10文件binding064119b9.../p2函数代码/所有旧slot。拟两existing boundary默认v2保留v1、两inline共4IAM写，只授准确key3af8de5c...的SM ca转发Decrypt，强制CallerAccount/各自Secret ARN+初始UUID，wrong/missing各独立显式拒绝；直接Secret来源/region/AWSCURRENT与DDB/CF/日志/其他动作拒绝不放宽。Sid仅标识压缩/完全相同STS+ListStacks规则合并，boundary6119/4340低于quota。20秒传播等待不保证授权就绪，之后两次新同步只读探针/分页日志核验；无函数/Key/Secret/Neon/authority/Cell或业务runtime修改，新slot永久、不自动撤权删除回滚补齐reset或重试，接受IAM非原子/非CAS/部分权限生效及外部额外调用。
