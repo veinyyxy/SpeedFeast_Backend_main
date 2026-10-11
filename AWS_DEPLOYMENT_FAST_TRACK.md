@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c1：DNS 委派及准确 ACM 签发完成
+
+2026-10-11 20:45:12.238UTC / Winnipeg15:45:12.238 最后一次有限只读Inspect返回证书6d1f2880... ISSUED，foundation/parentDelegation verified；r3 SHA5ca3b2fc...、此前pending两次保留。结合Cloudflare/Google准确4NS/CNAME，DNS/ACM前置阶段完成；本轮AWS写0，无重复NS/CNAME或Run、补写/重申请/删除/reset。未创建Cell/启用runtime；下一阶段准备baseline/mTLS与专属IAM/readcap/Budget/v3准确TTL，真实变更另fresh SHA，50USD目标不变，旧绑定/槽位保留。本仓仅文档，生产源码/镜像及用户.vscode/settings.json不改。[签发及委派证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c1-dns-executed.md)。以下保留历史。
+
+## F3c1：子域委派和公开 CNAME 已验证，ACM pending
+
+2026-10-11用户报告sandbox NS已添加后，平台仅只读核验：20:42:38.296UTC两公共DNS Cloudflare/Google准确4NS和CNAME匹配、父NS保持Namecheap；20:42:39.052UTC和20:43:20.359UTC两新进程Inspect均foundation/parentDelegation verified，准确证书6d1f2880...仍PENDING_VALIDATION。公开摘要d9d82dc0...、两Inspect85e388d7.../7de14471...保持；6文件f391e9b9.../已消费slot/创建证据不改，AWS写/IAM/调用/Neon连接0。尚不称证书ISSUED或Cell ready，不重放Run、重复NS/补写/重申请/reset，下一步仅只读确认准确ARN签发，再推进baseline/mTLS等门禁，实际新变更另fresh SHA，50USD目标不变。本仓仅文档，用户.vscode/settings.json保留。[只读证据及继续步骤](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c1-dns-executed.md)。以下保留历史。
+
 ## F3c1：sandbox DNS 基础已创建，等待人工子域委派
 
 2026-10-11 Winnipeg。用户确认f9cec821...后原有效窗口一次Run完成独立zone/tag/非导出ACM request/验证CNAME全部4写；20:21:20.357UTC与20:21:23.262UTC（第二次新进程）两Inspect metadata verified。zone Z01473621BTTHKXBGOOEJ、证书6d1f2880...仍PENDING_VALIDATION，去重后仅一CNAME，准确GetChange INSYNC。回执c29fb162...、两Inspect92041e38.../05e9a312...；永久slot消费/10marker保留，6文件binding f391e9b9...不变，不重放Run/辅助脚本，不自动复位/补齐/删除/回滚/写重试。
