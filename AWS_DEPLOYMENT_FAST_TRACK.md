@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：Neon只读探针代码已更新，RevisionId门禁停止，未调用
+
+2026-10-11 Winnipeg。用户确认c3635097...后一次UpdateFunctionCode提交，TTL候选ZIP0f2330af.../277794bytes已CANDIDATE_READY；更新响应RevisionId09c85932...与就绪回读80270648...不同，READONLY_WAIT/NEON_UPDATE_POSTSTATE_DRIFT停止，Invoke/Secret值读取/Neon连接均0。16:09:06.893UTC与16:09:38.539UTC两独立Inspect（第二次新进程）均准确代码/配置、stable anchor3d373a66...保持，drain/IAM/KMS v2/Key/Secret版本不变；只读CloudTrail两页仅观察一次准确Source更新、原Revision和Publish=false匹配无错误，但不排除延迟/并发，不唯一证明异步内部原因。
+
+新slot永久消费，无Invoke marker；原17文件d7919f4a.../所有旧记录slot保留，不改门禁或自动回滚补齐reset重试。回执99647753...，两Inspect1750fbd0.../5ebd0746...，只读诊断c93db5ff...。下一阶段仅准备已安装候选invoke-only新入口/槽位/fresh SHA，绑定完成态Revision与完整配置/前序回执，实际新调用另批，不再次更新代码。无admission/authority/业务runtime/Cell/ECS修改，50USD目标保持，本仓仅进度文档、生产代码/镜像未改，不能把代码就绪当Neon/自动部署完成。[准确结果与下一步](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-readonly-installed.md)。以下保留历史。
+
 ## F3b3：Neon TLS / 密封v3只读探针已准备，等待准确更新/调用批准
 
 2026-10-11 Winnipeg。平台独立候选/core/一次更新-调用-Inspect入口完成，仅拟现有TTL一次RevisionId比较更新代码（无publish/配置变更）+一次同步Invoke；reader/自身固定Secret via Neon HTTPS/TLS提交十SELECT只读Serializable Deferrable批次，实测事务设置/完整证书/保护catalog/原件/关联。生产source-v3围栏不改，admission=open只能报告非draining门禁，不能伪造certified清理证据。drain/IAM/Key/Secret/Neon角色或业务数据/admission/authority/Cell/ECS/Worker不改，新slot空，失败可能留新代码，不自动回滚撤权删除补齐reset或重试；提供者日志、远端只读请求可能继续和外部额外调用风险明确。本仓仅同步文档，生产源码/镜像不变，50USD月目标保持。
