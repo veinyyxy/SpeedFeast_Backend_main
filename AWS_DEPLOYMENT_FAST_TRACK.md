@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：业务 drain / TTL v3 候选接线完成，未安装
+
+2026-10-11 Winnipeg。平台新增独立业务drain-v3 root/handler及TTL固定Secret版本handler，reader/writer双凭据分别受限，source前后均要求真实certified v3完整密封/raw witness；原SQL、旧handler/binding/永久slot保留。12新+34相邻46测试/type/lint通过，两自包含可重复ZIP仅私有本地候选（drain20554427.../328034bytes、TTL621a8cd5.../362628bytes），未上传/安装/调用；不重复Neon探针或重建ECS镜像，本仓生产源码/镜像不变。
+
+最小drain增加已有reader Secret/KMS权限候选5592chars，未安装；17:18:20.696UTC只读确认现有RoleId/默认v2/inline保持。13模拟中2KMS允许/9拒绝符合，2直接Secret允许仍未证明，allCasesVerified=false，不取消来源围栏；r1错误index失败保留，r2报告18f3174d...。本阶段IAM/Lambda/Neon/authority/付费Cell写0，最近实际环境open、业务runtime关闭；候选非在线业务验收，TTL journal/DeleteStack权限仍拒绝。下一步准备准确业务安装入口/fresh清单，安装drain会暴露现有受限Neon写能力，实际安装另批；保持50USD/月，不提前drain或假authority。[候选、缺口与下一阶段](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-business-runtime-v3.md)。以下保留历史。
+
 ## F3b3：真实Neon只读/保护预检通过，业务清理门禁保持
 
 2026-10-11 Winnipeg。用户确认76cadd00...后一次同步Invoke成功，代码/配置/权限更新0；自身固定Secret在Lambda内存校验，真实Neon HTTPS/TLS十SELECT只读Serializable Deferrable、服务端设置/受限reader/完整证书/原件/catalog/关联全部通过。request a0617cd0...、完整响应SHA c0c3be88...；sourceGate=ADMISSION_NOT_DRAINING，实际open保持，不生成certified ownership/delete/authority或开业务runtime。原始计数1活跃租户/1非终态部署、容量/资源/cleanup0，不作为过滤后的zero；历史计划/实例/订阅保留，无业务SQL写。
