@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：真实Neon只读/保护预检通过，业务清理门禁保持
+
+2026-10-11 Winnipeg。用户确认76cadd00...后一次同步Invoke成功，代码/配置/权限更新0；自身固定Secret在Lambda内存校验，真实Neon HTTPS/TLS十SELECT只读Serializable Deferrable、服务端设置/受限reader/完整证书/原件/catalog/关联全部通过。request a0617cd0...、完整响应SHA c0c3be88...；sourceGate=ADMISSION_NOT_DRAINING，实际open保持，不生成certified ownership/delete/authority或开业务runtime。原始计数1活跃租户/1非终态部署、容量/资源/cleanup0，不作为过滤后的zero；历史计划/实例/订阅保留，无业务SQL写。
+
+16:38:10.823UTC与16:39:18.221UTC两独立Inspect（第二次新进程）均full33a5f025.../stable3d373a66.../Revision80270648...保持，两次各日志第3页匹配完整响应，readProofVerified=true。回执2b21e948...、两Inspect72bac98f.../2c6c2f25...保留，invoke slot永久消费，不重放补调/补齐reset或重试；20文件c120e4c6.../旧binding/所有旧slot不改。Source未GetSecretValue、秘密/原始DB输出未落盘/Git，不改IAM/Key/Secret/admission/authority/Cell/ECS；本仓仅文档、生产源码/镜像不变，50USD目标保持。下一阶段准备业务drain/TTL v3接线及Cell部署门禁，保持open、不提前drain或假authority，不继续重复同类探针/重建镜像；后续实际新安装/权限/数据库或付费Cell仍准确fresh SHA另批。[真实验收与下一阶段](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-readonly-verified.md)。以下保留历史。
+
 ## F3b3：已安装候选的invoke-only清单已准备，未调用
 
 2026-10-11 Winnipeg。平台独立invoke-only core/受限入口/新永久slot完成，不改旧17文件d7919f4a...、旧门禁/已消费slot或现有Lambda代码，不重建上传或再次更新。只拟一次同步Invoke、原reader/固定Secret UUID/十SELECT只读HTTPS批次与独立日志核验；绑定前序失败/两Inspect/confirmed、完成态Revision80270648...、full anchor33a5f025.../stable3d373a66...和已安装ZIP0f2330af.../277794bytes。8新+10相邻probe测试/type/lint/语法通过，r1 AWS只读完整12.251秒、准确Invoke模拟allowed/元数据不变，新slot空、调用/Secret值读取/Neon连接0。
