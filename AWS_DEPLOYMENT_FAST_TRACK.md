@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c1：sandbox DNS 基础已创建，等待人工子域委派
+
+2026-10-11 Winnipeg。用户确认f9cec821...后原有效窗口一次Run完成独立zone/tag/非导出ACM request/验证CNAME全部4写；20:21:20.357UTC与20:21:23.262UTC（第二次新进程）两Inspect metadata verified。zone Z01473621BTTHKXBGOOEJ、证书6d1f2880...仍PENDING_VALIDATION，去重后仅一CNAME，准确GetChange INSYNC。回执c29fb162...、两Inspect92041e38.../05e9a312...；永久slot消费/10marker保留，6文件binding f391e9b9...不变，不重放Run/辅助脚本，不自动复位/补齐/删除/回滚/写重试。
+
+父NS仍Namecheap，没有委派或改parent/API；IAM/Secret/Neon/authority/Budget/readcap/函数调用/Cell/ECS变更0。新zone基础0.50USD/月+查询，50USD目标不是硬上限。本仓仅文档，生产代码/镜像不改，用户.vscode/settings.json保持未跟踪。下一步人工核对全部sandbox子树无其它用途、单独同意后仅添加四条Host=sandbox的NS，不改主域Nameservers/@/api；完成后仅只读核对DNS/准确证书。baseline/mTLS/专属IAM/费用门禁/v3精确TTL与真实Cell仍另fresh SHA，不提前drain或假authority。[执行结果、四NS及继续步骤](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c1-dns-executed.md)。以下保留历史。
+
 ## F3c1：真实资源费用门禁与独立 DNS/证书清单准备完成
 
 2026-10-11 Winnipeg。平台集中56 AWS读取/5官方价格feed/两个准确已有ECR scan；两published镜像保持、COMPLETE/HIGH0/CRITICAL0，不重建或重新扫描。新launch报告e07f3175...仍禁止付费；发现旧Cell模板 ENABLED schema1 delete事件→PLAN_ONLY Janitor/10 retries 与v3不兼容，不能直接apply，旧模板/记录保留。线上Budget10/read5RRU/ELB服务role缺失，sandbox DNS/wildcard/mTLS/baseline/专属任务权限仍为门禁；4h核心约0.83544USD不含存储/I/O/日志等，50USD目标非cap/常驻承诺。
