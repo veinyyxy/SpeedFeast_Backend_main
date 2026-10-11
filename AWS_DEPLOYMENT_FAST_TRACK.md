@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c1：真实资源费用门禁与独立 DNS/证书清单准备完成
+
+2026-10-11 Winnipeg。平台集中56 AWS读取/5官方价格feed/两个准确已有ECR scan；两published镜像保持、COMPLETE/HIGH0/CRITICAL0，不重建或重新扫描。新launch报告e07f3175...仍禁止付费；发现旧Cell模板 ENABLED schema1 delete事件→PLAN_ONLY Janitor/10 retries 与v3不兼容，不能直接apply，旧模板/记录保留。线上Budget10/read5RRU/ELB服务role缺失，sandbox DNS/wildcard/mTLS/baseline/专属任务权限仍为门禁；4h核心约0.83544USD不含存储/I/O/日志等，50USD目标非cap/常驻承诺。
+
+本轮仅准备独立sandbox zone/tag/非导出ACM request/CREATE验证CNAME最多4写，0IAM/0调用/0Neon/0付费Cell，parent/API不改；15新+3相邻18测试/type/lint通过。DNS真实只读空目标/父NS Namecheap/5Source权限模拟allowed，待批SHA f9cec821f3195925d5d644644f5ba8ad752afa7471b5015986e1f20a77ad52d7，到20:59:53.910UTC / Winnipeg15:59:53.910过期，6文件f391e9b9.../新slot空/实际写0。zone0.50USD/月+查询、非导出集成ACM免费，遗留收费/非原子/并发/CT公开/验证pending/无自动delete rollback fill reset retry须另明确接受；子域委派得到真实NS后单独确认/人工核对，不迁移主域。本仓仅文档、生产源码/镜像不改。[资源与fresh DNS范围](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c1-cell-launch-review.md)。以下保留历史。
+
 ## F3b3：业务候选实际安装完成，独立元数据核验通过
 
 2026-10-11 Winnipeg。用户确认93bc4518...及风险后原窗口一次Run完成2IAM+2代码写/0调用；drain默认v3/inline候选、v1/v2保留，TTL IAM原v2/删除和journal写拒绝。两个业务候选ZIP准确，TTL完成Revision281d13a3.../响应bae1485e...，drain完成333d8639.../响应fc30728f...，依已批准新协议以两相同ready回读/完整配置绑定完成态，不修改旧失败判断。
