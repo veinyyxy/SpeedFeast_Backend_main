@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：已安装候选的invoke-only清单已准备，未调用
+
+2026-10-11 Winnipeg。平台独立invoke-only core/受限入口/新永久slot完成，不改旧17文件d7919f4a...、旧门禁/已消费slot或现有Lambda代码，不重建上传或再次更新。只拟一次同步Invoke、原reader/固定Secret UUID/十SELECT只读HTTPS批次与独立日志核验；绑定前序失败/两Inspect/confirmed、完成态Revision80270648...、full anchor33a5f025.../stable3d373a66...和已安装ZIP0f2330af.../277794bytes。8新+10相邻probe测试/type/lint/语法通过，r1 AWS只读完整12.251秒、准确Invoke模拟allowed/元数据不变，新slot空、调用/Secret值读取/Neon连接0。
+
+待批SHA `76cadd00835f523d4cd63e2052ccd08badfe25af299dff7bb77b62b7bab76b1f`，截止2026-10-11 17:26:58.296UTC / Winnipeg12:26:58.296，新20文件c120e4c6...；确认后仅一次Run与新进程Inspect，Invoke无RevisionId服务端CAS、并发/外部额外调用/提供者日志/远端只读查询继续及非零费用风险明确，不自动回滚撤权删除补齐reset或重试。不改IAM/Key/Secret/数据库业务/admission/authority/Cell/ECS/业务runtime，50USD目标保持，本仓仅进度文档、生产代码/镜像不改。[完整fresh仅调用清单](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-neon-invoke-only.md)。以下保留历史。
+
 ## F3b3：Neon只读探针代码已更新，RevisionId门禁停止，未调用
 
 2026-10-11 Winnipeg。用户确认c3635097...后一次UpdateFunctionCode提交，TTL候选ZIP0f2330af.../277794bytes已CANDIDATE_READY；更新响应RevisionId09c85932...与就绪回读80270648...不同，READONLY_WAIT/NEON_UPDATE_POSTSTATE_DRIFT停止，Invoke/Secret值读取/Neon连接均0。16:09:06.893UTC与16:09:38.539UTC两独立Inspect（第二次新进程）均准确代码/配置、stable anchor3d373a66...保持，drain/IAM/KMS v2/Key/Secret版本不变；只读CloudTrail两页仅观察一次准确Source更新、原Revision和Publish=false匹配无错误，但不排除延迟/并发，不唯一证明异步内部原因。
