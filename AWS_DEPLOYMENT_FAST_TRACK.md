@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3b3：业务候选安装 fresh 清单准备完成，未执行
+
+2026-10-11 Winnipeg。平台独立Review/一次Run/Inspect及永久新slot完成，12新+14相邻26测试/type/lint/语法通过，复用p1两候选、不重建镜像/改原binding/SQL。拟仅drain boundary默认v3保留v1/v2、inline两IAM写与TTL/drain各一次Revision条件代码更新，共4写/0调用；不改配置标签/Secret/Key/Neon/authority、不建付费Cell。新协议明确接受异步响应/完成Revision差异，以两相同ready只读完成Revision和全配置绑定，不修改旧失败记录。
+
+17:36:16.217UTC实际15.291秒只读核验原IAM/函数/Secret/Key准确、Cell/两authority缺失、4Source写模拟allowed，45文件binding adf38fb1.../stable b08b5a48...。待批SHA93bc4518c7003fcaa352355c66559b00b40d3b09d1d6ed4def4f9679177dad05，截止18:36:31.508UTC / Winnipeg13:36:31.508；manifest文件7f88c6b5.../inventory7085f355...。drain安装暴露已有受限Neon写能力，正向Secret路径缺口、IAM非原子/非CAS、外部调用、自动刷新失败/部分遗留/非零费用另明确确认。新slot空/实际写调用0，50USD目标保持，TTL删除权限仍拒绝，不自动撤权回滚补齐reset重试；本仓仅文档。确认后一次Run+独立新进程Inspect，下一阶段回真实Cell门禁。[fresh范围与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3b3-business-install.md)。以下保留历史。
+
 ## F3b3：业务 drain / TTL v3 候选接线完成，未安装
 
 2026-10-11 Winnipeg。平台新增独立业务drain-v3 root/handler及TTL固定Secret版本handler，reader/writer双凭据分别受限，source前后均要求真实certified v3完整密封/raw witness；原SQL、旧handler/binding/永久slot保留。12新+34相邻46测试/type/lint通过，两自包含可重复ZIP仅私有本地候选（drain20554427.../328034bytes、TTL621a8cd5.../362628bytes），未上传/安装/调用；不重复Neon探针或重建ECS镜像，本仓生产源码/镜像不变。
