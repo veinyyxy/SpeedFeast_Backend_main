@@ -6,7 +6,7 @@
 
 2026-10-11。平台复用原空baseline/PG16验收与发布镜像，本地p3仅sandbox CA/clientAuth及owner-only Windows ACL实核，key不上传；新一次Review/Run/Inspect入口及28定向测试/type/lint通过。Source当前17模拟16allowed、TrustStore AddTags implicitDeny，附加/独立/CLI模拟未证明，绝不改报通过。候选明确需要另行接受一次受控实际创建可能失败的风险：最多12直接写，准确Source限时create-only最小tag inline grant、ELB服务关联角色、私有桶/四配置、固定archive/manifest/公共CA三对象、TrustStore一次创建；无论成功/失败立即精确撤回临时policy，资源不自动回滚/reset/补齐或重试。策略精确回读不是有效权限证明。
 
-待批SHAde586cd95bddba22fb6125008923cd2c96cf7c8a04fd97beb41976772657af74，截止23:13:55.383UTC / Winnipeg18:13:55.383，7文件b6c884c9...，新slot空/云IAM写调用0；S3假设各200请求+231374bytes一月模型约0.001194USD非cap，50USD目标不变。不连数据库/启用runtime/创建Cell，不改旧baseline/镜像/绑定/slot；本仓仅文档，用户.vscode/settings.json保持。确认具体资源与风险才可一次执行，随后实际任务IAM/readcap/Budget/v3清理兼容模板另批。[完整清单与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c2-material-foundation-review.md)。以下保留历史。
+待批SHA6b47167066caf637608833497dcd30aa85855f265129c5a15e756b14c517afab，截止2026-10-12 00:33:21.359UTC / Winnipeg 2026-10-11 19:33:21.359，7文件b6c884c9...，新slot空/云IAM写调用0；S3假设各200请求+231374bytes一月模型约0.001194USD非cap，50USD目标不变。不连数据库/启用runtime/创建Cell，不改旧baseline/镜像/绑定/slot；本仓仅文档，用户.vscode/settings.json保持。确认具体资源与风险才可一次执行，随后实际任务IAM/readcap/Budget/v3清理兼容模板另批。[完整清单与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c2-material-foundation-review.md)。以下保留历史。
 
 ## F3c1：DNS 委派及准确 ACM 签发完成
 
