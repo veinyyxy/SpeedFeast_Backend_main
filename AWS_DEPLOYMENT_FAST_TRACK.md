@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c2：baseline/mTLS前置安装候选完成，受控实际尝试待批
+
+2026-10-11。平台复用原空baseline/PG16验收与发布镜像，本地p3仅sandbox CA/clientAuth及owner-only Windows ACL实核，key不上传；新一次Review/Run/Inspect入口及28定向测试/type/lint通过。Source当前17模拟16allowed、TrustStore AddTags implicitDeny，附加/独立/CLI模拟未证明，绝不改报通过。候选明确需要另行接受一次受控实际创建可能失败的风险：最多12直接写，准确Source限时create-only最小tag inline grant、ELB服务关联角色、私有桶/四配置、固定archive/manifest/公共CA三对象、TrustStore一次创建；无论成功/失败立即精确撤回临时policy，资源不自动回滚/reset/补齐或重试。策略精确回读不是有效权限证明。
+
+待批SHAde586cd95bddba22fb6125008923cd2c96cf7c8a04fd97beb41976772657af74，截止23:13:55.383UTC / Winnipeg18:13:55.383，7文件b6c884c9...，新slot空/云IAM写调用0；S3假设各200请求+231374bytes一月模型约0.001194USD非cap，50USD目标不变。不连数据库/启用runtime/创建Cell，不改旧baseline/镜像/绑定/slot；本仓仅文档，用户.vscode/settings.json保持。确认具体资源与风险才可一次执行，随后实际任务IAM/readcap/Budget/v3清理兼容模板另批。[完整清单与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c2-material-foundation-review.md)。以下保留历史。
+
 ## F3c1：DNS 委派及准确 ACM 签发完成
 
 2026-10-11 20:45:12.238UTC / Winnipeg15:45:12.238 最后一次有限只读Inspect返回证书6d1f2880... ISSUED，foundation/parentDelegation verified；r3 SHA5ca3b2fc...、此前pending两次保留。结合Cloudflare/Google准确4NS/CNAME，DNS/ACM前置阶段完成；本轮AWS写0，无重复NS/CNAME或Run、补写/重申请/删除/reset。未创建Cell/启用runtime；下一阶段准备baseline/mTLS与专属IAM/readcap/Budget/v3准确TTL，真实变更另fresh SHA，50USD目标不变，旧绑定/槽位保留。本仓仅文档，生产源码/镜像及用户.vscode/settings.json不改。[签发及委派证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c1-dns-executed.md)。以下保留历史。
