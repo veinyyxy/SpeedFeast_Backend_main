@@ -2,7 +2,15 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c2：材料基础安装成功，临时标签策略已删除
+
+2026-10-11 Winnipeg。用户确认fresh SHA6b471670...后原窗口一次Run完成12直接写（3IAM/8S3/1ELB）：限时准确Source标签policy、ELB服务关联角色、私有桶/四配置/空baseline与公共CA三对象、准确TrustStore；创建后立即精确删除临时policy，23:40:17.790及23:40:25.594UTC两Inspect（第二次独立新进程）均metadata verified/临时policy缺失，stable01530cf7...。SLR RoleId AROAV3GNMXTZNUJ5QVBFD、TrustStore后缀aa1771fd0469cc44 ACTIVE/1CA/0撤销/0关联/准确五标签；三对象和服务导入公共CA完整字节SHA一致，私钥/客户端证书未上传。
+
+Review AddTags implicitDeny保持原证据，仅已批准的准确带标签实际Create成功，不解释模拟原因或扩大允许范围。七文件b6c884c9...保持，回执e62bd45d.../Inspect05ba06fb...与7e37a5f3...，新slot消费/25markers保留，不重放Run/helper/reset/补齐/重试/资源回滚。仅批准sandbox baseline发布，不启用runtime/调用Lambda/连接Neon/创建Cell/ECS/RDS/ALB，不改DNS/ACM/旧IAM/Secret/Key/Budget/readcap；50USD目标非cap，服务role/桶/Store保留。本仓仅文档，生产代码/镜像及用户.vscode/settings.json不变。下一阶段准备专属任务IAM/费用门禁/v3兼容短TTL模板与真实清理，旧PLAN_ONLY不能直接apply，实际云变更fresh SHA另批。[完整执行证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c2-material-foundation-executed.md)。以下保留历史。
+
 ## F3c2：baseline/mTLS前置安装候选完成，受控实际尝试待批
+
+以上候选状态已由下列实际执行结果取代，原批准前记录保留。
 
 2026-10-11。平台复用原空baseline/PG16验收与发布镜像，本地p3仅sandbox CA/clientAuth及owner-only Windows ACL实核，key不上传；新一次Review/Run/Inspect入口及28定向测试/type/lint通过。Source当前17模拟16allowed、TrustStore AddTags implicitDeny，附加/独立/CLI模拟未证明，绝不改报通过。候选明确需要另行接受一次受控实际创建可能失败的风险：最多12直接写，准确Source限时create-only最小tag inline grant、ELB服务关联角色、私有桶/四配置、固定archive/manifest/公共CA三对象、TrustStore一次创建；无论成功/失败立即精确撤回临时policy，资源不自动回滚/reset/补齐或重试。策略精确回读不是有效权限证明。
 
