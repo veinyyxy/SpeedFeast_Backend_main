@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9a：完整父协议、实际guarded provision和运行字节自证完成，未安装
+
+2026-10-12 Winnipeg。平台新增full-parent schema4协议与strict decoder、Source/runtime表policy/RoleId/inline-boundary/Function ZIP-Revision双读及实际local bundle字节自证、强parent事务reader和实际guarded provision SDK（当前完整PAID重编原schema2前驱、parent/exclusion原子条件）。真实Lambda handler/provision root＋ESM ZIP可重复构建/无npm依赖启动验证完成；完整failure/TTL仍阻断，无Source registrar，不以不完整包抢先登记。表隔离候选为全表旧data写冻结及<=15min Source宽写登记窗口，协调器必须等截止；影响所有旧/tenant writer，但保留读取/原件，未安装、未证明实际deny传播。
+
+10新+11相邻21测试/typecheck/lint0warning/syntax通过。20:04:19.289UTC / Winnipeg15:04实际Source有效、原表58c851f4... ACTIVE/准确key、parent两事务ABSENT、表policy/新role/function本次读均ABSENT。53代码45deef97.../报告5ce7fa59...含原46保持；bundle b066edec.../ZIP bd548956.../构建报告52241569...，package-lock不改。无Cloud/IAM/Item/Invoke/Secret值/Neon连接或写，本仓仅文档，生产源码/镜像及用户.vscode/settings.json保留。F3c9整体未完成；下一切片直接补当前未安装root的failure/TTL、固定Secret/child权限、once-only准确删除与恢复，之后Source registrar/短窗口策略/真实allow-deny验收集中fresh具体审批；不抢先创建Reserved/付费Cell，不借旧scope，50USD非cap。[阶段详情与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9-parent-runtime.md)。以下保留历史。
+
 ## F3c8：DDB排除、固定补偿日志及准确ARN只读恢复完成准备，未安装
 
 2026-10-12 Winnipeg。平台新增Source-only五准确key事务强读、marker-only fresh SHA审批/DB-CFN重新采集/absent原子排除、固定per-Cell不可变intent/receipt、保护publication事务数据与准确STANDARD ARN/token请求/独立CFN最新事件双读恢复。journal reserve不是DeleteStack ownership，没有delete client或生产handler；旧发布器可绕过仅数据围栏，已专门测试并明确仍需权限隔离与实际guarded publisher，不借原drain-only/新marker-only范围执行云删除。
