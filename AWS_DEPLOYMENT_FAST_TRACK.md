@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3c：恢复与直接费用控制分离评审完成，未执行
+
+2026-10-12 Winnipeg。用户同意准备方向后，平台实现独立准确栈一次RollbackStack入口/新slot/批准helper，预算50与表read100-write2仅未授权数据草案，恢复后必须fresh回读重编译另批。7新+21相邻28测试/type/lint/syntax通过；14:25:15.884UTC / Winnipeg09:25 Review Source有效、RollbackStack/ModifyBudget模拟allowed，原UPDATE_FAILED/唯一Budget/settings ac7dfa38.../Budget10/Oct1/read5-write2与直接三CS状态保持，原Aug9 CREATE_COMPLETE事件bea3dee0...和原最后失败事件绑定。新SHA22fe4989d099196e75c14c148da19a90c3ff860bebed733cd2db354904ce9c36，截止15:25:15.884UTC / Winnipeg10:25:15.884；十三代码8a3a02ad...，原七389e66ad.../十41dfdf85.../两个3marker永久slot/失败记录保持，本轮云写0/新slot空/helper未Run。
+
+当前拟最多一直接RollbackStack，不更新预算金额/表上限，不新建IAM/CS/Cell或启用runtime；服务内部Budget/时间段/历史变化、无稳定态可能意外删栈/预算、并发/刷新失效/失败遗留与永久槽位不自动追加恢复/删除/补齐/复位/重试须fresh SHA风险确认。恢复验收须本token完成事件及原完整设置/Budget10、Start只接受Aug1或Oct1，仍不代表50USD门禁。未来选择受审直接API覆盖、CFN所有权/标签保留，Budget50将有明确金额漂移，不自动detach/delete/回写CFN10，旧cost-stack apply操作规程封存但本轮不技术撤权，不能称无漂移；第二步资源范围另批。50USD非cap，本仓仅文档，生产源码/镜像与用户.vscode/settings.json保持。[完整评审](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3c-cost-recovery-review.md)。以下保留历史。
+
 ## F3c3b：一次Execute提交后成本栈失败，未更新表
 
 2026-10-12 Winnipeg记录，执行于前一晚23:53。用户确认b28a7753...与完整风险后原窗口一次helper仅1写Execute现有CS提交；Budget事件“CloudFormation is unable to provision/access this resource type”，栈UPDATE_FAILED/DisableRollback=true、新CS直接Describe EXECUTE_FAILED，核验拒绝/表更新0。04:53:23.580和04:57:34.117UTC两独立Inspect除时间外一致stable773ca085...，实际Budget10/read5/write2/表ACTIVE；栈参数/模板50候选保留，BudgetStart Aug1→Oct1，End/其余绑定预算/通知订阅及表配置保持，不称完整配置未变或费用门禁完成。两旧CS从List消失，但直接Describe仍FAILED/OBSOLETE，新CS也可读；不宣称实际删除。注册表该区NON_PROVISIONABLE/no handlers是诊断线索，具体服务内原因未唯一确定，不归因会话到期或直接加IAM。失败单资源AWS内部回滚观察到，无应用rollback/delete/fill/retry。
