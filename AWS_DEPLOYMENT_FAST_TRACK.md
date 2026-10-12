@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c7：数据库侧失败围栏与独立census验证完成，未安装
+
+2026-10-12 Winnipeg。平台新增failed_unadmitted/epoch1（provision hash NULL、允许提前失败）schema候选：永久fence表、环境transition/两CHECK扩展和Always环境门禁，保护业务表/原目录/旧证书保持；角色权限另候选，reader只新增fence读和jobs/steps三列，drain准确函数EXECUTE，无role/LOGIN/密码/Secret变化。branded failed Stack精确intent、一次SQL writer、14 SELECT受限非owner Serializable READ ONLY certified census和实际Neon material factory均dormant，不是成功TTL或DeleteStack授权。
+
+最终独立PG16.14 r7 19:12:55.688UTC / Winnipeg14:12十项真实TLS角色登录、锁竞争、不可变/漂移与原目录证书保持证明通过，测试集群已停止；4新+8相邻12测试/typecheck/lint/syntax通过。Neon r3 19:12:18.712UTC / Winnipeg14:12实际PG18.6/open epoch0/apply0，新表/entry/state尚不存在，旧证书dc093614.../目录41eea5ac...完整，raw旧1/1保留；operator owner只读审阅不冒充runtime受限证明。42代码361360c2...含原36不变，报告5e6192d6.../真实PG证明1127ee00.../停止回执97776b3a...，早期隔离夹具与只读记录保留。本仓仅文档、生产源码/镜像及用户.vscode/settings.json保持，无Neon/AWS/Invoke写，未新DDL验收PG18安装。下一切片补DDB准确activation/provision原子排除、guarded publisher/旧路径封存、补偿journal与准确ARN删除/独立恢复，再完整TTL/fixed Lambda和权限/安装fresh审批；DB零不是DDB/IAM证明，不借drain-only权限，不创建Reserved/付费Cell，50USD非cap。[本阶段实现和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c7-failed-birth-fence.md)。以下保留历史。
+
 ## F3c6：登记/一次性日志及到期drain编排完成代码准备，未安装
 
 2026-10-12 Winnipeg。平台新增准确RESERVED/fresh SHA批准登记、Source-only immutable absent-key registrar、强读登记brand、runtime-only固定drain intent/receipt条件事务和到期协调程序；复用原authority表独立cell-birth-v3键，不改旧记录/生产代码/镜像。原登记JSON ConditionCheck＋固定动作槽位，争槽每次独立UUID避免DDB同令牌成功回放误发双ownership；不确定或重复只Inspect，不重放调用。范围仅一次drain，失败/非付费分支拦住，不发TTL authority、不调用executor/删除、不启用租户，返回摘要不是certified zero。
