@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9c：Source登记与锁定安装准备完成，待准确六写批准
+
+2026-10-12 Winnipeg。F3c9c完成Source-only冷审批/真实plan重建/metadata-RESERVED-受限DB重新取证登记SDK、固定本地wx+flush及DDB registration-attempt两事务once门禁，未实际使用。locked bootstrap Review/Run/独立Inspect及同一六写runner实现：准确新deny-all boundary/角色/7天日志组/已验证候选函数，concurrency0，无inline/attached/runtime grant，不Invoke或创建Cell。最终r3 22:11:50.949UTC / Winnipeg17:11 Source有效、四对象/parent-workflow-旧登记-attempt均ABSENT、本地槽未占、Cell名称ABSENT；63代码3fbde58c.../报告986e79cb...含原58/包/lock不变。待批准bootstrap SHA0cb547a6016a508ff5903fb99f804b6cb341147e273e262e1a7a43ef3362676c，截止23:11:50.948UTC/Winnipeg18:11，最大6写、非原子/传播/并发/遗留费用/永久槽不自动修复重试风险。Neon r2 22:13:25.071UTC / Winnipeg17:13 PG18.6/open0/apply0/旧seal完整/new失败保护ABSENT，两受限角色LOGIN；原旧1/1/1保留其它0、真实jobs CHECK为pending/running/retry_wait，新增未安装schema候选只修正旧候选该谓词。61代码981ae5f2.../报告c828780f...。12新+23相邻35测试/type/lint0warning/syntax通过；AWS写/Invoke/Secret值/Neon写0，Neon仅2只读连接。F3c9c/F3全安装仍未完成，无parent执行清单；下一步仅获批locked bootstrap一次执行＋独立Inspect，再另审Neon及gate-capable package/异步配置、最终RESERVED/IAM/table窗口/parent/actual allow-deny，再ARMED/PAID，不能登记后静默换包。
+
+本仓仅同步文档；服务端生产源码、镜像和用户 `.vscode/settings.json` 保持，直接main提交/推送默认授权。[清单与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9c-source-bootstrap.md)。以下保留历史。
+
 ## F3c9b：inline失败/TTL清理与一次性删除组合完成，未安装
 
 2026-10-12 Winnipeg。F3c9b完成未安装协调器的inline失败/TTL完整组合：真实DB品牌/同事务pending-running-retry_wait jobs覆盖、永久DB/发行/删除ownership、原子marker+authority发布、准确STANDARD ARN/token删除与独立恢复；完整PAID发布遗漏到期只编清理前驱，不写provision/activation。六固定workflow槽位，不Invoke旧child，断点/响应丢失不重发SQL/发行/删除或补写receipt。13新+10parent+11F3c8+12admission共46测试/typecheck/lint0warning/syntax通过，候选ZIP可重复/无npm依赖启动；20:53:31.589UTC / Winnipeg15:53 Source有效、原表ACTIVE、parent+六槽两事务ABSENT、表policy/新role/function均ABSENT。58代码6675ca65.../报告c863d4c9...，原46/lock保持、旧53/旧包保留不复用；bundle6ea5a688.../ZIP405e6654.../构建报告db0cd34e...。AWS写/Invoke/Secret值/Neon连接写0，无安装/可执行清单/Cell，F3未完成。下一切片F3c9c：Source registrar/短窗口策略安装流程和实际allow-deny验收计划，集中准确IAM/函数/表策略/Neon schema-role范围；实际写/付费部署/删除fresh SHA另批，50USD非cap。
