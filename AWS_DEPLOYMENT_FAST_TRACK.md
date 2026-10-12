@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c6：登记/一次性日志及到期drain编排完成代码准备，未安装
+
+2026-10-12 Winnipeg。平台新增准确RESERVED/fresh SHA批准登记、Source-only immutable absent-key registrar、强读登记brand、runtime-only固定drain intent/receipt条件事务和到期协调程序；复用原authority表独立cell-birth-v3键，不改旧记录/生产代码/镜像。原登记JSON ConditionCheck＋固定动作槽位，争槽每次独立UUID避免DDB同令牌成功回放误发双ownership；不确定或重复只Inspect，不重放调用。范围仅一次drain，失败/非付费分支拦住，不发TTL authority、不调用executor/删除、不启用租户，返回摘要不是certified zero。
+
+8新+18相邻26测试/typecheck/定向lint无warning/syntax通过；最终r2 17:52:34.368UTC / Winnipeg12:52实际Source身份有效、原表58c851f4... ACTIVE/准确key schema，新登记键前后两强一致读均ABSENT。36代码af969573...含原32保持，报告4057bf04...，r1修正前只读记录保留；Cloud/IAM/Item/Invoke/Secret值/Neon写0，本仓仅文档，用户.vscode/settings.json保持。没有真实新Lambda root/handler、bundle自证/固定drain Revision接线；失败排除围栏/activation-provision缺失门禁/certified census/补偿journal+删除恢复以及TTL发行/删除仍缺失。下一切片集中这些来源与组合，完整范围就绪前不安装窄登记、不创建Reserved栈，实际云权限/安装/部署仍fresh具体SHA另批，50USD非cap。[阶段实现与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c6-birth-registry.md)。以下保留历史。
+
 ## F3c5：v3完整模板与独立证据切片，实际闭环仍未启用
 
 2026-10-12 Winnipeg。平台独立v3 renderer default RESERVED(0资源)→ARMED(1生命周期调度)→PAID(25基础资源)完成，birth intent/实际StackId替代未知child SHA，付费条件/输出与调度前置绑定。新AWS只读adapter双读Original/template/完整或失败partial inventory、参数/标签/physical输出/caller/token，branded证据及schema2前驱/cleanup桥不伪造旧renderer证明；失败不升级TTL前驱。新增委托冷decoder、准确drain/authority/executor事件和失败STANDARD补偿数据接口，所有写/安装/调用/运行时授权false。
