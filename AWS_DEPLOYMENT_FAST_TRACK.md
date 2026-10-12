@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9b：inline失败/TTL清理与一次性删除组合完成，未安装
+
+2026-10-12 Winnipeg。F3c9b完成未安装协调器的inline失败/TTL完整组合：真实DB品牌/同事务pending-running-retry_wait jobs覆盖、永久DB/发行/删除ownership、原子marker+authority发布、准确STANDARD ARN/token删除与独立恢复；完整PAID发布遗漏到期只编清理前驱，不写provision/activation。六固定workflow槽位，不Invoke旧child，断点/响应丢失不重发SQL/发行/删除或补写receipt。13新+10parent+11F3c8+12admission共46测试/typecheck/lint0warning/syntax通过，候选ZIP可重复/无npm依赖启动；20:53:31.589UTC / Winnipeg15:53 Source有效、原表ACTIVE、parent+六槽两事务ABSENT、表policy/新role/function均ABSENT。58代码6675ca65.../报告c863d4c9...，原46/lock保持、旧53/旧包保留不复用；bundle6ea5a688.../ZIP405e6654.../构建报告db0cd34e...。AWS写/Invoke/Secret值/Neon连接写0，无安装/可执行清单/Cell，F3未完成。下一切片F3c9c：Source registrar/短窗口策略安装流程和实际allow-deny验收计划，集中准确IAM/函数/表策略/Neon schema-role范围；实际写/付费部署/删除fresh SHA另批，50USD非cap。
+
+本仓仅同步继续文档；服务端生产源码、已发布镜像和用户 `.vscode/settings.json` 保持。[阶段详情](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9b-inline-cleanup.md)。以下保留历史。
+
 ## F3c9a：完整父协议、实际guarded provision和运行字节自证完成，未安装
 
 2026-10-12 Winnipeg。平台新增full-parent schema4协议与strict decoder、Source/runtime表policy/RoleId/inline-boundary/Function ZIP-Revision双读及实际local bundle字节自证、强parent事务reader和实际guarded provision SDK（当前完整PAID重编原schema2前驱、parent/exclusion原子条件）。真实Lambda handler/provision root＋ESM ZIP可重复构建/无npm依赖启动验证完成；完整failure/TTL仍阻断，无Source registrar，不以不完整包抢先登记。表隔离候选为全表旧data写冻结及<=15min Source宽写登记窗口，协调器必须等截止；影响所有旧/tenant writer，但保留读取/原件，未安装、未证明实际deny传播。
