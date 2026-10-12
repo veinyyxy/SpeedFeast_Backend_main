@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3b：一次Execute提交后成本栈失败，未更新表
+
+2026-10-12 Winnipeg记录，执行于前一晚23:53。用户确认b28a7753...与完整风险后原窗口一次helper仅1写Execute现有CS提交；Budget事件“CloudFormation is unable to provision/access this resource type”，栈UPDATE_FAILED/DisableRollback=true、新CS直接Describe EXECUTE_FAILED，核验拒绝/表更新0。04:53:23.580和04:57:34.117UTC两独立Inspect除时间外一致stable773ca085...，实际Budget10/read5/write2/表ACTIVE；栈参数/模板50候选保留，BudgetStart Aug1→Oct1，End/其余绑定预算/通知订阅及表配置保持，不称完整配置未变或费用门禁完成。两旧CS从List消失，但直接Describe仍FAILED/OBSOLETE，新CS也可读；不宣称实际删除。注册表该区NON_PROVISIONABLE/no handlers是诊断线索，具体服务内原因未唯一确定，不归因会话到期或直接加IAM。失败单资源AWS内部回滚观察到，无应用rollback/delete/fill/retry。
+
+回执ca39ab0a.../诊断ca745c83.../两稳定Inspect b59ba932...、9bbac375...保留，新slot永久消费3markers、无budget/table完成marker，原slot/十code41dfdf85.../七code389e66ad.../原记录不变；禁止重放helper/reset/自动补齐/写重试，没有IAM/Item/Neon/Cell/runtime变更。下一步仅建议先经用户同意准备失败成本栈恢复及准确Budgets API/表费用控制解耦评审，明确CFN所有权/漂移与时间段，新范围/fresh SHA单独批准；50USD非硬cap。本仓仅文档，生产源码/镜像和用户.vscode/settings.json保留。[完整执行停止证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3b-existing-cost-controls-stopped.md)。以下保留历史。
+
 ## F3c3b：复用现有Conditional CS的新清单准备完成，未执行
 
 2026-10-11 Winnipeg。用户同意仅准备方向后，平台独立Review/一次Run/Inspect/local helper和新永久slot完成，25定向测试/type/lint/语法通过；04:45:42.463UTC只读r2确认f9ff4310... CS仍AVAILABLE/Conditional，三准确Conditionally细节及完整Context与原配置/候选一致；Budget10/read5/write2、settings a6433291...、两旧FAILED CS保持，三Source权限模拟allowed。新SHA b28a77533adcedb7d897112441a1fa5fb235995cef94f2716076e28a8580ad48，截止2026-10-12 05:45:42.463UTC / Winnipeg10月12日00:45:42.463；新十代码41dfdf85...，原七代码389e66ad.../已消费3marker/原记录不改，r1准备记录保留但不作最终清单。本轮云写0/helper未Run/新slot空，复用准确CS不重建。
