@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3a：已批准执行在凭据预检停止，0写
+
+2026-10-11 Winnipeg。用户确认c43a9aea...后有效窗口一次Run在PREFLIGHT停止，writeAttempts0/无CS ARN/slot未消费；Run内及新进程Inspect均CredentialsProviderError，Source CLI只读身份也未成功。不声称仅登录到期或当前云配置已核验；本次未更新Budget/表、执行或删除旧CS。回执e64b0923.../两失败b39abab9...，原输出目录保留不重放helper/自动retry/fill/delete/rollback/reset，七binding389e66ad...与17测试结果保持。本仓仅文档、用户.vscode/settings.json保留；请用户aws login --profile techlong-sandbox-user并回复Source已刷新，之后先只读核对/fresh Review、新SHA再确认，不新增IAM/Item/Neon/Cell/runtime，50USD目标及风险不变。[失败证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3a-cost-controls-preflight-stopped.md)。以下保留历史。
+
 ## F3c3a：费用门禁更新候选完成，尚未执行
 
 2026-10-11 Winnipeg。平台13新+4相邻17测试/type/lint通过，00:00:41.289UTC（Winnipeg19:00）一次实际只读Review确认Source四模拟allowed、原成本CFN栈Budget10/原表read5/write2及准确TableId58c851f4...。候选最多3直接写：原成本栈Create/严格仅Budget Modify不替换CS回读/Execute DisableRollback=true，随后准确表read100/write2；模板仅准确50边界和原TimePeriod显式固定，告警比例/地址/标签/其余绑定配置保留，不直接UpdateBudget造成漂移。CFN会自动删除该栈两条准确旧FAILED CS，完整原件已保存，此不可恢复影响须在清单单独确认；第三方对象出现即停。
