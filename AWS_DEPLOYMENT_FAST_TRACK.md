@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3d：直接费用控制清单完成，尚未执行
+
+2026-10-12 Winnipeg。平台新增独立预算API/表readcap两写入口与新永久槽位，8新+15相邻23测试/typecheck/定向lint/syntax通过；15:08:51.610UTC / Winnipeg10:08:51.610实际只读Review准确Source身份与两项模拟allowed、恢复settings f04b6809...保持。实际仍Budget10/固定Oct1-End2087June15/原表ACTIVE read5-write2，成本CFN栈UPDATE_ROLLBACK_COMPLETE/模板参数10，三旧CS保持可读。新SHA b9193bbd7959159400e659f14179943a236eadd8f1ff68f13d385a5713155026，截止16:08:51.610UTC / Winnipeg11:08:51.610；十六文件b8672d4a...，原七/十/十三绑定、三个已消费槽位和记录不改，新slot空/helper只解析未Run/本轮云写0。
+
+拟最多两写：准确Budget10→50，全绑定预算核验后准确表read5→100/write2不变，再独立新进程Inspect。CFN10与实际50金额漂移明确批准，所有权/标签保留，不纠正/剥离/重放旧apply，旧技术权限未撤销；整预算非CAS覆盖/无幂等令牌、CalculatedSpend暂时归零不是零账单、并发/刷新失败/异步表/部分遗留/非零费用、永久槽位不自动回滚删除补齐复位或写重试须新SHA完整风险确认，不借仅恢复授权。无IAM/Secret/Neon/CFN/Cell/runtime变更，50USD非cap；通过后再专属任务IAM/v3TTL模板另批。本仓仅文档，生产源码/镜像及用户.vscode/settings.json不改。[新清单与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3d-direct-cost-controls-review.md)。以下保留历史。
+
 ## F3c3c：成本栈恢复完成，费用上限更新未执行
 
 2026-10-12 Winnipeg。用户确认22fe4989...仅恢复及风险后一次helper仅1直接RollbackStack，响应OperationId f68993c6...；14:40:05.592UTC / Winnipeg09:40:05.592准确本token完成事件d0ad64a0...，成本栈UPDATE_ROLLBACK_COMPLETE/DisableRollback true、原模板81fbf96d.../参数10恢复，实际Budget10/时间段Oct1-End2087June15/原表ACTIVE read5-write2及全部绑定恢复期望一致。14:40:16.443/14:40:21.998UTC两独立Inspect（第二次新进程）均恢复通过且除时间外一致stable95596cd4...，settings f04b6809...；三CS仍可读两OBSOLETE/一EXECUTE_FAILED。回执2b212a16.../Inspect89d3ddf9...、722051e3...保留，十三代码8a3a02ad.../原七十绑定/两个3marker历史槽位保持，新slot永久消费4markers，禁止重放helper/reset/自动补齐/删除/写重试。
