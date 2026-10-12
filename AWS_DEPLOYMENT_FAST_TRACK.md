@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c5：v3完整模板与独立证据切片，实际闭环仍未启用
+
+2026-10-12 Winnipeg。平台独立v3 renderer default RESERVED(0资源)→ARMED(1生命周期调度)→PAID(25基础资源)完成，birth intent/实际StackId替代未知child SHA，付费条件/输出与调度前置绑定。新AWS只读adapter双读Original/template/完整或失败partial inventory、参数/标签/physical输出/caller/token，branded证据及schema2前驱/cleanup桥不伪造旧renderer证明；失败不升级TTL前驱。新增委托冷decoder、准确drain/authority/executor事件和失败STANDARD补偿数据接口，所有写/安装/调用/运行时授权false。
+
+10新+22相邻32测试/typecheck/定向lint无warning/syntax通过；17:07:15.912UTC / Winnipeg12:07新Source实际ACM issued/TrustStore active1CA/AZ a-b元数据核对，AWS ValidateTemplate通过/no capabilities/6参数/default RESERVED，Cell栈、新协调器/两角色ABSENT，旧CFN role存在但有效权限未证明。32绑定f69e4250.../报告6b06b463.../plan232899ef.../template9a1f7bba...，原24/16/旧模板验证/消费槽位保持；提案不是Neon当前行、已有客户部署或云批准，拟3h+1h仅日期，未创建Stack或Schedule。资源/IAM/Invoke/Secret值/Neon写0，未重做费用/DNS/baseline；本仓仅文档，生产源码/镜像及用户.vscode/settings.json保留。实际批准登记/协调器组合、失败入场排除围栏/certified census、once-only补偿journal/执行仍缺失，不称自动部署/清理闭环完成，下一切片集中补齐后再准确fresh云审批，不抢先创建会在开发期间过期的Reserved栈。CFN外部阶段倒退可能删资源另批，50USD非cap。[完整实现与未完成门禁](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c5-cell-v3-template-evidence.md)。以下保留历史。
+
 ## F3c4：费用验收接线、专属任务权限编译与v3调度前置
 
 2026-10-12 Winnipeg。平台实现独立live-direct-cost验收路径、单租户准确Secret/KMS/authority/baseline TaskRole boundary+inline编译器、实际provision item及准确Stack ARN绑定的DISABLED schema3 drain片段。9新+11相邻20测试/typecheck/定向lint无warning/syntax通过，旧16绑定/模板/adapter/槽位不改。r1凭据获取失败零写保留；Source刷新后r2 16:12:51.008UTC / Winnipeg11:12:51一次新只读报告成功，Budget50/read100-write2/CFN10明确覆盖settings575a194a...保持，证据仅30秒有效，不把归档当未来live门禁。
