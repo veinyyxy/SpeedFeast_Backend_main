@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3a：创建后因Conditional范围停止，未Execute
+
+2026-10-11 Winnipeg。用户确认d662dab6...后一次Run仅1写CreateCS，准确新CS f9ff4310... CREATE_COMPLETE/AVAILABLE；Replacement Conditional/RequiresRecreation Conditionally不满足原批准False/Never，Scope检查拒绝，不Execute/更新DDB/删除旧CS。04:10:32.255/04:10:37.205UTC两Inspect（第二次独立进程）预算10/read5/write2、表ACTIVE/成本栈CREATE_COMPLETE及两旧FAILED CS保持，settings a6433291...=before，原总完成flag false不修改。04:17:29UTC只读Context审阅只有Amount10→50与TimePeriod加原时间段两路径，其它属性相同；一般No interruption文档不能把实际Conditional改报False，原因未完全确定。
+
+回执068bc6e4.../Inspect e1bb0a65...、ba0bf7a4...，七code389e66ad...不变，新slot消费/3marker，不能重跑Run/helper/reset/补齐/重建/删除/写重试。建议下一步先经用户同意仅准备复用现有准确CS的新路径级只读评审，实际Conditional风险/两写fresh SHA另批，不直接放宽原检查。无IAM/Item/Neon/Cell/runtime，本仓仅文档、用户.vscode/settings.json保持。[完整停止证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3a-cost-controls-scope-stopped.md)。以下保留历史。
+
 ## F3c3a：Source刷新后只读复核成功，等待新SHA
 
 2026-10-11 Winnipeg。准确Source身份已恢复，04:03:15.406UTC（Winnipeg23:03）一次r2 Review确认Budget10/原TableId58c851f4... read5/write2、两旧FAILED CS与全部before设置保持，四权限模拟allowed；新旧manifest只有review/expiry/SHA变化，七code389e66ad.../templatecd7e9910.../before a6433291...不变，原17测试/type/lint不重做。新待批SHAd662dab65100299ee922b84a88cc0a8c42db2f16bfbeb6597827b01dbf8903fe，截止2026-10-12 05:03:20.340UTC / Winnipeg10月12日00:03:20.340；新r2目录/helper完成，slot仍空/本轮AWS写0，不重放r1失败script，不转移旧审批。
