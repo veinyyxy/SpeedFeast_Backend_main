@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c8：DDB排除、固定补偿日志及准确ARN只读恢复完成准备，未安装
+
+2026-10-12 Winnipeg。平台新增Source-only五准确key事务强读、marker-only fresh SHA审批/DB-CFN重新采集/absent原子排除、固定per-Cell不可变intent/receipt、保护publication事务数据与准确STANDARD ARN/token请求/独立CFN最新事件双读恢复。journal reserve不是DeleteStack ownership，没有delete client或生产handler；旧发布器可绕过仅数据围栏，已专门测试并明确仍需权限隔离与实际guarded publisher，不借原drain-only/新marker-only范围执行云删除。
+
+11新+12相邻23测试/typecheck/lint无warning/syntax通过；最终r2 19:41:08.625UTC / Winnipeg14:41现有Source有效、原表58c851f4... ACTIVE/准确key schema，五key两独立事务均ABSENT、旧登记ABSENT。46代码49719dc5...含原42保持/报告3fdf9dbe...，r1证据保留。无Cloud/IAM/Item/Invoke/Secret值/Neon连接或写，未真实调用CFN recovery（无真实intent），旧Cell缺失不冒充当前证据；本仓仅文档，生产源码/镜像和用户.vscode/settings.json保持。没有可执行云批准清单，F3c7 Neon保护尚未安装，runtime关闭。下一切片集中完整父授权、旧发布路径技术隔离/actual guarded publisher及固定Code/Revision/RoleId Lambda root，再once-only删除ownership/执行和完整TTL；实际DB/IAM/Cell/删除仍fresh范围另批，不抢先创建Reserved或付费资源，50USD非cap。[本阶段实现和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c8-failed-birth-ddb-journal.md)。以下保留历史。
+
 ## F3c7：数据库侧失败围栏与独立census验证完成，未安装
 
 2026-10-12 Winnipeg。平台新增failed_unadmitted/epoch1（provision hash NULL、允许提前失败）schema候选：永久fence表、环境transition/两CHECK扩展和Always环境门禁，保护业务表/原目录/旧证书保持；角色权限另候选，reader只新增fence读和jobs/steps三列，drain准确函数EXECUTE，无role/LOGIN/密码/Secret变化。branded failed Stack精确intent、一次SQL writer、14 SELECT受限非owner Serializable READ ONLY certified census和实际Neon material factory均dormant，不是成功TTL或DeleteStack授权。
