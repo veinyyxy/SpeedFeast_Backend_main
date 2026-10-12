@@ -2,6 +2,14 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9c：锁定控制面安装完成，独立双回读通过
+
+2026-10-12 Winnipeg。用户批准0cb547a6...及风险后原六写安装器运行一次，永久槽22:44:43.515UTC消费，不能重放。原末尾检查因准确$LATEST GET返回带:$LATEST的ARN而非预期未限定ARN非零退出，原回执保留；没有写重试、补齐、回滚、删除或复位。平台仅新增独立只读核验器和4项测试，准确Latest ARN及无Layer null/缺省/空数组表示不改变目标，不接受alias/数字版本；原63代码/候选ZIP/lock不改。
+
+22:54:39.017UTC / Winnipeg17:54两完整回读稳定、18检查均true，四对象LOCKED：boundary默认v1 deny-all、Lambda-only role空inline/attached、日志7天、准确ZIP/Active Successful/concurrency0；RoleId AROAV3GNMXTZBYYFRN63O、Revision7817b5a5...保持。parent/workflow/旧排除/registration-attempt均ABSENT、Cell名称ABSENT。65代码ae57d6dc.../独立报告9cfbfb40...；本次AWS写尝试6、额外核验写0/Invoke0/Secret值0/Neon连接写0。16定向相邻测试/type/lint0warning/syntax通过；没有完整权限有效Allow-path、parent或runtime启用，F3未完成。
+
+下一切片准备fresh Neon保护schema/受限角色窄grants审批，在锁定期修正runtime reader同样Latest ARN/null Layer表示问题并完成gate-capable最终包/异步配置，再另批RESERVED/准确IAM-table窗口/parent/实际allow-deny，未通过前不ARMED/PAID。不重做镜像或旧探针，不重放本次安装；50USD/月非hard cap。本仓仅文档，生产源码、镜像和用户`.vscode/settings.json`保持，默认授权直接main提交/推送。[实际安装结果与完整继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9c-bootstrap-installation-result.md)。以下保留执行前历史。
+
 ## F3c9c：Source登记与锁定安装准备完成，待准确六写批准
 
 2026-10-12 Winnipeg。F3c9c完成Source-only冷审批/真实plan重建/metadata-RESERVED-受限DB重新取证登记SDK、固定本地wx+flush及DDB registration-attempt两事务once门禁，未实际使用。locked bootstrap Review/Run/独立Inspect及同一六写runner实现：准确新deny-all boundary/角色/7天日志组/已验证候选函数，concurrency0，无inline/attached/runtime grant，不Invoke或创建Cell。最终r3 22:11:50.949UTC / Winnipeg17:11 Source有效、四对象/parent-workflow-旧登记-attempt均ABSENT、本地槽未占、Cell名称ABSENT；63代码3fbde58c.../报告986e79cb...含原58/包/lock不变。待批准bootstrap SHA0cb547a6016a508ff5903fb99f804b6cb341147e273e262e1a7a43ef3362676c，截止23:11:50.948UTC/Winnipeg18:11，最大6写、非原子/传播/并发/遗留费用/永久槽不自动修复重试风险。Neon r2 22:13:25.071UTC / Winnipeg17:13 PG18.6/open0/apply0/旧seal完整/new失败保护ABSENT，两受限角色LOGIN；原旧1/1/1保留其它0、真实jobs CHECK为pending/running/retry_wait，新增未安装schema候选只修正旧候选该谓词。61代码981ae5f2.../报告c828780f...。12新+23相邻35测试/type/lint0warning/syntax通过；AWS写/Invoke/Secret值/Neon写0，Neon仅2只读连接。F3c9c/F3全安装仍未完成，无parent执行清单；下一步仅获批locked bootstrap一次执行＋独立Inspect，再另审Neon及gate-capable package/异步配置、最终RESERVED/IAM/table窗口/parent/actual allow-deny，再ARMED/PAID，不能登记后静默换包。
