@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3d：两项费用更新完成，独立核验通过
+
+2026-10-12 Winnipeg。用户确认b9193bbd...及完整风险后一次已绑定helper有效窗口仅两写：Budget API10→50、完整预算核验后准确原表read5→100/write2不变。回执01c8d5de.../failure null，新永久slot已消费七marker及explicit-override；不能重跑helper/reset/自动补齐删除回滚或写重试。15:19:27.527/15:19:33.868UTC（Winnipeg10:19，第二次独立新进程）两Inspect均targetVerified=true，除时间外一致stable e9d8779e...，实际settings575a194a...匹配批准期望：Budget50/固定Oct1-End2087June15、原TableId ACTIVE read100-write2，其余绑定配置/告警订阅保持。CFN栈仍UPDATE_ROLLBACK_COMPLETE/原模板参数10/原恢复事件，CFN10/实际50为批准金额漂移，所有权标签保留，不称整栈无漂移，旧apply封存但未技术撤权，三旧CS仍可读不重放。
+
+Review/Run/新进程Inspect十六绑定b8672d4a...及原七十十三/历史槽位记录不变，23测试不重做；无IAM/CFN/Item/Secret/Neon/authority/Lambda/Cell/runtime变更。当前仅费用配置及覆盖证据完成，不是F3整体或自动部署闭环；下一阶段集中准备实际Budget50+明确覆盖证据readiness接线、专属任务IAM和v3TTL清理兼容Cell模板/真实清理路径，不静默放宽旧CFN10检查，实际权限/付费部署fresh准确清单另批。50USD非硬cap。本仓仅文档，生产源码/镜像及用户.vscode/settings.json保持。[实际完成证据与下一阶段](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3d-direct-cost-controls-executed.md)。以下保留历史。
+
 ## F3c3d：直接费用控制清单完成，尚未执行
 
 2026-10-12 Winnipeg。平台新增独立预算API/表readcap两写入口与新永久槽位，8新+15相邻23测试/typecheck/定向lint/syntax通过；15:08:51.610UTC / Winnipeg10:08:51.610实际只读Review准确Source身份与两项模拟allowed、恢复settings f04b6809...保持。实际仍Budget10/固定Oct1-End2087June15/原表ACTIVE read5-write2，成本CFN栈UPDATE_ROLLBACK_COMPLETE/模板参数10，三旧CS保持可读。新SHA b9193bbd7959159400e659f14179943a236eadd8f1ff68f13d385a5713155026，截止16:08:51.610UTC / Winnipeg11:08:51.610；十六文件b8672d4a...，原七/十/十三绑定、三个已消费槽位和记录不改，新slot空/helper只解析未Run/本轮云写0。
