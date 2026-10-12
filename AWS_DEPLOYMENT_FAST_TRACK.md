@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3a：Source刷新后只读复核成功，等待新SHA
+
+2026-10-11 Winnipeg。准确Source身份已恢复，04:03:15.406UTC（Winnipeg23:03）一次r2 Review确认Budget10/原TableId58c851f4... read5/write2、两旧FAILED CS与全部before设置保持，四权限模拟allowed；新旧manifest只有review/expiry/SHA变化，七code389e66ad.../templatecd7e9910.../before a6433291...不变，原17测试/type/lint不重做。新待批SHAd662dab65100299ee922b84a88cc0a8c42db2f16bfbeb6597827b01dbf8903fe，截止2026-10-12 05:03:20.340UTC / Winnipeg10月12日00:03:20.340；新r2目录/helper完成，slot仍空/本轮AWS写0，不重放r1失败script，不转移旧审批。
+
+原定最多三写及原完整风险不变：准确成本栈Create/严格Budget-only CS核对/Execute DisableRollback=true，再原表read100/write2；CFN自动删除已保存准确两旧FAILED CS不可恢复，预算非硬cap/read cap best-effort、部分遗留不自动rollback/fill/reset/retry，新SHA须确认，不改IAM/Item/Neon/Cell/runtime。旧记录/binding/slot/镜像保持，本仓仅文档、用户.vscode/settings.json保留。[新清单](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3a-cost-controls-refreshed.md)。以下保留历史。
+
 ## F3c3a：已批准执行在凭据预检停止，0写
 
 2026-10-11 Winnipeg。用户确认c43a9aea...后有效窗口一次Run在PREFLIGHT停止，writeAttempts0/无CS ARN/slot未消费；Run内及新进程Inspect均CredentialsProviderError，Source CLI只读身份也未成功。不声称仅登录到期或当前云配置已核验；本次未更新Budget/表、执行或删除旧CS。回执e64b0923.../两失败b39abab9...，原输出目录保留不重放helper/自动retry/fill/delete/rollback/reset，七binding389e66ad...与17测试结果保持。本仓仅文档、用户.vscode/settings.json保留；请用户aws login --profile techlong-sandbox-user并回复Source已刷新，之后先只读核对/fresh Review、新SHA再确认，不新增IAM/Item/Neon/Cell/runtime，50USD目标及风险不变。[失败证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3a-cost-controls-preflight-stopped.md)。以下保留历史。
