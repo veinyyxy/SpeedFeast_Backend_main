@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c3a：费用门禁更新候选完成，尚未执行
+
+2026-10-11 Winnipeg。平台13新+4相邻17测试/type/lint通过，00:00:41.289UTC（Winnipeg19:00）一次实际只读Review确认Source四模拟allowed、原成本CFN栈Budget10/原表read5/write2及准确TableId58c851f4...。候选最多3直接写：原成本栈Create/严格仅Budget Modify不替换CS回读/Execute DisableRollback=true，随后准确表read100/write2；模板仅准确50边界和原TimePeriod显式固定，告警比例/地址/标签/其余绑定配置保留，不直接UpdateBudget造成漂移。CFN会自动删除该栈两条准确旧FAILED CS，完整原件已保存，此不可恢复影响须在清单单独确认；第三方对象出现即停。
+
+待批SHAc43a9aea8323ab22fab9e510db83b18beecfe90de4852df3d23cdc599f4e58e7，截止2026-10-12 01:00:46.364UTC / Winnipeg2026-10-11 20:00:46.364；7文件389e66ad.../新slot空/AWS写0，原S0/F3c1/F3c2模板/绑定/slot及镜像不改。本仓仅文档，用户.vscode/settings.json保留。50USD非硬cap，read cap best-effort、不保证吞吐；非原子/失败部分遗留，不自动rollback/fill/reset/retry，不新增IAM/Item写/Neon/Cell/运行时。确认后一次Run+独立新进程Inspect；之后专属任务IAM/v3短TTL模板及真实清理另批。[完整清单](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c3a-cost-controls-review.md)。以下保留历史。
+
 ## F3c2：材料基础安装成功，临时标签策略已删除
 
 2026-10-11 Winnipeg。用户确认fresh SHA6b471670...后原窗口一次Run完成12直接写（3IAM/8S3/1ELB）：限时准确Source标签policy、ELB服务关联角色、私有桶/四配置/空baseline与公共CA三对象、准确TrustStore；创建后立即精确删除临时policy，23:40:17.790及23:40:25.594UTC两Inspect（第二次独立新进程）均metadata verified/临时policy缺失，stable01530cf7...。SLR RoleId AROAV3GNMXTZNUJ5QVBFD、TrustStore后缀aa1771fd0469cc44 ACTIVE/1CA/0撤销/0关联/准确五标签；三对象和服务导入公共CA完整字节SHA一致，私钥/客户端证书未上传。
