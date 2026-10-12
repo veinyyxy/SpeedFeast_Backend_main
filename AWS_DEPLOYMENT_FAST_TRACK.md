@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c4：费用验收接线、专属任务权限编译与v3调度前置
+
+2026-10-12 Winnipeg。平台实现独立live-direct-cost验收路径、单租户准确Secret/KMS/authority/baseline TaskRole boundary+inline编译器、实际provision item及准确Stack ARN绑定的DISABLED schema3 drain片段。9新+11相邻20测试/typecheck/定向lint无warning/syntax通过，旧16绑定/模板/adapter/槽位不改。r1凭据获取失败零写保留；Source刷新后r2 16:12:51.008UTC / Winnipeg11:12:51一次新只读报告成功，Budget50/read100-write2/CFN10明确覆盖settings575a194a...保持，证据仅30秒有效，不把归档当未来live门禁。
+
+当前两Task角色仍共用boundary v3，准确activation/baseline读取模拟implicitDeny且MissingContext非空，不作全面有效权限证明；activation缺失/ECS Cell MISSING。两清理Lambda仍原business ZIP/Revision/Active Successful，均无显式async config，Scheduler retry0不能承诺整链零重试。24代码66415f11.../报告5539d123.../snapshot cb29df7c...；Cloud/IAM/Invoke/Secret值/Neon/Cell/runtime写0，本仓只文档，生产源码/镜像及用户.vscode/settings.json保持。数据编译器不等于安装许可：实际单租户Secret/KMS/fence/Cell管理端点/TaskDefinition/provision尚不可填，不造placeholder SHA或可执行批准清单，共用ExecutionRole不改。下一阶段集中独立v3 Cell renderer/匹配provision证据、自动授权/journal删除权限与失败补偿闭环，不重做已完成费用/DNS/baseline，实际新安装/付费执行另fresh准确范围批准，50USD非cap。[本阶段实现与真实门禁](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c4-deployment-prerequisites.md)。以下保留历史。
+
 ## F3c3d：两项费用更新完成，独立核验通过
 
 2026-10-12 Winnipeg。用户确认b9193bbd...及完整风险后一次已绑定helper有效窗口仅两写：Budget API10→50、完整预算核验后准确原表read5→100/write2不变。回执01c8d5de.../failure null，新永久slot已消费七marker及explicit-override；不能重跑helper/reset/自动补齐删除回滚或写重试。15:19:27.527/15:19:33.868UTC（Winnipeg10:19，第二次独立新进程）两Inspect均targetVerified=true，除时间外一致stable e9d8779e...，实际settings575a194a...匹配批准期望：Budget50/固定Oct1-End2087June15、原TableId ACTIVE read100-write2，其余绑定配置/告警订阅保持。CFN栈仍UPDATE_ROLLBACK_COMPLETE/原模板参数10/原恢复事件，CFN10/实际50为批准金额漂移，所有权标签保留，不称整栈无漂移，旧apply封存但未技术撤权，三旧CS仍可读不重放。
