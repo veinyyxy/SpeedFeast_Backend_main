@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9h：获批 Run 停在只读前置阶段，未进入创建
+
+2026-10-12 Winnipeg。用户确认 afb48684... 及完整风险后，平台原109绑定Run一次，04:23:36.220UTC停在READONLY_PRECONDITIONS，未进入CreateStack/未消费新槽/无StackId，云写0；Run回执f74b4764...。04:24:16.727UTC独立新进程Inspect获取Source凭据失败CredentialsProviderError，失败SHA e39025aa...；云状态未独立重新核验，不能断言无并发漂移或唯一倒填Run停止原因。所有旧审阅/失败证据/槽保留，原109/95/r3包未改，不重复测试或镜像；没有新IAM/table/Secret/Neon/Invoke/parent/ARMED/PAID。需用户刷新Source，随后仅新的独立只读Inspect，不自动重放Run；原批准截止05:02:44.175UTC / Winnipeg00:02:44.175、plan到07:02:35.244UTC不延长，恢复创建按实际核验/窗口明确授权。runtime/F3未完成、50USD非cap；本仓只有交接文档，生产代码与用户`.vscode/settings.json`保留。[停止证据及恢复位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9h-reserved-stopped.md)。下面保留准备历史，不代表已创建。
+
 ## F3c9h：零资源 RESERVED 身份栈清单准备完成，未创建
 
 2026-10-12 Winnipeg。平台完成准确 CreateStack 一次入口/独立 Inspect，19 定向测试/typecheck/lint 零警告/syntax 通过。04:02:44.175UTC 实际只读 review 与04:03:58.938UTC 新进程前态一致：Source 两准确 CreateStack/PassRole 模拟 allowed（非有效权限证明），现有 CFN 执行角色 RoleId AROAV3GNMXTZOJLYFB4HB/空策略/boundary仅v1，ACM/trust/AZ通过；Cell/parent全槽缺失，r3冻结包与原Revision4a5f64bb.../snapshot5e758fe6.../deny-all/concurrency0/async60-retry0保持。109 code6426ee88.../原95及三个消费槽不变，26完整模板定义全部masked/预期实际0资源、ValidateTemplate6参数无capability；不重复镜像、隔离DB或旧权限探针。
