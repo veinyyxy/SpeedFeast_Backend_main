@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9l：锁定期 V6 代码更新完成，独立验收通过
+
+2026-10-13 Winnipeg。用户明确批准9a659800...后平台冻结132入口一次Run成功，14:39:40.029UTC永久槽消费63f167f1...，一次带原Revision4a5f64bb...条件的V6代码PUT收到响应，不发布版本、不追加async/IAM写。14:40:48.770UTC独立新进程 `LOCKED_V6_CODE_INDEPENDENTLY_VERIFIED`：准确函数实际Revision1843cd76-fd3b-4b82-9c3d-1e532901a58e、CodeSha ofOAfejx...、432966字节、Active/Successful，15原锁及async保持，slotMatches/invariantMatches true；报告faa88863.../metadata6aadcf03.../snapshot e4337370...、锁+async invariant6210b806...一致。总code写1，IAM/async/Invoke/Secret值/Neon/表/parent/新资源0，runtime/F3整体未完成，KMS及业务路径未证明。冻结132/包/全部旧记录与槽保留，不重放或复位；50USD/月非硬cap。下一锁定准备独立新identity、实际新ARN V6 IAM/table/parent及固定有限gate，长时准备先于新TTL，后续各云范围fresh另批。本仓仅更新交接文档，用户`.vscode/settings.json`保持。[真实安装与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9l-locked-v6-code-installed.md)。下面为历史。
+
 ## F3c9l：锁定期一次 V6 代码更新已准备，未执行
 
 2026-10-13 Winnipeg。先准备原函数一次V6代码更新，不创建新身份或启动新TTL。复用候选r2 ZIPa1f3807d.../bundle5ea69744.../报告71e78739...，不重建包/镜像；新Review/一次Run/独立Inspect、有界阶段错误及固定signed PUT内存ZIP上传完成，Revision4a5f64bb...条件/Publishfalse，保持deny-all/空策略/concurrency0/原async且不再写async。13新旧定向测试/type/lint0warning/syntax通过。14:19:59.677UTC实际只读15锁门禁、原r3/Revision/async/parent缺失/身份名称缺失保持，两准确UpdateFunctionCode资源模拟allowed非实际权限或KMS路径证明；新SHA `9a6598007275766845e0da0a3657f01c33ae9899032188685b3c8bcaaced7c7d`，到15:19:59.677UTC / Winnipeg10:19:59.677，132code80bf86b1.../报告284b9e2a...。14:22:22.913UTC独立before回读snapshot5e758fe6...及lock-async invariant6210b806...一致、候选未安装、新槽空，报告fd77ed0d.../metadata b3a4e176...。旧128/包/全部消费槽和退役历史保留，本轮云写/Invoke/Secret值/Neon/表/身份Cell创建0，runtime/F3未完成、50USD非cap。实际一次代码更新新SHA完整风险另批，接受异步/缓存非跨服务CAS/Auto patch/部分遗留/永久槽不复位回滚重试，再独立新进程验收；其余新identity/IAM-table-parent/gate和付费另批。只文档变动，用户`.vscode/settings.json`保持。[准确范围与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9l-locked-v6-code-review.md)。下面为历史。
