@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9j：删除调用前停止；退役槽已消费，旧栈仍在
+
+2026-10-13 Winnipeg。用户批准85838a3c...后平台原119冻结Run一次，12:59:16.409UTC永久退役槽消费7b31496e.../attempt保存，随后停在PERMANENT_SLOT，deleteCallEntered=false/responseReceived=false，没有提交删除，报告161826b4...。该阶段含再次文件/身份/完整前置，原catch没有具体异常，停止原因未唯一定位。13:00:27.025UTC独立Inspect确认旧UUID仍CREATE_COMPLETE/RESERVED/0资源、原bindings/CFNrole/parent缺失及r3-deny-all-空策略-concurrency0保持，槽匹配，报告969d857c.../证据3917a10d...。13:03:23.853UTC一次独立只读诊断当前前置全部通过/Source有效，120code8b5fa0a3...原119不改，报告139cb51c.../证据c7bec23e...；不倒填原因，不据此重试。云写/IAM/Invoke/Secret值/Neon/表0，旧栈尚未退役、runtime/F3未完成；旧创建与退役槽及全部历史保留，无新恢复槽/重放/复位/新birth/安装。下一需用户同意仅准备带分阶段错误记录的新受审恢复方案，实际新尝试/新槽/准确删除另按新SHA批准；50USD非cap。本仓仅文档，用户`.vscode/settings.json`不变。[停止证据与后续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9j-reserved-retirement-stopped.md)。下面为历史。
+
 ## F3c9j：过期零资源身份退役清单已准备，尚未删除
 
 2026-10-13 Winnipeg。用户同意仅准备退役后，平台完成准确旧Stack UUID `01a06ca0-c6bf-11f1-898a-0e285576029b` 的一次Source STANDARD DeleteStack与独立Inspect入口；18定向相邻测试/type/lint0warning/syntax通过。12:51:37.908UTC只读确认CREATE_COMPLETE/RESERVED/0资源、无Change Set、原完整bindings和CFNrole不变；parent/workflow缺失、r3代码/deny-all/空策略/concurrency0保持，准确DeleteStack及PassRole模拟allowed，不是有效权限证明。新SHA `85838a3ce01f7acfb04c3acb202d0f9ad4e4c8a1f9c31a2e6d03b5361ab0b6ec`，到13:51:37.908UTC / Winnipeg08:51:37.908；119code8368d4a1...原115保持，报告651cf960...。12:52:16.635UTC独立回读NOT_DELETED、零资源、退役槽空，报告15c070ff...。云写0，未授权/执行删除，原创建槽89db5acf...永久消费/历史保留、不延期或复位；V6候选未安装、runtime/F3未完成，50USD非cap。准确UUID不可恢复、非CAS并发phase变化可能删除并发资源、异步提交及永久槽/凭据日志费用风险均须新SHA另批；不删除其它资源或业务、不自动新birth/code-IAM-table-parent-gate-付费。获批且独立确认退役后才准备新身份及剩余安装材料，先完成长时准备再临近新TTL执行。本仓仅文档，用户`.vscode/settings.json`保持。[准确范围与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9j-reserved-retirement-review.md)。下面为历史。
