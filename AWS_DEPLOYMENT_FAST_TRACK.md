@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9e：Neon保护及窄授权原子安装完成，两个独立验收通过
+
+2026-10-12 Winnipeg。用户批准6c4f1727...和新独立槽风险后，原70代码Run仅一次，01:43:23.552UTC消费新槽，schema/grants/COMMIT各1，COMMIT确认/after-DDL目录77cd7faa...在验证前保存。01:43:26.464/01:44:07.602UTC两个新TLS只读验收通过，完整state e4687f38...及真实legacy27f5fc88...一致；新保护015db427...，4n/5c/1p/1f/enforced/validated/键映射与RESTRICT通过，旧seal/业务不变，open0/apply0/新围栏0。reader9表6列SELECT无definer；drain原4表20列+准确definer EXECUTE按批准保留，已有LOGIN/属性/密码不变。未调用失败入口，不是受限认证或runtime proof。
+
+回执aa1ec6a0.../两Inspect99672aa8...、c2538184...保存，原70/SQL/包保持，新槽f5cb3a94...消费、旧槽d113cae1...原样永保留，不重放/复位/自动down或撤销批准grants。3DB连接/实际原子安装1、AWS/Secret值/Invoke0，不重做原21测试/隔离模拟/镜像，也不把当前成功倒填为旧失败唯一原因。下一阶段集中锁定期runtime reader准确$LATEST/null Layer、真实jobs谓词、gate-capable最终包/async方案和本次保护SHA绑定；实际云代码/配置/权限/调用/RESERVED-parent与付费Cell仍fresh范围另批，runtime/F3未完成，50USD非cap。本仓只文档，生产源码和用户`.vscode/settings.json`保持。[实际验收证据与下一阶段](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9e-neon-installed.md)。以下保留历史。
+
 ## F3c9e：PG18核验修正和新受审安装清单准备完成，未写入
 
 2026-10-12 Winnipeg。用户同意仅准备后，平台新增schema5 PG18目录入口：NOT NULL逐列映射、4n/5c/1p/1f、enforced/validated/非deferred/键列和FK RESTRICT动作、环境保留目录及两查询形态一致检查；仅已验证n投影给原V4非计数规则，最终状态仍真实全量摘要。提交前安全快照先wx+flush保存再验证，失败阶段和SQLSTATE有界；原68/SQL/包/旧消费槽不改，没有重放旧Run。
