@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9k：准确旧零资源身份已退役并独立验收
+
+2026-10-13 Winnipeg。用户明确批准508a21f8...后平台原124 Run一次，13:29:50.058UTC新恢复槽消费12246428...、完整前态/最终轻量/证据年龄通过；一次准确旧UUID STANDARD DeleteStack收到响应，AWS删除13:29:51.013UTC / Winnipeg08:29:51.013，Run4bc2cdb8...保存。首个Inspect对删除后省略可选EnableTerminationProtection误拒绝，原失败9a9f9691...保留不删除重试。新增V8只读仅DELETE_COMPLETE且前false证明允许省略，实际后态null不冒充false，原124/旧资料槽不改；15定向相邻测试/type/lint0warning/syntax通过。13:42:40.816UTC独立新进程确认准确旧UUID DELETE_COMPLETE/原完整bindings与template及创建/准确新token删除事件保持、历史资源0、无其它live Cell；parent/workflow缺失、原r3/deny-all/空策略/concurrency0/async及CFN完整foundation保持。128code45c2931e.../报告1f777012.../证据bec46d60...；旧UUID不可恢复，原创建/退役/恢复槽及所有记录永保留。总云写仅DeleteStack1，其余IAM/新资源/code/Invoke/Secret值/Neon/表0；退役小阶段完成，runtime/F3总体未完成，50USD非cap。下一先锁定准备剩余V6安装材料和独立新身份流程，长时准备在新TTL之前；实际创建/安装/登记/gate/付费各准确新范围另批，不复位或自动新生。本仓只文档，用户`.vscode/settings.json`保持。[实际退役与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9k-retirement-verified.md)。下面为历史。
+
 ## F3c9k：新受审恢复方案已准备，尚未执行
 
 2026-10-13 Winnipeg。用户仅同意准备后，平台V7分阶段有界错误记录/独立新槽提案完成，旧120源/包/历史/原创建槽和消费退役槽7b31496e...保持。19定向相邻测试/type/lint0warning/syntax通过。完整Source/零资源/模板/事件/CFNrole/parent锁及权限模拟仅在新槽消费前做一组且先存证，从最早读取到native send限30秒；消费后只准确栈/template/资源0/ChangeSet0与Source双读，限10秒，不再整组重读IAM/parent，该差异及新永久槽/不可恢复/并发风险须明确新批准。13:19:22.835UTC只读审阅完成（完整11.935秒、最终0.819秒，非未来耗时保证），旧栈仍CREATE_COMPLETE/RESERVED/0资源/无ChangeSet，原锁与角色及模拟保持；新SHA `508a21f8df2212d9df1c0cab6d52375ee445b8b2ea243d17c303a1a8a51af46a`，截止14:19:22.835UTC / Winnipeg09:19:22.835，124code2f679e77.../报告d5956afc...。13:21:28.263UTC独立新进程Inspect NOT_DELETED/新槽空，报告e308ddb4...；云写0，未新建消费恢复槽/删除旧栈/安装权限或新birth，runtime/F3仍未完成，50USD非cap。原停止原因未唯一查明，不自动重试/复位；实际新永久尝试及准确旧UUID STANDARD删除另按新SHA/完整风险批准，后独立历史+零资源+锁定验收。本仓仅文档，用户`.vscode/settings.json`保持。[新恢复清单与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9k-retirement-recovery-review.md)。下面为历史。
