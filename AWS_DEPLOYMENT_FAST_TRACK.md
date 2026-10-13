@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9i：KMS修正候选完成；原身份计划过期，尚未安装
+
+2026-10-13 Winnipeg。平台新增V6最小SourceFunctionArn deny的kms:Decrypt转发例外，原Key/ViaService/CallerAccount/Secret source固定版本/其它限制保留；V6全文验证后准确IAM响应投影，原V4私有品牌/V5元数据/root/gate保留，legacy metadataHash不是实际V6policy字节SHA。17测试/type/lint0warning/syntax与r2内部双构建/无依赖启动自检通过，新bundle5ea69744.../ZIPa1f3807d.../报告71e78739...、115code381c1726...；未上传，原109/r3/lock/槽保持。12:18:46.174UTC / Winnipeg07:18只读确认旧Stack仍CREATE_COMPLETE/RESERVED/0资源、parent未登记/deny-all/concurrency0保持，plan已在Winnipeg02:02:35.244到期、原批准也过期、创建槽仍消费。7非变更IAM上下文模拟旧两explicitDeny/新两allowed/错误三implicitDeny含其它missing contexts，不冒充实际KMS/role/gate证明；报告c85ae78d.../evidence e46e5883...保存。AWS/IAM/Secret值/Neon/Invoke写0，无安装批准SHA、不改云代码权限/开窗口/登记/退役/重建/延期复位，runtime/F3未完成、50USD非cap。下一需要用户同意仅准备精确过期零资源identity退役方案，实际删除/独立新birth新槽/code-IAM-table-parent-gate-付费各fresh另批，先冻结剩余材料再临近执行建立新计划；旧记录永久保留。本仓只文档、生产代码/用户`.vscode/settings.json`不改。[候选与恢复方向](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9i-kms-and-expiry.md)。下面为历史。
+
 ## F3c9h：RESERVED 身份栈已创建并独立验收，实际零资源
 
 2026-10-12 Winnipeg。Source刷新后04:30:05.684UTC独立前态相同/栈槽缺失；用户明确恢复原afb48684...唯一创建后，原109全前置通过，04:31:47.961UTC槽消费、CreateStack1次收到真实Stack ARN尾 `01a06ca0-c6bf-11f1-898a-0e285576029b`，04:31:53.180UTC只读readiness完成。04:32:56.239UTC新进程独立双读通过：CREATE_COMPLETE/RESERVED/实际0资源，原完整template/6参数/tags/两输出/token/准确CFNrole/DisableRollback/无更新一致，parentCommon c4e5ebcb.../foundation b9cfa5c2...保持，stackAbsent如实false；冻结r3包/Revision4a5f64bb.../deny-all/空策略/concurrency0/async60-retry0/log7及其它门禁保持。Run fcaca71c.../Inspect27c4279c.../evidence7099c651.../槽89db5acf...保存，原失败/刷新记录保留，不自动retry、reset、fill、delete、rollback或重写历史。
