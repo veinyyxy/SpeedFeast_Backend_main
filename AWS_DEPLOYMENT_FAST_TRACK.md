@@ -4,6 +4,8 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+最新M1安装（2026-10-13 Winnipeg）：用户批准 fe97071f... 后三次新 IAM 写成功，boundary PolicyId ANPAV3GNMXTZL4VMJHXXZ、role RoleId AROAV3GNMXTZESNMKM56K及唯一inline已安装；18:37:01.667UTC / Winnipeg13:37:01.667，独立进程12项回读全部通过 `IAM_INDEPENDENTLY_VERIFIED_NO_CELL`。永久槽18:36:51.206UTC消费c6f26d4b...，保留原r1/r2/分步记录、不复位重放；新角色能力active非临时grant，但未批准/执行Cell。DB/Secret值/Invoke/收费创建0，运行时仍false，F3c9不扩展、M1仍未完成。下一集中收尾业务/config/control、live guard/journal/readiness及准确Cell/DNS/费用/清理fresh范围，不重建镜像或回到微探针。本仓仅交接文档并保留用户.vscode设置。[安装回执与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-single-tenant-m1-cell-iam-installed.md)。
+
 最新M1权限续段（2026-10-13 Winnipeg）：平台新 Cell 专属 boundary/role/inline 最多三写审阅入口、永久 journal 和独立 RoleId/PolicyId 回读已实现，实际 AWS 两份 ValidatePolicy findings 均0、新对象查空、指定 Source 三个安装配对模拟allowed（非完整权限或未来provider证明）。清单 fe97071f... 到19:28:33.838UTC / Winnipeg14:28:33.838，尚未获批或安装、不部署Cell；active付费能力/IAM非原子非CAS/部分遗留/不自动补齐回滚重试风险明确。用户指定管理员邮箱在 Neon READ ONLY 精确匹配一个active管理员；复用active plan的已发布schema-v2，不改旧计划、不创建业务行；50USD policy/control/DNS/live guard仍待集中收尾。13项新/相邻检查、type/lint及冻结132pins通过，本轮云/DB/Secret值/Invoke/消费槽0。后端镜像/SQL/admission不改，不重建，本仓仅交接文档并保留用户.vscode设置。[准确清单与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-single-tenant-m1-cell-iam.md)。
 
 最新M1接线（2026-10-13 Winnipeg）：平台supervised策略已接Worker apply/reconcile，独立prepared root仍关闭；清理核对持久workload UUID/generation/provision predecessor，Cell创建/准确删除接口不重建通用工厂。107项定向/相邻检查通过；17种AWS资源声明只读回读，目标Cell/新角色未创建；Neon无新执行行/binding、policy仍10USD，50USD差异待明确DB审阅。实际权限、control/DNS输入及批准guard/journal/verifier仍缺，不宣称上线。后端镜像/SQL/admission不改，本仓仅交接文档，用户.vscode文件保留。[最新实施与缺口](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-single-tenant-m1-runtime.md)。
