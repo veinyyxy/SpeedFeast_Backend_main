@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9h：RESERVED 身份栈已创建并独立验收，实际零资源
+
+2026-10-12 Winnipeg。Source刷新后04:30:05.684UTC独立前态相同/栈槽缺失；用户明确恢复原afb48684...唯一创建后，原109全前置通过，04:31:47.961UTC槽消费、CreateStack1次收到真实Stack ARN尾 `01a06ca0-c6bf-11f1-898a-0e285576029b`，04:31:53.180UTC只读readiness完成。04:32:56.239UTC新进程独立双读通过：CREATE_COMPLETE/RESERVED/实际0资源，原完整template/6参数/tags/两输出/token/准确CFNrole/DisableRollback/无更新一致，parentCommon c4e5ebcb.../foundation b9cfa5c2...保持，stackAbsent如实false；冻结r3包/Revision4a5f64bb.../deny-all/空策略/concurrency0/async60-retry0/log7及其它门禁保持。Run fcaca71c.../Inspect27c4279c.../evidence7099c651.../槽89db5acf...保存，原失败/刷新记录保留，不自动retry、reset、fill、delete、rollback或重写历史。
+
+没有IAM/table/Secret/Neon/Invoke/parent/ARMED/PAID写，无临时grant需撤；109/95/48/70及旧槽不改、不重复原测试/包镜像。F3c9h身份栈完成，runtime/F3未完成。下一F3c9i以真实ARN准备精确IAM/table窗口/parent，各实际安装登记/固定gate短并发回锁/付费phase fresh另批，不编造ARN/登记后换包。原plan到2026-10-13 07:02:35.244UTC / Winnipeg02:02:35.244，不因刷新创建晚而延长；此栈没cleanup schedule、过期不自动destroy/rebase/reset/recreate，50USD非cap。本仓只交接文档，生产代码及用户`.vscode/settings.json`保持。[创建及独立验收证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9h-reserved-created.md)。下面保留停止及准备历史。
+
 ## F3c9h：获批 Run 停在只读前置阶段，未进入创建
 
 2026-10-12 Winnipeg。用户确认 afb48684... 及完整风险后，平台原109绑定Run一次，04:23:36.220UTC停在READONLY_PRECONDITIONS，未进入CreateStack/未消费新槽/无StackId，云写0；Run回执f74b4764...。04:24:16.727UTC独立新进程Inspect获取Source凭据失败CredentialsProviderError，失败SHA e39025aa...；云状态未独立重新核验，不能断言无并发漂移或唯一倒填Run停止原因。所有旧审阅/失败证据/槽保留，原109/95/r3包未改，不重复测试或镜像；没有新IAM/table/Secret/Neon/Invoke/parent/ARMED/PAID。需用户刷新Source，随后仅新的独立只读Inspect，不自动重放Run；原批准截止05:02:44.175UTC / Winnipeg00:02:44.175、plan到07:02:35.244UTC不延长，恢复创建按实际核验/窗口明确授权。runtime/F3未完成、50USD非cap；本仓只有交接文档，生产代码与用户`.vscode/settings.json`保留。[停止证据及恢复位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9h-reserved-stopped.md)。下面保留准备历史，不代表已创建。
