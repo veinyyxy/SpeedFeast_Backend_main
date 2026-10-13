@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9d：Neon保护与窄授权安装清单准备完成，未写入
+
+2026-10-12 Winnipeg。平台新增Neon失败保护schema/原角色窄grants单事务Review/一次Run/独立新TLS连接只读Inspect，原63/候选包/lock和SQL文件保持。环境排他锁+业务写锁、原角色准确8/4表及20列权限基线、前态/code/SQL/risk哈希、一小时期限及固定wx+flush永久槽；SQL失败只收尾未提交事务，COMMIT响应丢失仅Inspect，不重试/补齐/down/复位。准备范围1新空表/3新函数/1环境transition替换/2CHECK/4新Always+原transition Always、reader新表及jobs/steps三列SELECT、drain准确SECURITY DEFINER EXECUTE。两角色已LOGIN，该入口增加受限写能力，列权限不是行过滤；不调用入口、不改业务原件/状态/旧保护/密码/Secret/AWS/runtime。
+
+最终r3 2026-10-13 00:21:12.279UTC / Winnipeg10月12日19:21，SHA91a63757de532e1189f7c2478401e26d46cd2643965c802172cb9841477c4291，截止01:21:12.279UTC / Winnipeg20:21；68代码cd90d886.../manifest文件320ed599.../前态e2f42d03...，PG18.6/open0/apply0/旧seal完整/new保护ABSENT，r1/r2历史不执行。8新+16相邻24测试/type/lint0warning/syntax通过，4只读连接、Neon写/AWS调用/Secret值/Invoke0、新槽未消费；目录计划不等于受限runtime/实际PG18写行为已验收。下一步新SHA完整风险确认后仅一次原子安装及独立Inspect，云锁定bootstrap不重放，最终包/gate/async/IAM-table-parent/付费Cell另批，50USD非cap。本仓仅文档，用户`.vscode/settings.json`保持。[清单、风险与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9d-neon-installation-review.md)。以下保留历史。
+
 ## F3c9c：锁定控制面安装完成，独立双回读通过
 
 2026-10-12 Winnipeg。用户批准0cb547a6...及风险后原六写安装器运行一次，永久槽22:44:43.515UTC消费，不能重放。原末尾检查因准确$LATEST GET返回带:$LATEST的ARN而非预期未限定ARN非零退出，原回执保留；没有写重试、补齐、回滚、删除或复位。平台仅新增独立只读核验器和4项测试，准确Latest ARN及无Layer null/缺省/空数组表示不改变目标，不接受alias/数字版本；原63代码/候选ZIP/lock不改。
