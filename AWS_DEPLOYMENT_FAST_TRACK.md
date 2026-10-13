@@ -2,6 +2,10 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## 当前主线：D001 单租户首轮交付；F3c9封存
+
+2026-10-13 Winnipeg，用户明确要求停止继续扩展F3c9并保留重启文档，同意管理员触发一个固定sandbox租户任务、自动完成真实部署到ready，通用无人值守Cell出生/死亡体系后置。平台独立M1基础设施候选复用25项网络/Aurora/ALB/mTLS/ECS Cluster定义，不装旧PLAN_ONLY或F3c9调度；13项定向/相邻检查及15:07:29.648UTC真实ValidateTemplate通过，只有模板验证、未创建收费资源或安装权限。后端prepared image/SQL/admission/receipt保持原限制；新模板不是旧authority品牌，实际activation/ownership与单次live root接线仍待M1集中范围，不能删门禁或改false伪装启用。现有镜像/baseline复用，不重建、不改业务数据；50USD/月目标非cap。受监督的准确资源清理须在收费创建前审阅，新云/权限/DB/删除范围fresh另批。本仓本轮仅交接文档，用户`.vscode/settings.json`保留。[当前执行计划](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-single-tenant-acceptance.md)、[F3c9封存与重启](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-f3c9-deferred.md)。**下方F3c9历史的下一步不再作为当前指令。**
+
 ## F3c9l：锁定期 V6 代码更新完成，独立验收通过
 
 2026-10-13 Winnipeg。用户明确批准9a659800...后平台冻结132入口一次Run成功，14:39:40.029UTC永久槽消费63f167f1...，一次带原Revision4a5f64bb...条件的V6代码PUT收到响应，不发布版本、不追加async/IAM写。14:40:48.770UTC独立新进程 `LOCKED_V6_CODE_INDEPENDENTLY_VERIFIED`：准确函数实际Revision1843cd76-fd3b-4b82-9c3d-1e532901a58e、CodeSha ofOAfejx...、432966字节、Active/Successful，15原锁及async保持，slotMatches/invariantMatches true；报告faa88863.../metadata6aadcf03.../snapshot e4337370...、锁+async invariant6210b806...一致。总code写1，IAM/async/Invoke/Secret值/Neon/表/parent/新资源0，runtime/F3整体未完成，KMS及业务路径未证明。冻结132/包/全部旧记录与槽保留，不重放或复位；50USD/月非硬cap。下一锁定准备独立新identity、实际新ARN V6 IAM/table/parent及固定有限gate，长时准备先于新TTL，后续各云范围fresh另批。本仓仅更新交接文档，用户`.vscode/settings.json`保持。[真实安装与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9l-locked-v6-code-installed.md)。下面为历史。
