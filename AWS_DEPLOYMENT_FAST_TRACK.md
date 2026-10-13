@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9e：PG18核验修正和新受审安装清单准备完成，未写入
+
+2026-10-12 Winnipeg。用户同意仅准备后，平台新增schema5 PG18目录入口：NOT NULL逐列映射、4n/5c/1p/1f、enforced/validated/非deferred/键列和FK RESTRICT动作、环境保留目录及两查询形态一致检查；仅已验证n投影给原V4非计数规则，最终状态仍真实全量摘要。提交前安全快照先wx+flush保存再验证，失败阶段和SQLSTATE有界；原68/SQL/包/旧消费槽不改，没有重放旧Run。
+
+01:15:10.089UTC / Winnipeg20:15一次新TLS只读验证PG18.6/旧state e2f42d03...完整/new保护ABSENT，17现有n映射均enforced/validated。新70代码1c1bc492.../新前态b4115483...，freshSHA6c4f17278d9d6ff1271783b68e490f2d57f215e6ab683e7a14bd141210ac950d，截止02:15:11.492UTC / Winnipeg21:15，manifest文件c3cf6d5b...；新槽当前不存在，旧槽d113cae1...永保留。10新+8原安装+3停止共21测试/type/lint0warning/syntax通过，不运行隔离模拟，DB写/AWS/Secret值/Invoke0。原库变更范围不增加：仍同一事务安装原1表/3新函数/transition/2CHECK/4新Always+旧Always及两角色窄grants。实际安装必须新SHA明确批准单次新槽风险；不是自动重试，其他原因未唯一排除，失败不补齐/复位/down/再试。runtime/F3关闭未完成，50USD非cap。本仓只文档，生产源码、镜像和用户`.vscode/settings.json`保持。[新清单及完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9e-pg18-installation-review.md)。以下保留历史。
+
 ## F3c9d：提交前目录核验停止，完整数据库前态已恢复
 
 2026-10-12 Winnipeg。用户批准91a63757...后原68代码Run一次，00:44:45.179UTC固定永久槽消费，schema/grants同事务执行后TABLE_GUARDS_OR_ACL核验失败、COMMIT尝试0、请求ROLLBACK。00:44:48.270/00:48:52.085UTC两独立新TLS只读回读完整state均e2f42d03...=批准前态，新保护未安装，旧seal/业务/reader8表0列/drain4表20列权限恢复，无新增definer访问；原安装预期Inspect权限增量报错不是实际扩权。新只读69代码188df45a.../报告3d2853a1...，原回执43077c96.../已消费槽d113cae1...、原68/SQL/包保留不改，无写重试/自动down/复位/第二槽或新批准。
