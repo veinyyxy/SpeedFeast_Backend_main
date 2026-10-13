@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9g：最终包与async已两写安装，独立验收通过
+
+2026-10-12 Winnipeg。用户批准0cea566b...及两写风险后平台原95代码Run仅一次，03:31:40.210UTC固定槽消费，原Revision条件代码1写→只读readiness/完整复核→同$LATEST async1写，均响应收到。03:32:18.062UTC最终回读和03:33:21.179UTC独立新进程双回读通过，完整snapshot5e758fe6...与Run一致、锁定不变量7da9d1e9...保持；r3 ZIPb53ba821.../CodeSHA tTuo.../完成Revision4a5f64bb-f47e-4e56-a468-1364f4381767，Active/Successful、Node22/256MB/120s/x86_64/handler v4；age60/retry0/空两destination安装。原RoleId/deny-all仅v1/空策略/concurrency0/log7及标签保持，parent全槽Cell缺失，无URL/alias/发布版本/映射/default bus target；Auto patch fcbc...未变，不推广有效权限或实际运行证明。
+
+Run7c0888a0.../独立Inspect4c544354.../槽fe99f833...、95 code3d6b3e77...保存；原70/48/ZIP/旧消费槽及旧r1–r5记录保持，不重复25定向测试、离线模拟或镜像构建。直接AWS写2，IAM/Invoke/Secret值/Neon/表/Cell写0，无临时新grant需撤；原窗口即使未结束也不重放Run/reset/fill/rollback/retry，后续只Inspect。下一F3c9h准备无付费RESERVED身份/现有CFN角色及材料范围，冻结包与真实Revision用于真实UUID ARN后续IAM/table窗口/parent绑定；创建及后续权限/登记/concurrency gate/ARMED付费仍fresh另批，不提前启用运行或登记后换包。runtime/F3未完成、50USD非cap。本仓仅交接文档，生产代码与用户`.vscode/settings.json`保持。[实际安装证据和下一阶段](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9g-locked-update-installed.md)。以下保留历史。
+
 ## F3c9g：现有锁定函数代码/async两写清单准备完成，未执行
 
 2026-10-12 Winnipeg。平台完成两写共享核心/Review-一次Run-新进程Inspect、95文件/最终r3 ZIP/原70及48artifact pins/旧槽校验；13新+12相邻25测试/type/lint0warning/syntax通过，无镜像重建/隔离DB模拟。r5 03:12:38.945UTC / Winnipeg22:12:38.945实际15锁定门禁双回读通过：Source有效、四准确权限模拟allowed（非实际执行证明），原RoleId/deny-all仅v1/空策略/concurrency0/log7/原ZIP-Revision7817b5a5...保持，async缺失/表policy未读到/parent全槽Cell缺失/noURL-alias-版本-mapping/default bus target，不推广其它bus/有效权限。03:15:36.026UTC独立进程完整前态75e142ec...一致，报告968068c5...；r1–r4只读格式停止原件保留，全部0写/新槽未消费。
