@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9g：现有锁定函数代码/async两写清单准备完成，未执行
+
+2026-10-12 Winnipeg。平台完成两写共享核心/Review-一次Run-新进程Inspect、95文件/最终r3 ZIP/原70及48artifact pins/旧槽校验；13新+12相邻25测试/type/lint0warning/syntax通过，无镜像重建/隔离DB模拟。r5 03:12:38.945UTC / Winnipeg22:12:38.945实际15锁定门禁双回读通过：Source有效、四准确权限模拟allowed（非实际执行证明），原RoleId/deny-all仅v1/空策略/concurrency0/log7/原ZIP-Revision7817b5a5...保持，async缺失/表policy未读到/parent全槽Cell缺失/noURL-alias-版本-mapping/default bus target，不推广其它bus/有效权限。03:15:36.026UTC独立进程完整前态75e142ec...一致，报告968068c5...；r1–r4只读格式停止原件保留，全部0写/新槽未消费。
+
+待批SHA0cea566b526ad14d39e426c9479aec947b4afabc694407495d25c9d0b28d6538，到2026-10-13 04:12:38.945UTC / Winnipeg10月12日23:12:38.945；95 code3d6b3e77...，manifest文件f021606b...，最终ZIPb53ba821...尚未安装。最多现有函数准确Revision代码一次+同$LATEST async age60/retry0/空destination一次，保留deny-all/no inline/concurrency0；接受async无CAS/非原子/Node22 Auto patch/响应完成Revision差异/刷新失败/永久槽不复位补齐回滚重试/非零费用，确认新SHA完整风险后才一次Run＋独立Inspect。到期仅只读刷新，新槽消费只Inspect，不改IAM/表/Secret/Neon/预算/DNS/ECR/ECS/CFN、不Invoke/登记/建Cell。安装完成后准确RESERVED/IAM-table窗口/登记及实际gate短暂concurrency/ARMED付费仍另批；50USD非cap、runtime/F3未完成。本仓仅交接文档，生产源码及用户`.vscode/settings.json`保持。[fresh范围及完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9g-locked-update-review.md)。以下保留历史。
+
 ## F3c9f：最终gate运行包及async方案准备完成，未云安装
 
 2026-10-12 Winnipeg。平台新V5层仅兼容准确$LATEST限定/未限定ARN及null/空Layers，原V4 proof/身份/RoleId/IAM/策略/ZIP/Revision/运行自哈希checks保留；底层jobs准确pending/running/retry_wait同事务适配，原额外覆盖仍保留。registry发布前/DB材料前固定F3c9e真实保护015db427...；新gate分支允许准确parent缺失或完整已批准parent SHA只读绑定，canonical record/同runtime-stack-protection/批准及delegation窗口/前后记录一致，workflow仍缺失，不为登记后验收重新开Source写窗。固定条件请求及reader14 SELECT与原guarded provision/inline失败TTL并存，不Invoke旧child。最多7永不可满足条件写API形状、严格允许/拒绝分类，不读drain密码或写DB；事件digest不是人类批准，云runner/Invoke及短暂concurrency窗口/回锁仍未来fresh另批，无其它principal/删除/writer认证证明。
