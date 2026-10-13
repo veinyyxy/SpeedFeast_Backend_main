@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9f：最终gate运行包及async方案准备完成，未云安装
+
+2026-10-12 Winnipeg。平台新V5层仅兼容准确$LATEST限定/未限定ARN及null/空Layers，原V4 proof/身份/RoleId/IAM/策略/ZIP/Revision/运行自哈希checks保留；底层jobs准确pending/running/retry_wait同事务适配，原额外覆盖仍保留。registry发布前/DB材料前固定F3c9e真实保护015db427...；新gate分支允许准确parent缺失或完整已批准parent SHA只读绑定，canonical record/同runtime-stack-protection/批准及delegation窗口/前后记录一致，workflow仍缺失，不为登记后验收重新开Source写窗。固定条件请求及reader14 SELECT与原guarded provision/inline失败TTL并存，不Invoke旧child。最多7永不可满足条件写API形状、严格允许/拒绝分类，不读drain密码或写DB；事件digest不是人类批准，云runner/Invoke及短暂concurrency窗口/回锁仍未来fresh另批，无其它principal/删除/writer认证证明。
+
+最终bundle71f31e58.../ZIPb53ba821.../r3报告ce8ff76b...，Node22/256MB/120s/x86_64，handler名字仍v4；内部双构建一致、无npm依赖启动、两种无效事件凭据前拒绝，r1/r2保留不登记。async age60/retry0/无destination/concurrency0方案只数据，非exactly-once、未安装。12新+23相邻35测试/type/lint0warning/build通过，原70/48 artifactPins及永久旧/新槽保持；AWS/Neon/Secret值/Invoke0，不fresh宣称AWS锁定、不上传/改IAM/登记parent或建Cell。F3c9g下一准备准确锁定函数一次Revision代码更新+一次async配置的fresh清单/once runner/独立Inspect，保留deny-all/no inline/concurrency0；写入另批，后续RESERVED/IAM/table/登记用V5及实际gate另批。50USD非cap、runtime/F3未完成。本仓只文档、生产代码/镜像及用户`.vscode/settings.json`保持。[完整候选与下一切片](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9f-runtime-package.md)。以下保留历史。
+
 ## F3c9e：Neon保护及窄授权原子安装完成，两个独立验收通过
 
 2026-10-12 Winnipeg。用户批准6c4f1727...和新独立槽风险后，原70代码Run仅一次，01:43:23.552UTC消费新槽，schema/grants/COMMIT各1，COMMIT确认/after-DDL目录77cd7faa...在验证前保存。01:43:26.464/01:44:07.602UTC两个新TLS只读验收通过，完整state e4687f38...及真实legacy27f5fc88...一致；新保护015db427...，4n/5c/1p/1f/enforced/validated/键映射与RESTRICT通过，旧seal/业务不变，open0/apply0/新围栏0。reader9表6列SELECT无definer；drain原4表20列+准确definer EXECUTE按批准保留，已有LOGIN/属性/密码不变。未调用失败入口，不是受限认证或runtime proof。
