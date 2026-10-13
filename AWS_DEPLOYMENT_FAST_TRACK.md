@@ -2,6 +2,12 @@
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
+## F3c9d：提交前目录核验停止，完整数据库前态已恢复
+
+2026-10-12 Winnipeg。用户批准91a63757...后原68代码Run一次，00:44:45.179UTC固定永久槽消费，schema/grants同事务执行后TABLE_GUARDS_OR_ACL核验失败、COMMIT尝试0、请求ROLLBACK。00:44:48.270/00:48:52.085UTC两独立新TLS只读回读完整state均e2f42d03...=批准前态，新保护未安装，旧seal/业务/reader8表0列/drain4表20列权限恢复，无新增definer访问；原安装预期Inspect权限增量报错不是实际扩权。新只读69代码188df45a.../报告3d2853a1...，原回执43077c96.../已消费槽d113cae1...、原68/SQL/包保留不改，无写重试/自动down/复位/第二槽或新批准。
+
+PG18实际NOT NULL目录项及官方变更确认原核验总数7存在兼容遗漏；事务内新表目录未保存，不唯一断言仅此因素或ACL一定正确。3新增只读边界测试/lint0warning/syntax通过，不重做原24测试/隔离模拟；本次3数据库连接/schema尝试1/grants1/commit0，额外inspector写0，AWS/Secret值/Invoke0，runtime关闭。下一步需用户同意仅准备PG18兼容修正及新受审恢复方案，旧槽永久保留不重放，实际安装新SHA另批。F3c9d/F3未完成，50USD非cap；本仓仅文档、用户`.vscode/settings.json`保持。[停止证据与继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-fast-track-f3c9d-neon-installation-stopped.md)。以下保留历史。
+
 ## F3c9d：Neon保护与窄授权安装清单准备完成，未写入
 
 2026-10-12 Winnipeg。平台新增Neon失败保护schema/原角色窄grants单事务Review/一次Run/独立新TLS连接只读Inspect，原63/候选包/lock和SQL文件保持。环境排他锁+业务写锁、原角色准确8/4表及20列权限基线、前态/code/SQL/risk哈希、一小时期限及固定wx+flush永久槽；SQL失败只收尾未提交事务，COMMIT响应丢失仅Inspect，不重试/补齐/down/复位。准备范围1新空表/3新函数/1环境transition替换/2CHECK/4新Always+原transition Always、reader新表及jobs/steps三列SELECT、drain准确SECURITY DEFINER EXECUTE。两角色已LOGIN，该入口增加受限写能力，列权限不是行过滤；不调用入口、不改业务原件/状态/旧保护/密码/Secret/AWS/runtime。
