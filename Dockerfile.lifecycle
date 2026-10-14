@@ -32,6 +32,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY services/saas ./services/saas
 COPY db/tenant_lifecycle_prepared.js ./db/tenant_lifecycle_prepared.js
+COPY db/tenant_lifecycle_aurora_v2.js ./db/tenant_lifecycle_aurora_v2.js
 COPY db/saas_control.sql db/theme_config.sql ./db/
 COPY scripts/render_tenant_baseline_verification.py scripts/tenant_baseline_schema_profile.py ./scripts/
 COPY scripts/verify-empty-tenant-baseline-pg16.js ./scripts/verify-empty-tenant-baseline-pg16.js

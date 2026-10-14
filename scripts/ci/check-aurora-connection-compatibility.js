@@ -48,9 +48,32 @@ async function check() {
     database_url: 'postgresql://' + binding.tenantUsername + ':synthetic-full-password@' + binding.endpoint + '/' + binding.tenantDatabase + '?sslmode=verify-full' }, full);
   // Original Full provider and bundle remain present, not reinterpreted as IAM.
   assert.equal(typeof require('../../services/saas/tenant_rds_sessions').PreparedRdsSessionProvider, 'function');
+  // New lifecycle wire/entrypoint is a separate read-only protocol, not an
+  // enablement switch for old prepared SQL or customer runtime.
+  const w = require('../../services/saas/aurora_lifecycle_contract_v2');
+  const diagnostic = require('../../services/saas/aurora_lifecycle_inspection_v2');
+  const roles = require('../../services/saas/aurora_role_directory_v2');
+  assert.equal(typeof require('@aws-sdk/client-rds').DescribeDBClustersCommand, 'function');
+  assert.equal(diagnostic.checkBundle().writeCommandsAvailable, false);
+  const scope = { appInstanceId: 'app-synthetic-v2', workspaceId: 'workspace-synthetic', productId: 'product-synthetic',
+    environmentId: 'environment-synthetic', cellKey: 'cell-sandbox-1' };
+  const v2 = structuredClone(binding); v2.stableIdentity = c.digest(scope);
+  v2.runtimeSecret.arn = 'arn:aws:secretsmanager:ca-central-1:402010193138:secret:techlong/sandbox/tenant/' +
+    'appsyntheticv2_' + v2.stableIdentity.slice(0, 10) + '/runtime/g1-AbCdEf';
+  const task = w.createTask({ operation: 'inspect', scope, ownerDeploymentId: 'deployment-synthetic', binding: v2, epoch: 1 });
+  assert.deepEqual(w.decodeTask(w.encodeTask(task), w.taskHash(task), 'inspect'), task);
+  const directory = roles.classifyRoleDirectoryV2({ rowCount: 0, rows: [] }, v2);
+  const receipt = w.buildInspectionReceipt(task, { schema: 'techlong/database-connection-observation/v2', profile: 'express_iam',
+    bindingSha256: task.bindingSha256, purpose: 'management', database: v2.managementDatabase, username: v2.managementUsername,
+    databaseOid: '123', serverVersionNum: 160014, clientTlsVerified: true, backendTlsActive: null,
+    status: 'CONNECTION_OBSERVED_NOT_LIFECYCLE_VERIFIED', lifecycleCompatible: false }, directory);
+  assert.deepEqual(w.decodeInspectionReceipt(c.canonicalJson(receipt), task), receipt);
+  await assert.rejects(diagnostic.runAuroraLifecycleInspectionV2({ argv: ['node', 'new-entrypoint', 'verify'],
+    environment: {}, signal: new AbortController().signal }), { code: 'AURORA_V2_INSPECTION_ONLY' });
   process.stdout.write(JSON.stringify({ schema: 'techlong/aurora-image-self-check/v2',
     wireContract: true, legacyProviderPresent: true, pgDynamicPassword: true, atsRoots: 5,
     repeatedSyntheticSigning: true, noTokenInConfiguration: true, mixedAuthRejected: true,
+    lifecycleWireV2: true, inspectionReceiptOnly: true, writeEntrypointDenied: true,
     realAwsCalls: 0, databaseConnections: 0, expressLiveCompatibilityVerified: false }) + '\n');
 }
 check().catch(() => { process.stderr.write('AURORA_CONNECTION_SELF_CHECK_FAILED\n'); process.exitCode = 1; });

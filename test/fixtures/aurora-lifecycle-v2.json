@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "protocol": "aurora_v2",
+  "operation": "inspect",
+  "scope": {
+    "appInstanceId": "app-synthetic-v2",
+    "workspaceId": "workspace-synthetic",
+    "productId": "product-synthetic",
+    "environmentId": "environment-synthetic",
+    "cellKey": "cell-sandbox-1"
+  },
+  "ownerDeploymentId": "deployment-synthetic",
+  "binding": {
+    "schema": "techlong/database-binding/v2",
+    "profile": "express_iam",
+    "clusterArn": "arn:aws:rds:ca-central-1:402010193138:cluster:techlong-sandbox-express-fixture",
+    "clusterResourceId": "cluster-ABCDEFGHIJKL012345678901",
+    "endpoint": "techlong-sandbox-express-fixture.cluster-fixture.ca-central-1.rds.amazonaws.com",
+    "port": 5432,
+    "observedEngineVersion": "16.14",
+    "tenantDatabase": "tenant_fixture_db",
+    "tenantUsername": "tenant_fixture_role",
+    "managementDatabase": "postgres",
+    "managementUsername": "postgres",
+    "stableIdentity": "0ee4e0b530d7904361c1b1831a59206d351fbc5687e8ca5a1c5245558ddac687",
+    "resourceGeneration": 1,
+    "runtimeSecret": {
+      "arn": "arn:aws:secretsmanager:ca-central-1:402010193138:secret:techlong/sandbox/tenant/appsyntheticv2_0ee4e0b530/runtime/g1-AbCdEf",
+      "versionId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "tlsTrust": "ats-roots/v1",
+    "access": {
+      "authentication": "iam",
+      "internetAccessGatewayEnabled": true,
+      "applicationRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxTaskRole",
+      "lifecycleRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxLifecycleTaskRole"
+    }
+  },
+  "bindingSha256": "ff94849623e99cabeaa5cd18d5c010b0c6e40d42e9c95139fd98cb649c2c2234",
+  "ownershipMarker": "tl_owner_0ee4e0b530d7904361c1b1831a59206d_g1",
+  "externalFence": {
+    "epoch": 1,
+    "intent": "provision",
+    "marker": "tl_epoch_0ee4e0b530d7904361c1b183_g1_e1",
+    "operationHash": "7a58778ac5fc1ed4f5f1347f6759a938de8f78adbadef2680f5cef2d7a75461d",
+    "predecessor": null
+  },
+  "baseline": {
+    "archiveSha256": "1a65288b4628018932a8d9af4658db5702b6cf49966a2032bc2d919bc591d70a",
+    "manifestSha256": "62b5dc8cadcf276df140be86e002a08b64d9b713bd0257e14ac515c12a996971"
+  }
+}

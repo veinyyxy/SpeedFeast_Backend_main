@@ -119,7 +119,7 @@ const READ_IDENTITY_SQL = "SELECT current_database() AS database, current_user A
   "(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS backend_tls_active";
 /** Fixed SELECT-only diagnostic. No SQL callback, activation, ACL or lifecycle
  * write authority. Gateway backend-TLS differences are observed, not waived. */
-async function inspectExpressConnectionV2({ binding, purpose = 'application', signal, dependencies = {} }) {
+async function inspectExpressSessionV2({ binding, purpose = 'application', signal, dependencies = {} }, readDirectory) {
   const b = contract.parseDatabaseBindingV2(binding);
   if (!signal || typeof signal.throwIfAborted !== 'function') fail('DATABASE_V2_ABORT_SIGNAL_REQUIRED');
   signal.throwIfAborted();
@@ -145,12 +145,19 @@ async function inspectExpressConnectionV2({ binding, purpose = 'application', si
       row.session_username !== connection.user || row.server_version_num !== major * 10000 + minor ||
       !/^[1-9][0-9]*$/.test(row.database_oid) ||
       ![true, false, null].includes(row.backend_tls_active)) fail('DATABASE_IAM_SQL_IDENTITY_UNPROVEN');
+    let directory;
+    if (readDirectory) {
+      const { ROLE_DIRECTORY_SQL, classifyRoleDirectoryV2 } = require('./aurora_role_directory_v2');
+      const roles = await client.query({ text: ROLE_DIRECTORY_SQL, values: [b.tenantUsername, b.tenantDatabase] });
+      signal.throwIfAborted(); directory = classifyRoleDirectoryV2(roles, b);
+    }
     await client.query('COMMIT'); signal.throwIfAborted();
-    return Object.freeze({ schema: 'techlong/database-connection-observation/v2', profile: 'express_iam',
+    const observedConnection = Object.freeze({ schema: 'techlong/database-connection-observation/v2', profile: 'express_iam',
       bindingSha256: contract.databaseBindingDigestV2(b), purpose,
       database: row.database, username: row.username, databaseOid: row.database_oid,
       serverVersionNum: row.server_version_num, clientTlsVerified: true, backendTlsActive: row.backend_tls_active,
       status: 'CONNECTION_OBSERVED_NOT_LIFECYCLE_VERIFIED', lifecycleCompatible: false });
+    return readDirectory ? Object.freeze({ connection: observedConnection, directory }) : observedConnection;
   } catch {
     kill(); fail(signal.aborted ? 'DATABASE_IAM_INSPECT_CANCELLED' : 'DATABASE_IAM_INSPECT_FAILED');
   } finally {
@@ -162,6 +169,8 @@ async function inspectExpressConnectionV2({ binding, purpose = 'application', si
     if (client.connectionParameters) client.connectionParameters.password = null;
   }
 }
+const inspectExpressConnectionV2 = options => inspectExpressSessionV2(options, false);
+const inspectExpressRoleDirectoryV2 = options => inspectExpressSessionV2({ ...options, purpose: 'management' }, true);
 
 /** Exact version read only. Returned material never enters a receipt/digest. */
 function createRuntimeSecretV2Source(binding, dependencies = {}) {
@@ -187,4 +196,4 @@ function createRuntimeSecretV2Source(binding, dependencies = {}) {
 }
 module.exports = { ATS_ROOT_SPKI, CONFLICTING_ENV, readDatabaseProfile, readExpressEnvironment,
   loadAtsRoots, createIamPassword, buildExpressPoolConfig, inspectExpressConnectionV2,
-  createRuntimeSecretV2Source, READ_IDENTITY_SQL };
+  createRuntimeSecretV2Source, READ_IDENTITY_SQL, ecsCredentialProvider, inspectExpressRoleDirectoryV2 };
