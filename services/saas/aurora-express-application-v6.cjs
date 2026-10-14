@@ -2,7 +2,6 @@
 // Pure C4a candidate/compiler and catalog classifiers. No executor, client,
 // credential, LOGIN, Secret writer or legacy ready-receipt issuer is exposed.
 const {canonical,digest,assertCompiledContinuationV4}=require('./aurora-express-continuation-v4.cjs');
-const {assertCompiledBaselineProgram}=require('./tenant_baseline_program');
 const {PostgresExpressRestoreProviderV5}=require('./aurora_express_restore_v5');
 const {verifyPg17CatalogV5,assertCatalogTargetV5}=require('./aurora-pg17-catalog-policy-v5.cjs');
 const TARGET=Object.freeze({database:'tenant_a0da1748bc4d5419_db',databaseOid:'16459',role:'tenant_a0da1748bc4d5419_role',roleOid:'16456',owner:'postgres'});
@@ -15,6 +14,9 @@ const fail=()=>{throw Object.assign(Error('AURORA_APP_V6_CANDIDATE_REJECTED'),{c
 const quote=name=>{if(typeof name!=='string'||!/^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(name))fail();return '"'+name+'"';};
 function freeze(v){if(v&&typeof v==='object'){Object.values(v).forEach(freeze);Object.freeze(v);}return v;}
 function compileApplicationCandidateV6({bootstrapProgram,baselineProgram,run,inspection}) {
+  // App image has no native archive toolchain. Pure role/catalog classifiers
+  // must remain loadable there; only the local compiler needs this brand API.
+  const {assertCompiledBaselineProgram}=require('./tenant_baseline_program');
   const p=assertCompiledContinuationV4(bootstrapProgram),b=assertCompiledBaselineProgram(baselineProgram);
   assertCatalogTargetV5(p.target);
   if(p.target.tenantDatabase!==TARGET.database||p.target.tenantUsername!==TARGET.role||

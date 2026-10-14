@@ -39,3 +39,9 @@ test('JSON cannot mint the private candidate, old Full access module remains sep
   assert.equal(require('../services/saas/aurora-express-application-v6-check.cjs').check().runtimeEnabled,false);
   assert.equal(require('../services/saas/tenant_application_access').APPLICATION_POLICY,'speedfeast-application-access/v1');
 });
+test('application-image checks load without importing the archive/native compiler dependency',()=>{
+  const {spawnSync}=require('node:child_process');
+  const source="const M=require('node:module'),old=M._load;M._load=function(r,...a){if(/tenant_baseline_program|verify-empty-tenant-baseline/.test(r))throw Error('NATIVE_COMPILER_NOT_IN_APP');return old.call(this,r,...a)};require('./services/saas/aurora-express-application-v6-check.cjs').check();";
+  const child=spawnSync(process.execPath,['-e',source],{cwd:require('node:path').join(__dirname,'..'),encoding:'utf8',windowsHide:true});
+  assert.equal(child.status,0,child.stderr);
+});
