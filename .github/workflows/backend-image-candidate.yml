@@ -56,6 +56,7 @@ jobs:
           python3 -m py_compile scripts/ci/create-image-toolchain-fixture.py
           python3 -m py_compile scripts/ci/build-lifecycle-runtime.py
           node --check scripts/ci/check-lifecycle-image-toolchain.js
+          node --check scripts/ci/check-aurora-connection-compatibility.js
           node --check scripts/ci/record-image-candidate.js
           node --check scripts/ci/verify-image-security.js
 
@@ -78,6 +79,16 @@ jobs:
           output="$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
           mkdir "$output"
           bash scripts/ci/check-image-candidate.sh "$CANDIDATE_KIND" "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" "$output"
+
+      # Both final images must load/sign with the new SDK and built-in ATS
+      # roots, without network/credentials or an Express live-proof claim.
+      - name: Self-check Aurora dual-mode connection support without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
+          scripts/ci/check-aurora-connection-compatibility.js
 
       - name: Gate operating-system HIGH and CRITICAL before retaining candidates
         env:

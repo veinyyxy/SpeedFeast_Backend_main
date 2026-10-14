@@ -1,5 +1,7 @@
 const fs = require('node:fs');
 const net = require('node:net');
+const { readDatabaseProfile, readExpressEnvironment, buildExpressPoolConfig } =
+  require('./saas/aurora_connections_v2');
 
 const PRODUCTION_ENVS = new Set(['prod', 'production']);
 const IMAGE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
@@ -47,6 +49,7 @@ function allowsSandboxEphemeralImageStorage(env = process.env) {
 }
 
 function validateProductionEnvironment(env = process.env) {
+  const databaseProfile = readDatabaseProfile(env);
   if (!isProductionEnvironment(env)) return;
 
   const imageStorageProvider = String(
@@ -63,7 +66,6 @@ function validateProductionEnvironment(env = process.env) {
     'MERCHANT_JWT_EXPIRES_IN',
     'PAYMENT_PROVIDER',
     'PGSSLMODE',
-    'PGSSLROOTCERT',
     'PGSSL_REJECT_UNAUTHORIZED',
     'SAAS_CONTROL_PUBLIC_KEY',
     'SAAS_INSTANCE_ID',
@@ -80,7 +82,12 @@ function validateProductionEnvironment(env = process.env) {
     required.push('IMAGE_PUBLIC_BASE_URL', 'IMAGE_S3_BUCKET');
   }
 
-  if (!env.DATABASE_URL) {
+  if (databaseProfile === 'express_iam') {
+    required.push('PG_DATABASE_BINDING_V2', 'PG_DATABASE_BINDING_SHA256');
+  } else {
+    required.push('PGSSLROOTCERT');
+  }
+  if (databaseProfile === 'full_password' && !env.DATABASE_URL) {
     required.push('PGHOST', 'PGDATABASE', 'PGUSER', 'PGPASSWORD');
   }
 
@@ -125,12 +132,14 @@ function validateProductionEnvironment(env = process.env) {
   if (!readBoolean(env.PGSSL_REJECT_UNAUTHORIZED, false)) {
     throw new Error('PGSSL_REJECT_UNAUTHORIZED must be true in production');
   }
-  if (String(env.PGSSLROOTCERT).trim() !== PRODUCTION_RDS_ROOT_CERTIFICATE) {
+  if (databaseProfile === 'full_password' && String(env.PGSSLROOTCERT).trim() !== PRODUCTION_RDS_ROOT_CERTIFICATE) {
     throw new Error(
       `PGSSLROOTCERT must be ${PRODUCTION_RDS_ROOT_CERTIFICATE} in production`
     );
   }
-  if (env.DATABASE_URL) {
+  if (databaseProfile === 'express_iam') {
+    readExpressEnvironment(env);
+  } else if (env.DATABASE_URL) {
     sanitizeDatabaseUrlForVerifiedTls(env.DATABASE_URL);
   } else {
     assertProductionDatabaseHostname(env.PGHOST, 'PGHOST');
@@ -366,6 +375,7 @@ function buildSslConfig(env) {
 }
 
 function buildPostgresConfig(env = process.env) {
+  if (readDatabaseProfile(env) === 'express_iam') return buildExpressPoolConfig(env);
   const config = {
     max: readInteger(env, 'PGPOOL_MAX', 10, { min: 1, max: 100 }),
     idleTimeoutMillis: readInteger(env, 'PGPOOL_IDLE_TIMEOUT_MS', 30000, {

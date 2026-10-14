@@ -1,0 +1,26 @@
+{
+  "schema": "techlong/database-binding/v2",
+  "profile": "express_iam",
+  "clusterArn": "arn:aws:rds:ca-central-1:402010193138:cluster:techlong-sandbox-express-fixture",
+  "clusterResourceId": "cluster-ABCDEFGHIJKL012345678901",
+  "endpoint": "techlong-sandbox-express-fixture.cluster-fixture.ca-central-1.rds.amazonaws.com",
+  "port": 5432,
+  "observedEngineVersion": "16.14",
+  "tenantDatabase": "tenant_fixture_db",
+  "tenantUsername": "tenant_fixture_role",
+  "managementDatabase": "postgres",
+  "managementUsername": "postgres",
+  "stableIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resourceGeneration": 1,
+  "runtimeSecret": {
+    "arn": "arn:aws:secretsmanager:ca-central-1:402010193138:secret:techlong/sandbox/tenant/fixture-app/runtime/g1-AbCdEf",
+    "versionId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "tlsTrust": "ats-roots/v1",
+  "access": {
+    "authentication": "iam",
+    "internetAccessGatewayEnabled": true,
+    "applicationRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxTaskRole",
+    "lifecycleRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxLifecycleTaskRole"
+  }
+}

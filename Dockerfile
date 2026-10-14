@@ -56,6 +56,7 @@ COPY --chown=65532:65532 public ./public
 COPY --chown=65532:65532 routes ./routes
 COPY --chown=65532:65532 secutiry ./secutiry
 COPY --chown=65532:65532 services ./services
+COPY --chown=65532:65532 scripts/ci/check-aurora-connection-compatibility.js ./scripts/ci/check-aurora-connection-compatibility.js
 COPY --chown=65532:65532 views ./views
 COPY --from=build --chown=65532:65532 /app/public/out ./public/out
 COPY --from=rds-certificates /aws-rds-global-bundle.pem /usr/local/share/ca-certificates/aws-rds-global-bundle.pem
