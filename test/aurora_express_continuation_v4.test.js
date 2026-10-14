@@ -13,6 +13,9 @@ function current(p,phase='reserved') {return {app:role(p,false),guard:phase==='p
     owner:phase==='quarantine'?p.guardName:'postgres',connect:phase==='promote',template:false,encoding:'UTF8',
     publicPrivileges:phase==='quarantine',foreignPrivileges:false,comment:phase==='promote'?p.comments.database:null}};}
 test('V4 exact continuation compiles eight remaining statements, private brand, no new role/member grant',()=>{
+  assert.equal(c.safeFailure({code:'AURORA_V3_ROW_COUNTS_CHANGED'}),'AURORA_V3_ROW_COUNTS_CHANGED');
+  assert.equal(c.safeFailure({code:'EXPRESS_C3D_FRESH_APPROVAL_REQUIRED'}),'EXPRESS_C3D_FRESH_APPROVAL_REQUIRED');
+  assert.equal(c.safeFailure({message:'synthetic-private-driver-detail'}),'AURORA_V4_UNCLASSIFIED_FAILURE');
   const p=c.compileContinuationV4(fixture());assert.equal(p.statementCount,8);assert.equal(p.stages.length,2);
   assert.equal(p.stages.flatMap(s=>s.statements).some(s=>/CREATE ROLE|GRANT |ALTER ROLE/.test(s)),false);
   assert.throws(()=>new PostgresExpressContinuationProviderV4(structuredClone(p)));

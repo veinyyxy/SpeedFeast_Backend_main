@@ -68,7 +68,7 @@ function originalCatalogDigest(row) {
 }
 function safeFailure(error) {
   const code = error?.code || error?.message;
-  return typeof code === 'string' && /^(?:AURORA_V4_[A-Z0-9_]+|[0-9A-Z]{5})$/.test(code) ? code : 'AURORA_V4_UNCLASSIFIED_FAILURE';
+  return typeof code === 'string' && /^(?:AURORA_V[34]_[A-Z0-9_]+|EXPRESS_C3D_[A-Z0-9_]+|[0-9A-Z]{5})$/.test(code) ? code : 'AURORA_V4_UNCLASSIFIED_FAILURE';
 }
 module.exports = { compileContinuationV4, assertCompiledContinuationV4, verifyStageV4, originalCatalogDigest,
   PREDECESSOR, POLICY, safeFailure, canonical, digest, BASELINE };
