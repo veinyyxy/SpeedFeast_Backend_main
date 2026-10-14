@@ -4,6 +4,8 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+最新C3e实际（2026-10-14 Winnipeg）：平台获批872e后一次只读Run成功，14:09 UTC两连接/九query/九metadata、业务表查询及SQL/资源写0，诊断槽永久消费。严格V4 owner policy通过，库OID16459/owner16410/app16456 NOLOGIN/guard缺席，管理SHA30c1559c...保持；当前用户目录SHA56f65c61.../449字节，表及其他覆盖对象0、public owner/ACL正常，库大小8,537,331字节。三缺表/uuid谓词是当前空库结果，不唯一复原原临时完整目录失败、也不证明历史rollback。下一不再探针，只编码/准备保留库的restore-only受审Root，优先复用本仓冻结V4/原archive/private brand/门禁/迁移，在原校验前捕获安全逐谓词报告，避免再丢失原因；不放宽校验、不重建角色/DB/guard或回F3c9。实际恢复写仍新SHA另批，本仓本次只文档，源码62010ac/镜像/pins/用户.vscode保持，不重测/compile/构建/ECR发布，50USD非cap。[真实结果与后继](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c3-catalog-diagnostic-executed.md)。下段刷新/待审状态已消费，为历史。
+
 最新C3e刷新（2026-10-14 Winnipeg）：用户Source刷新后平台只运行Review r2及独立metadata r2，各5只读通过，SQL/槽仍0。新SHA872e3027...待单独确认，到Winnipeg2026-10-14 15:02:09.481 CDT；与原d82c除时间/facts/SHA外范围相同，最多2连接/9固定目录query、业务查询/写0，不因刷新自动重试SQL。226/224/212/183 pins及2工具/code/history不变，原停止回执字节核对通过；本仓只交接、执行源码62010ac/镜像保持、用户.vscode不提交，不重测/compile/构建/ECR发布。后续只读观察后再审准确库窄恢复，不重建DB/guard、不改权限或回F3c9，50USD非cap。[新SHA、风险与继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c3-catalog-diagnostic-refreshed.md)。下段停止状态为历史。
 
 最新C3e停止（2026-10-14 Winnipeg）：用户确认d82c后平台原Root一次停在READ_ONLY_METADATA，13:52 UTC保存SOURCE_CREDENTIALS_UNAVAILABLE；本次metadata计数3但未形成完整facts，SQL连接/query/写、AWS资源写和槽消费全0，槽独立查仍空。不声称已重读租户目录或再次目录校验失败。226/224/212/183源码pins、执行源码62010ac/镜像保持，本仓只交接、用户.vscode不提交，不重建/ECR发布。下一Source刷新后先新fresh只读Review+独立metadata，保留d82c与停止回执，随后交付新SHA单独确认SQL；不自动重试、不重建DB/guard、不改权限或回F3c9，50USD非cap。[真实停止与继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c3-catalog-diagnostic-stopped.md)。下段待审状态仅为历史。
