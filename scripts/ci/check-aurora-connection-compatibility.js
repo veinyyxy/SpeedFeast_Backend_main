@@ -70,10 +70,26 @@ async function check() {
   assert.deepEqual(w.decodeInspectionReceipt(c.canonicalJson(receipt), task), receipt);
   await assert.rejects(diagnostic.runAuroraLifecycleInspectionV2({ argv: ['node', 'new-entrypoint', 'verify'],
     environment: {}, signal: new AbortController().signal }), { code: 'AURORA_V2_INSPECTION_ONLY' });
+  // V3 bootstrap transport/program is present, but not wired into the root.
+  // Construction must neither fetch credentials nor open a SQL connection.
+  const v3 = require('../../services/saas/aurora-express-bootstrap-v3.cjs');
+  const target = { schema: 'techlong/express-management-target/v3', clusterArn: v2.clusterArn,
+    clusterResourceId: v2.clusterResourceId, endpoint: v2.endpoint, port: 5432, observedEngineVersion: '17.9',
+    managementDatabase: 'postgres', managementUsername: 'postgres', stableIdentity: v2.stableIdentity, resourceGeneration: 1,
+    tenantDatabase: `tenant_${v2.stableIdentity.slice(0,16)}_db`, tenantUsername: `tenant_${v2.stableIdentity.slice(0,16)}_role` };
+  const program = v3.compileExpressBootstrapV3({ target, scope, nonce: 'c'.repeat(32) });
+  const { PostgresExpressBootstrapProviderV3 } = require('../../services/saas/aurora_express_bootstrap_provider_v3');
+  new (require('../../services/saas/aurora_management_sessions_v3').ExpressManagementSessionProviderV3)({ target,
+    dependencies: { credentialProvider: () => { throw Error('NETWORK_FORBIDDEN'); } } });
+  new PostgresExpressBootstrapProviderV3(program);
+  assert.throws(() => new PostgresExpressBootstrapProviderV3(structuredClone(program)));
+  assert.equal(program.statementCount, 15); assert.equal(program.executionAuthorized, false);
+  assert.equal(program.terminalState, 'NOLOGIN_PREPARED_NOT_RESTORED');
   process.stdout.write(JSON.stringify({ schema: 'techlong/aurora-image-self-check/v2',
     wireContract: true, legacyProviderPresent: true, pgDynamicPassword: true, atsRoots: 5,
     repeatedSyntheticSigning: true, noTokenInConfiguration: true, mixedAuthRejected: true,
     lifecycleWireV2: true, inspectionReceiptOnly: true, writeEntrypointDenied: true,
+    managementTransportV3Present: true, finiteNologinPrepareV3Present: true, bootstrapRootEnabled: false,
     realAwsCalls: 0, databaseConnections: 0, expressLiveCompatibilityVerified: false }) + '\n');
 }
 check().catch(() => { process.stderr.write('AURORA_CONNECTION_SELF_CHECK_FAILED\n'); process.exitCode = 1; });
