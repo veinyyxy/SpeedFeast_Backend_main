@@ -2,9 +2,7 @@
 // Fixed pre-activation bootstrap: original schema-only archive + two pinned
 // migrations, one transaction. No Secret, password, LOGIN, runtime IAM or down.
 const { createHash } = require('node:crypto');
-const { assertCompiledBaselineProgram } = require('./tenant_baseline_program');
 const { CATALOG_SQL: PG16_CATALOG_SQL } = require('./tenant_baseline_catalog');
-const { EMPTY_SQL } = require('./tenant_baseline_restore_provider');
 const { loadSaasPrograms } = require('./tenant_saas_transaction_provider');
 const { assertCompiledExpressBootstrapV3, canonical, digest, BASELINE } = require('./aurora-express-bootstrap-v3.cjs');
 const { CATALOG_SQL: OWNERS_SQL, verifyStage } = require('./aurora_express_bootstrap_provider_v3');
@@ -60,9 +58,11 @@ class PostgresExpressRestoreProviderV3 {
   #bootstrap; #baseline; #migrations;
   constructor({ bootstrapProgram, baselineProgram }) {
     this.#bootstrap = assertCompiledExpressBootstrapV3(bootstrapProgram);
-    this.#baseline = assertCompiledBaselineProgram(baselineProgram);
-    if (baselineProgram.archiveSha256 !== BASELINE.archiveSha256 || baselineProgram.manifestSha256 !== BASELINE.manifestSha256 ||
-      baselineProgram.tables.length !== 73) fail('AURORA_V3_BASELINE_PINS_REJECTED');
+    if (!baselineProgram || baselineProgram.archiveSha256 !== BASELINE.archiveSha256 || baselineProgram.manifestSha256 !== BASELINE.manifestSha256 ||
+      baselineProgram.tables?.length !== 73) fail('AURORA_V3_BASELINE_PINS_REJECTED');
+    // The business app can load the inert port without a native compiler.
+    // Actual construction still requires the original process-private brand.
+    this.#baseline = require('./tenant_baseline_program').assertCompiledBaselineProgram(baselineProgram);
     this.#migrations = loadSaasPrograms();
   }
   programIdentity() {
@@ -108,6 +108,7 @@ class PostgresExpressRestoreProviderV3 {
           await q(targetClient, 'SET LOCAL search_path = pg_catalog');
           let baselineCatalog;
           if (!inspectOnly) {
+            const { EMPTY_SQL } = require('./tenant_baseline_restore_provider');
             const empty = await q(targetClient, EMPTY_SQL);
             if (String(empty.rows?.[0]?.objects) !== '0' || String(empty.rows?.[0]?.closed_public_schema) !== '1')
               fail('AURORA_V3_RESTORE_NONEMPTY_DATABASE');

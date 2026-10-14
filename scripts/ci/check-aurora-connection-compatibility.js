@@ -88,7 +88,8 @@ async function check() {
   const restore = require('../../services/saas/aurora_express_restore_v3');
   assert.ok(restore.PG17_CATALOG_SQL.includes('c.colllocale'));
   assert.ok(!restore.PG17_CATALOG_SQL.includes('c.colliculocale'));
-  assert.throws(() => new restore.PostgresExpressRestoreProviderV3({bootstrapProgram: program,baselineProgram:{}}));
+  assert.throws(() => new restore.PostgresExpressRestoreProviderV3({bootstrapProgram: program,baselineProgram:{}}),
+    {code:'AURORA_V3_BASELINE_PINS_REJECTED'});
   process.stdout.write(JSON.stringify({ schema: 'techlong/aurora-image-self-check/v2',
     wireContract: true, legacyProviderPresent: true, pgDynamicPassword: true, atsRoots: 5,
     repeatedSyntheticSigning: true, noTokenInConfiguration: true, mixedAuthRejected: true,
