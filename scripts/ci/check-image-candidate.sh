@@ -60,10 +60,18 @@ else
   server=$(docker run --detach --network none \
     --env POSTGRES_PASSWORD=ci-synthetic-only --env POSTGRES_DB=ci_image_source \
     postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55)
+  # pg_isready can accept the initialization server before POSTGRES_DB exists.
+  # Wait for an actual read-only query in the exact synthetic database instead.
+  fixture_ready=false
   for attempt in {1..30}; do
-    if docker exec "$server" pg_isready -U postgres -d ci_image_source >/dev/null; then break; fi
+    if docker exec --env PGPASSWORD=ci-synthetic-only "$server" psql -X -h 127.0.0.1 -U postgres -d ci_image_source --set=ON_ERROR_STOP=1 \
+      --tuples-only --no-align --command='SELECT 1' >/dev/null 2>&1; then
+      fixture_ready=true
+      break
+    fi
     sleep 1
   done
+  [[ "$fixture_ready" == true ]] || { printf '%s\n' 'CI_SYNTHETIC_DATABASE_NOT_READY' >&2; exit 1; }
   docker exec -i "$server" psql -X -U postgres -d ci_image_source --set=ON_ERROR_STOP=1 < "$fixture/create.sql"
   docker exec "$server" pg_dump -U postgres -d ci_image_source --format=custom --schema-only \
     --no-owner --no-privileges --no-comments > "$fixture/empty-baseline.dump"
