@@ -9,7 +9,7 @@ const { parseManagementTargetV3 } = require('./aurora-express-bootstrap-v3.cjs')
 const fail = code => { throw Object.assign(new Error(code), { code, retryable: false }); };
 const MANAGEMENT_IDENTITY_SQL = READ_IDENTITY_SQL +
   ", current_setting('transaction_read_only') AS read_only, current_setting('client_encoding') AS encoding, " +
-  "(SELECT oid::text FROM pg_roles WHERE rolname=current_user) AS role_oid";
+  "(SELECT oid::text FROM pg_roles WHERE rolname=current_user) AS role_oid, current_setting('search_path') AS search_path";
 const kill = client => { try { client?.connection?.stream?.destroy(); } catch { /* best effort */ } };
 function assertOid(value) {
   if (typeof value !== 'string' || !/^[1-9][0-9]{0,9}$/.test(value) || Number(value) > 4294967295)
@@ -57,7 +57,7 @@ class ExpressManagementSessionProviderV3 {
         ssl: { ca: this.#ca, rejectUnauthorized: true, servername: this.#target.endpoint,
           checkServerIdentity: tls.checkServerIdentity, minVersion: 'TLSv1.2' },
         connectionTimeoutMillis: 30000, query_timeout: 20000, keepAlive: true,
-        options: '-c default_transaction_read_only=off -c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=15000 -c client_encoding=UTF8',
+        options: '-c default_transaction_read_only=off -c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=15000 -c client_encoding=UTF8 -c search_path=pg_catalog',
         application_name: 'techlong-express-management-v3' });
       group.add(client); active = true;
       client.on('error', failed); client.on('end', ended);
@@ -71,7 +71,7 @@ class ExpressManagementSessionProviderV3 {
       if (lost || result.rowCount !== 1 || row?.database !== database ||
         row.username !== this.#target.managementUsername || row.session_username !== this.#target.managementUsername ||
         row.database_oid !== oid || row.role_oid !== roleOid || row.server_version_num !== 170009 || row.backend_tls_active !== true ||
-        row.read_only !== 'off' || row.encoding !== 'UTF8') fail('AURORA_V3_SQL_IDENTITY_UNPROVEN');
+        row.read_only !== 'off' || row.encoding !== 'UTF8' || row.search_path !== 'pg_catalog') fail('AURORA_V3_SQL_IDENTITY_UNPROVEN');
       const observation = Object.freeze({ targetSha256: digest(this.#target), database, databaseOid: oid,
         username: row.username, roleOid, serverVersionNum: row.server_version_num, clientTlsVerified: true, backendTlsActive: true });
       const value = await use(client, observation); signal.throwIfAborted();

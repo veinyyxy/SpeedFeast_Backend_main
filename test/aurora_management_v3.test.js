@@ -28,7 +28,7 @@ function sessions() {
       assert.equal(sql, MANAGEMENT_IDENTITY_SQL);
       return { rowCount: 1, rows: [{ database: this.config.database, username: 'postgres', session_username: 'postgres',
         database_oid: this.config.database === 'postgres' ? '5' : '40000', server_version_num: 170009,
-        backend_tls_active: true, read_only: 'off', encoding: 'UTF8', role_oid: '16410' }] };
+        backend_tls_active: true, read_only: 'off', encoding: 'UTF8', role_oid: '16410', search_path: 'pg_catalog' }] };
     }
     async end() { this.ended++; }
   }
@@ -49,6 +49,7 @@ test('V3 transport is inert, signs independently per physical connection and che
   for (const c of clients) {
     assert.equal(c.config.connectionTimeoutMillis, 30000); assert.equal(c.config.ssl.ca.length, 5);
     assert.equal(c.config.ssl.rejectUnauthorized, true); assert.equal(c.ended, 1); assert.equal(c.password, null);
+    assert.ok(c.config.options.includes('-c search_path=pg_catalog'));
   }
   assert.equal(result.tenant.databaseOid, '40000'); assert.equal(result.tenant.username, 'postgres');
   assert.equal(JSON.stringify(result).includes('PRIVATE_TOKEN'), false);
