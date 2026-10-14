@@ -85,11 +85,16 @@ async function check() {
   assert.throws(() => new PostgresExpressBootstrapProviderV3(structuredClone(program)));
   assert.equal(program.statementCount, 15); assert.equal(program.executionAuthorized, false);
   assert.equal(program.terminalState, 'NOLOGIN_PREPARED_NOT_RESTORED');
+  const restore = require('../../services/saas/aurora_express_restore_v3');
+  assert.ok(restore.PG17_CATALOG_SQL.includes('c.colllocale'));
+  assert.ok(!restore.PG17_CATALOG_SQL.includes('c.colliculocale'));
+  assert.throws(() => new restore.PostgresExpressRestoreProviderV3({bootstrapProgram: program,baselineProgram:{}}));
   process.stdout.write(JSON.stringify({ schema: 'techlong/aurora-image-self-check/v2',
     wireContract: true, legacyProviderPresent: true, pgDynamicPassword: true, atsRoots: 5,
     repeatedSyntheticSigning: true, noTokenInConfiguration: true, mixedAuthRejected: true,
     lifecycleWireV2: true, inspectionReceiptOnly: true, writeEntrypointDenied: true,
     managementTransportV3Present: true, finiteNologinPrepareV3Present: true, bootstrapRootEnabled: false,
+    pg17RestorePortPresent: true, uncompiledBaselineRejected: true,
     realAwsCalls: 0, databaseConnections: 0, expressLiveCompatibilityVerified: false }) + '\n');
 }
 check().catch(() => { process.stderr.write('AURORA_CONNECTION_SELF_CHECK_FAILED\n'); process.exitCode = 1; });
