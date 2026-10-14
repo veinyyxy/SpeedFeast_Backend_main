@@ -99,6 +99,14 @@ jobs:
           "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
           scripts/ci/check-aurora-continuation-v4.js
 
+      - name: Self-check exact Express uuid extension owner V5 without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
+          services/saas/aurora-express-restore-v5-check.cjs
+
       - name: Gate operating-system HIGH and CRITICAL before retaining candidates
         env:
           CANDIDATE_KIND: ${{ matrix.kind }}
