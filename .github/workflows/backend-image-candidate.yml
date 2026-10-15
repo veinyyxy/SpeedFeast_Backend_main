@@ -115,6 +115,15 @@ jobs:
           "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
           services/saas/aurora-express-application-v6-check.cjs
 
+      - name: Self-check tenant bootstrap and initialized readiness wiring without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-${{ matrix.kind }}-candidate:$GITHUB_SHA"
+          services/saas/tenant-readiness-v1-check.cjs
+          "${{ matrix.kind }}"
+
       - name: Gate operating-system HIGH and CRITICAL before retaining candidates
         env:
           CANDIDATE_KIND: ${{ matrix.kind }}

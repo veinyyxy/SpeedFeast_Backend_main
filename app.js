@@ -14,6 +14,8 @@ const {
 } = require('./services/runtime_config');
 validateProductionEnvironment(process.env);
 const { pool } = require('./db/pgsql');
+const { createReadinessChecks } = require('./services/saas/tenant-readiness-v1.cjs');
+const readiness = createReadinessChecks({ pool });
 const { attachStoreContext } = require('./services/store_context');
 const {
   createBuyerAccessMiddleware,
@@ -75,14 +77,18 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Readiness confirms that the API can reach PostgreSQL.
+// Bootstrap reachability must not depend on the provision transaction it enables.
+// This endpoint never claims merchant initialization or deployment-ready state.
+app.get('/bootstrap-ready', async (_req, res) => {
+  const available = await readiness.bootstrap();
+  res.status(available ? 200 : 503).json({ status: available ? 'bootstrap_ready' : 'unavailable' });
+});
+
+// Express proves exact DB/TLS identity, schema/access and committed initialization.
+// Old Full connectivity behavior remains unless tenant-v1 is explicitly selected.
 app.get('/ready', async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.status(200).json({ status: 'ready' });
-  } catch (_error) {
-    res.status(503).json({ status: 'unavailable' });
-  }
+  const available = await readiness.ready();
+  res.status(available ? 200 : 503).json({ status: available ? 'ready' : 'unavailable' });
 });
 
 function positiveIntegerEnvironment(name, fallback) {
