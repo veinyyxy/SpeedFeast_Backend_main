@@ -4,6 +4,12 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+当前C5h2真实部分交付（2026-10-15 Winnipeg）：用户批准1db32e27…后唯一Run在15:25:07 CDT窗口内认领；新workload栈UUID `863828e0-c8d6-11f1-bd9d-06fff5ad0437` 的七资源CREATE_COMPLETE，实际ECS旧已批app digest5e42b2de…、固定Secret refs、1 running/0 pending、ALB healthy、准确DNS及epoch1均独立只读通过。两次Source Aurora只读各12SQL通过，原store/OID/catalog/seed在provision前保持。一次真实POST返回HTTP500，最终ready未写；平台仍configuring/instance pending/job running(attempt1/max1)，不能宣称初始化或事务回滚已独立证明。固定17槽+2ack保留，不重跑旧root、不清槽、不再POST或额外SQL/私密读取。
+
+已定位到 `saveStoreName → readStoreProfile → requireStoreId` 的 `INVALID_STORE_CONTEXT`：原固定店铺UUID `add89a8c-f43e-81b9-8287-0cb6c5c54f87` 是v8，而店铺配置只接受v1–v5。本次仅修店铺UUID准入至RFC9562 v1–v8，保持格式/variant/明确store绑定及旧asset-ID策略；不改店铺ID/业务数据/SQL/schema/IAM/Secret。新增两项回归先复现同一错误，再通过准确v8实际helper读写参数；311项完整本地测试及typecheck通过（沙盒内三个localhost fetch失败，允许回环后同源码311/311通过）。推送只触发无AWS凭据的既有CI/候选镜像构建，不发布ECR、不更新正在运行的服务。
+
+唯一下一步：云端候选镜像自检后，为修复镜像发布、准确原栈更新及受限恢复另做fresh范围审批。必须先用新的只读证据确定初始化实际状态，再决定是否允许新的一次POST；不把剩余写次数、服务端ROLLBACK路径或本次批准当重试许可。原父标签保持，child标签17:10:27 CDT不会自动停止收费；既有网络/数据库和新任务仍可计费。服务端用户.vscode保持。[完整现场证据及恢复边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5h2-partial-executed.md)。以下为历史。
+
 当前C5h2入口修正（2026-10-15 Winnipeg）：用户确认6d58a5e2…后唯一Run在本地SQL guard停止；第四条原冻结目录查询以WITH开头，原SELECT-prefix拒绝，正则转义本身正常。随后独立Inspect读到Neon部署0行；新Review确认云/Neon命名空间仍未认领。0 Aurora连接、0写/私密/槽/job/部署，旧证据和未消费固定根保留，不重跑或复位。平台只改为八条原SQL的准确canonical hash准入，不泛化WITH、不改SQL/权限；71项相关tests/types/lint/Check过。本仓仅文档、应用源码8753546/两镜像及用户.vscode保持。新待审SHA `1db32e27374d79128ae5f56b0c1c606678088e94dd7e329efe1ea4106eac16a2`，入场截止15:25:27.139 CDT、child候选17:10:27 CDT；原3云写/10Neon/2Aurora只读/1私密/1固定Secret值/1provision范围和完整风险不变，但代码闭包/时间改变，须新确认，不沿用旧批准再Run。50USD目标非硬cap，标签不自动停费。[准确失败证据、修正和新清单](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5h2-entry-correction.md)。下方保留历史。
 
 当前C5h2（2026-10-15 Winnipeg）：平台完整Check/Review/Run/Inspect已接通，70项测试/types/lint通过。用户明确允许只读后，最终31 SDK+13 CLI+1 Neon+1 NS核验现CFN v8/task共享v4完整布局、原compute/网络、ECR/Secret固定版本和未认领命名空间；0 Aurora/私密值/写/槽/job/部署。新SHA `6d58a5e2c1e6673c00c566d9355ae98314449d055a38774d831ee48aa8541a88` 入场到15:11:45.718 CDT，独立child标签16:56:45 CDT，仅待具体真实部署范围/完整风险批准。拟3云写/10Neon事务/2Aurora只读连接/1私密重载/1固定Secret值/1provision，0 IAM/plan升级/restore/seed/ECR。原父11:44标签已过期保持；不自动清理或停费。两小时标准参考基础约0.425USD另加变量费用；Fargate+网络常驻约52.85USD/月尚不含DB，50目标非cap。服务端代码/镜像和用户.vscode保持，本仓仅交接。[准确清单与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5h2-live-review.md)。以下为历史。

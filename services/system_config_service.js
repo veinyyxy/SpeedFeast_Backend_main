@@ -124,6 +124,10 @@ function isUuid(value) {
   );
 }
 
+// Store IDs include deterministic UUIDv8 values (RFC 9562 section 5.8).
+// Keep UUID shape/variant checks and the existing asset-ID policy separate.
+const STORE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function requireStoreId(storeId) {
   const normalized = normalizeText(storeId);
   if (!normalized) {
@@ -131,7 +135,7 @@ function requireStoreId(storeId) {
     error.code = 'STORE_CONTEXT_REQUIRED';
     throw error;
   }
-  if (!isUuid(normalized)) {
+  if (!STORE_UUID_PATTERN.test(normalized)) {
     const error = new Error('Store context is invalid');
     error.code = 'INVALID_STORE_CONTEXT';
     throw error;
