@@ -11,7 +11,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 FROM python:3.14.8-slim-trixie@sha256:f85c5697265c178cc6887276c55fe16cf3d14ca35c3df6a5eab3b360534a55d2 AS runtime-tools
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 liblz4-1 libzstd1 ca-certificates curl \
     && curl --fail --silent --show-error --location https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem --output /aws-rds-global-bundle.pem \
-    && echo "fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c  /aws-rds-global-bundle.pem" | sha256sum --check --strict \
+    && echo "90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b  /aws-rds-global-bundle.pem" | sha256sum --check --strict \
     && chmod 0444 /aws-rds-global-bundle.pem && rm -rf /var/lib/apt/lists/*
 COPY --from=pg-tools /usr/lib/postgresql/16/bin/pg_restore /usr/local/bin/pg_restore16
 COPY --from=pg-tools /usr/lib/x86_64-linux-gnu/libpq.so.5* /usr/local/lib/

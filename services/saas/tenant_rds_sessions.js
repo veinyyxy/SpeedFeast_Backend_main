@@ -4,9 +4,10 @@ const {createHash}=require('node:crypto');
 const {TenantLifecycleContractError,validateTaskInput,canonicalJson,assertRuntimeDatabaseReference,assertRuntimeSecret,SECRET_KEYS}=require('./tenant_lifecycle_service');
 const {SESSION_IDENTITY_SQL}=require('./tenant_saas_transaction_provider');
 const {RDS_CA_BUNDLE_PATH,PG_DESTROY_STARTUP_OPTIONS,PG_STARTUP_OPTIONS,boundedEndClient,parseSecretResponse,assertSecretText,secretReadError}=require('./tenant_lifecycle_production');
-// Public AWS trust-store bytes independently reviewed 2026-10-07: 111 valid
-// self-signed Amazon RDS roots, including the three ca-central-1 G1 roots.
-const RDS_CA_SHA256='fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c';
+// Public AWS trust-store bytes reviewed 2026-10-14 Winnipeg: 114 valid
+// self-signed RDS roots. All prior111 (including ca-central-1) unchanged;
+// exactly three sa-west-1 G1 roots added. Only this exact new bundle is accepted.
+const RDS_CA_SHA256='90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b';
 const RAW_KEYS=['schemaVersion','operation','runtimeSecretArn','managementTarget','resourceGeneration','ownershipMarker',
   'externalOperationEpoch','externalOperationMarker','externalOperationHash','approvedBaselineDigest','provisionPredecessor'];
 function fail(code,message){throw new TenantLifecycleContractError(code,message);}

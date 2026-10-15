@@ -29,7 +29,7 @@ RUN apt-get update \
     && curl --fail --silent --show-error --location \
         https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
         --output /aws-rds-global-bundle.pem \
-    && echo "fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c  /aws-rds-global-bundle.pem" \
+    && echo "90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b  /aws-rds-global-bundle.pem" \
         | sha256sum --check --strict \
     && grep -q "BEGIN CERTIFICATE" /aws-rds-global-bundle.pem \
     && chmod 0444 /aws-rds-global-bundle.pem \

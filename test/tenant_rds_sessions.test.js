@@ -30,6 +30,7 @@ test('management Secret username is exact and only bounded connection fields cro
   await assert.rejects(()=>provider.useManagementSecret({input,signal,use(){}}),e=>e.code==='TENANT_LIFECYCLE_SECRET_READ_FAILED'&&!e.message.includes('Private'));
 });
 test('bad pinned RDS CA rejects before even constructing an AWS client',()=>{
+  assert.equal(RDS_CA_SHA256,'90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b');
   let clients=0;class SecretsManagerClient{constructor(){clients++;}}
   assert.throws(()=>createPreparedRdsSources({input,dependencies:{SecretsManagerClient,GetSecretValueCommand:Command,Client(){},readFileSync:()=>ca}}),{code:'TENANT_RDS_CA_CHANGED'});
   assert.equal(clients,0);assert.throws(()=>loadPinnedRdsCa(()=>{throw new Error('private path');}),{code:'TENANT_RDS_CA_UNAVAILABLE'});

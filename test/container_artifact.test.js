@@ -66,7 +66,7 @@ test('application image is pinned, non-root and checks database readiness', () =
   assert.doesNotMatch(runtimeStage, /^(?:ENTRYPOINT|CMD)[^\r\n]*tenant_lifecycle/im);
   assert.match(
     dockerfile,
-    /fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c[\s\S]*sha256sum --check --strict/
+    /90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b[\s\S]*sha256sum --check --strict/
   );
 });
 
