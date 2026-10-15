@@ -37,7 +37,13 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
   check(/^[a-f0-9]{64}$/.test(approvedSha || '') && textSha(bytes) === approvedSha,
     'Fresh manifest approval mismatch; no AWS write');
   const m = JSON.parse(bytes.toString('utf8'));
-  check(m.schemaVersion === 3 && m.operation === 'PUBLISH_CHECKED_IMAGES_ONLY' &&
+  // Preserve the frozen F3/v3 prestate. C5c is a separate reviewed schema with
+  // the actually observed Locked/v6 + v5/v6 inventory, not a wildcard version.
+  const prestateMatches = m.schemaVersion === 3
+    ? m.iamUpdate?.expectedBoundaryDefaultVersionId === 'v4' && canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v3', 'v4'])
+    : m.schemaVersion === 4 && m.iamUpdate?.expectedBoundaryDefaultVersionId === 'v6' &&
+      canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v5', 'v6']);
+  check([3, 4].includes(m.schemaVersion) && prestateMatches && m.operation === 'PUBLISH_CHECKED_IMAGES_ONLY' &&
     m.repository === REPOSITORY && m.accountId === ACCOUNT && m.region === REGION &&
     m.ecrRepository === ECR && m.publisherRoleArn === ROLE &&
     m.sourceInstallerArn === `arn:aws:iam::${ACCOUNT}:user/techlong-sandbox-dev` &&
@@ -52,8 +58,7 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
     m.ecsDeploymentAuthorized === false && m.baselinePublicationAuthorized === false &&
     m.resourceDeletionAuthorized === false && m.requirePrePublicationOsScan === true &&
     m.iamUpdate?.mode === 'UPDATE_LOCKED_STACK' && m.iamUpdate.stackArn === STACK &&
-    m.iamUpdate.expectedBoundaryArn === BOUNDARY && m.iamUpdate.expectedBoundaryDefaultVersionId === 'v4' &&
-    canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v3', 'v4']) &&
+    m.iamUpdate.expectedBoundaryArn === BOUNDARY &&
     m.iamUpdate.cloudFormationManagedPolicyVersionCleanupMayOccur === true &&
     m.iamUpdate.managedPolicyVersionCleanupAccepted === true &&
     m.iamUpdate.expectedStackStatus === 'UPDATE_COMPLETE' && m.iamUpdate.creationAuthorized === false &&
@@ -83,7 +88,8 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
     check(textSha(fs.readFileSync(path.join(ROOT, file))) === m.executorTextSha256[file], 'Executor changed since approval');
   }
   for (const kind of ['grant', 'revoke']) {
-    const file = kind === 'grant' ? 'deployment/ecr-publisher.regrant-20261008.template.json' : 'deployment/ecr-publisher.revoke.template.json';
+    const file = kind === 'grant' ? (m.schemaVersion === 4 ? 'deployment/ecr-publisher.regrant-20261015-c5c.template.json'
+      : 'deployment/ecr-publisher.regrant-20261008.template.json') : 'deployment/ecr-publisher.revoke.template.json';
     check(m.iamTemplates?.[kind]?.path === file &&
       textSha(fs.readFileSync(path.join(ROOT, file))) === m.iamTemplates[kind].textSha256,
     'IAM template changed since review');

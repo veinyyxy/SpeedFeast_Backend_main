@@ -65,6 +65,23 @@ test('candidate proof cannot substitute registry digest, unrelated run or runtim
   }
 });
 
+test('C5c uses exact observed Locked/v6 prestate; legacy v3 remains v4-only, never arbitrary policy versions', () => {
+  const m = parse(), now = Date.parse(m.reviewedAt);
+  assert.equal(m.schemaVersion, 4); assert.equal(m.iamUpdate.expectedBoundaryDefaultVersionId, 'v6');
+  assert.deepEqual(m.iamUpdate.expectedExistingBoundaryVersionIds, ['v5', 'v6']);
+  for (const patch of [{ schemaVersion: 3 }, { schemaVersion: 5 },
+    { iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v7' } },
+    { iamUpdate: { ...m.iamUpdate, expectedExistingBoundaryVersionIds: ['v6'] } }]) {
+    const v = Buffer.from(JSON.stringify({ ...m, ...patch }));
+    assert.throws(() => validateManifest(v, textSha(v), now), /scope mismatch/);
+  }
+  const historic = JSON.parse(fs.readFileSync('deployment/history/reviewed-ecr-publication-1ab97e7b3809.json'));
+  const legacy = { ...m, schemaVersion: 3, iamTemplates: historic.iamTemplates,
+    iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v4', expectedExistingBoundaryVersionIds: ['v3', 'v4'] } };
+  const v = Buffer.from(JSON.stringify(legacy));
+  assert.equal(validateManifest(v, textSha(v), now).schemaVersion, 3);
+});
+
 test('OS admission binds the scanner, exact image and fresh DB without severity exceptions', () => {
   const m = parse();
   const image = m.images[0];
@@ -81,7 +98,7 @@ test('OS admission binds the scanner, exact image and fresh DB without severity 
   assert.throws(() => validateOsScan(scan, image.imageConfigDigest, Date.parse(scan.databaseUpdatedAt) - 300001), /stale/);
 });
 
-test('fresh review can update only the exact Locked/v4 stack and cannot enable retries or deployment', () => {
+test('fresh review can update only the exact Locked stack and cannot enable retries or deployment', () => {
   const m = parse();
   for (const patch of [{ schemaVersion: 1 }, { noAutomaticWriteRetry: false }, { noAutomaticExpiredManifestRefresh: false },
     { sourceInstallerArn: m.publisherRoleArn }, { ecsDeploymentAuthorized: true }, { requirePrePublicationOsScan: false },
@@ -186,11 +203,15 @@ test('consumed approval and original grant/revoke evidence remain byte-preserved
   assert.equal(textSha(priorF3Bytes), '8081815c08436a219d1701867bcaf9f16d19bfb0437c66270bee52822163a8c2');
   const priorF3 = JSON.parse(priorF3Bytes);
   assert.equal(parse().previousApprovedUnexecutedF3ManifestSha, textSha(priorF3Bytes));
-  assert.deepEqual(parse().images, priorF3.images);
-  assert.deepEqual(parse().iamTemplates, priorF3.iamTemplates);
-  assert.deepEqual(parse().iamUpdate, priorF3.iamUpdate);
-  assert.equal(parse().installBy, priorF3.installBy);
-  assert.equal(parse().expiresAt, priorF3.expiresAt);
+  const lastF3Bytes = fs.readFileSync('deployment/history/reviewed-ecr-publication-1ab97e7b3809.json');
+  assert.equal(textSha(lastF3Bytes), '1ab97e7b380947662e54920a3150e4c314fd8d8f8a29c320a74f7abe46b51c6a');
+  assert.equal(parse().previousConsumedF3PublicationManifestSha, textSha(lastF3Bytes));
+  const lastF3 = JSON.parse(lastF3Bytes);
+  assert.deepEqual(lastF3.images, priorF3.images); assert.deepEqual(lastF3.iamTemplates, priorF3.iamTemplates);
+  assert.deepEqual(lastF3.iamUpdate, priorF3.iamUpdate); assert.equal(lastF3.installBy, priorF3.installBy);
+  assert.equal(lastF3.expiresAt, priorF3.expiresAt);
+  assert.notDeepEqual(parse().images, lastF3.images); assert.notEqual(parse().iamTemplates.grant.path, lastF3.iamTemplates.grant.path);
+  assert.equal(parse().iamTemplates.revoke.textSha256, lastF3.iamTemplates.revoke.textSha256);
 });
 
 test('Source controller is read-only by default, one-shot update/dispatch, with finally revoke and expiry-safe Inspect', () => {

@@ -126,7 +126,7 @@ $revoke=Get-Content -LiteralPath (Join-Path $backend $m.iamTemplates.revoke.path
 $stack=ReadStack
 $locked=ReadIam $revoke 'LOCKED_VERIFIED'
 if($Mode -cne 'Inspect'){
-  if($stack.StackStatus -cne 'UPDATE_COMPLETE' -or $locked.policy.DefaultVersionId -cne $m.iamUpdate.expectedBoundaryDefaultVersionId){throw 'Reviewed Locked/v4 prestate changed; no AWS write.'}
+  if($stack.StackStatus -cne 'UPDATE_COMPLETE' -or $locked.policy.DefaultVersionId -cne $m.iamUpdate.expectedBoundaryDefaultVersionId){throw 'Reviewed Locked prestate changed; no AWS write.'}
   AssertEqual @($locked.policyVersions.VersionId | Sort-Object) @($m.iamUpdate.expectedExistingBoundaryVersionIds | Sort-Object) 'Reviewed policy version inventory'
 }
 if($Mode -cne 'RunReviewed'){
