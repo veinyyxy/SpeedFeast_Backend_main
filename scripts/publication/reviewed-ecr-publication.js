@@ -37,13 +37,16 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
   check(/^[a-f0-9]{64}$/.test(approvedSha || '') && textSha(bytes) === approvedSha,
     'Fresh manifest approval mismatch; no AWS write');
   const m = JSON.parse(bytes.toString('utf8'));
-  // Preserve the frozen F3/v3 prestate. C5c is a separate reviewed schema with
-  // the actually observed Locked/v6 + v5/v6 inventory, not a wildcard version.
+  // Preserve v3/v4 prestates. C5i binds the now-observed Locked/v8 + v7/v8
+  // inventory and original physical IDs; this is never a version wildcard.
   const prestateMatches = m.schemaVersion === 3
     ? m.iamUpdate?.expectedBoundaryDefaultVersionId === 'v4' && canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v3', 'v4'])
-    : m.schemaVersion === 4 && m.iamUpdate?.expectedBoundaryDefaultVersionId === 'v6' &&
-      canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v5', 'v6']);
-  check([3, 4].includes(m.schemaVersion) && prestateMatches && m.operation === 'PUBLISH_CHECKED_IMAGES_ONLY' &&
+    : m.schemaVersion === 4
+      ? m.iamUpdate?.expectedBoundaryDefaultVersionId === 'v6' && canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v5', 'v6'])
+      : m.schemaVersion === 5 && m.iamUpdate?.expectedBoundaryDefaultVersionId === 'v8' &&
+        canonical(m.iamUpdate.expectedExistingBoundaryVersionIds) === canonical(['v7', 'v8']) &&
+        m.iamUpdate.expectedRoleId === 'AROAV3GNMXTZGGMKJ24YR' && m.iamUpdate.expectedPolicyId === 'ANPAV3GNMXTZPARAIKHN5';
+  check([3, 4, 5].includes(m.schemaVersion) && prestateMatches && m.operation === 'PUBLISH_CHECKED_IMAGES_ONLY' &&
     m.repository === REPOSITORY && m.accountId === ACCOUNT && m.region === REGION &&
     m.ecrRepository === ECR && m.publisherRoleArn === ROLE &&
     m.sourceInstallerArn === `arn:aws:iam::${ACCOUNT}:user/techlong-sandbox-dev` &&
@@ -88,7 +91,8 @@ function validateManifest(bytes, approvedSha, now = Date.now()) {
     check(textSha(fs.readFileSync(path.join(ROOT, file))) === m.executorTextSha256[file], 'Executor changed since approval');
   }
   for (const kind of ['grant', 'revoke']) {
-    const file = kind === 'grant' ? (m.schemaVersion === 4 ? 'deployment/ecr-publisher.regrant-20261015-c5c.template.json'
+    const file = kind === 'grant' ? (m.schemaVersion === 5 ? 'deployment/ecr-publisher.regrant-20261015-c5i.template.json'
+      : m.schemaVersion === 4 ? 'deployment/ecr-publisher.regrant-20261015-c5c.template.json'
       : 'deployment/ecr-publisher.regrant-20261008.template.json') : 'deployment/ecr-publisher.revoke.template.json';
     check(m.iamTemplates?.[kind]?.path === file &&
       textSha(fs.readFileSync(path.join(ROOT, file))) === m.iamTemplates[kind].textSha256,

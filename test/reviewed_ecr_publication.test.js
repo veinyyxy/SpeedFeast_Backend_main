@@ -65,13 +65,15 @@ test('candidate proof cannot substitute registry digest, unrelated run or runtim
   }
 });
 
-test('C5c uses exact observed Locked/v6 prestate; legacy v3 remains v4-only, never arbitrary policy versions', () => {
+test('C5i uses exact Locked/v8 and original IDs; older schemas keep their original version scopes', () => {
   const m = parse(), now = Date.parse(m.reviewedAt);
-  assert.equal(m.schemaVersion, 4); assert.equal(m.iamUpdate.expectedBoundaryDefaultVersionId, 'v6');
-  assert.deepEqual(m.iamUpdate.expectedExistingBoundaryVersionIds, ['v5', 'v6']);
-  for (const patch of [{ schemaVersion: 3 }, { schemaVersion: 5 },
-    { iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v7' } },
-    { iamUpdate: { ...m.iamUpdate, expectedExistingBoundaryVersionIds: ['v6'] } }]) {
+  assert.equal(m.schemaVersion, 5); assert.equal(m.iamUpdate.expectedBoundaryDefaultVersionId, 'v8');
+  assert.deepEqual(m.iamUpdate.expectedExistingBoundaryVersionIds, ['v7', 'v8']);
+  for (const patch of [{ schemaVersion: 3 }, { schemaVersion: 4 }, { schemaVersion: 6 },
+    { iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v9' } },
+    { iamUpdate: { ...m.iamUpdate, expectedExistingBoundaryVersionIds: ['v8'] } },
+    { iamUpdate: { ...m.iamUpdate, expectedRoleId: 'ARO_FOREIGN' } },
+    { iamUpdate: { ...m.iamUpdate, expectedPolicyId: 'ANPA_FOREIGN' } }]) {
     const v = Buffer.from(JSON.stringify({ ...m, ...patch }));
     assert.throws(() => validateManifest(v, textSha(v), now), /scope mismatch/);
   }
@@ -80,6 +82,10 @@ test('C5c uses exact observed Locked/v6 prestate; legacy v3 remains v4-only, nev
     iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v4', expectedExistingBoundaryVersionIds: ['v3', 'v4'] } };
   const v = Buffer.from(JSON.stringify(legacy));
   assert.equal(validateManifest(v, textSha(v), now).schemaVersion, 3);
+  const previous = JSON.parse(fs.readFileSync('deployment/history/reviewed-ecr-publication-b7d4bb49a15c.json'));
+  const v4 = Buffer.from(JSON.stringify({ ...m, schemaVersion: 4, iamTemplates: previous.iamTemplates,
+    iamUpdate: { ...m.iamUpdate, expectedBoundaryDefaultVersionId: 'v6', expectedExistingBoundaryVersionIds: ['v5', 'v6'] } }));
+  assert.equal(validateManifest(v4, textSha(v4), now).schemaVersion, 4);
 });
 
 test('OS admission binds the scanner, exact image and fresh DB without severity exceptions', () => {
@@ -175,6 +181,10 @@ test('IAM grant has exactly two retained resources and only regional exact-repos
   assert.equal(grant.Resources.PublisherRole.Properties.MaxSessionDuration, 3600);
   assert.equal(revoke.Resources.PublisherBoundary.Properties.PolicyDocument.Statement[0].Effect, 'Deny');
   assert.equal(revoke.Resources.PublisherRole.Properties.AssumeRolePolicyDocument.Statement[0].Effect, 'Deny');
+  const priorGrant = fs.readFileSync('deployment/ecr-publisher.regrant-20261015-c5c.template.json', 'utf8');
+  const expectedGrant = JSON.parse(priorGrant.replaceAll('2026-10-15T10:30:00Z', parse().expiresAt));
+  expectedGrant.Description = grant.Description;
+  assert.deepEqual(grant, expectedGrant, 'C5i cannot add policy actions/resources/trust changes beyond the reviewed deadline');
 });
 
 test('consumed approval and original grant/revoke evidence remain byte-preserved', () => {
@@ -212,6 +222,10 @@ test('consumed approval and original grant/revoke evidence remain byte-preserved
   assert.equal(lastF3.expiresAt, priorF3.expiresAt);
   assert.notDeepEqual(parse().images, lastF3.images); assert.notEqual(parse().iamTemplates.grant.path, lastF3.iamTemplates.grant.path);
   assert.equal(parse().iamTemplates.revoke.textSha256, lastF3.iamTemplates.revoke.textSha256);
+  const c5c = fs.readFileSync('deployment/history/reviewed-ecr-publication-b7d4bb49a15c.json');
+  assert.equal(textSha(c5c), 'b7d4bb49a15c5b69aee22c456fea1d4e0bcd640a2e5dd32db32bf456bdfee792');
+  assert.equal(parse().previousConsumedC5cPublicationManifestSha, textSha(c5c));
+  for (const pin of Object.values(JSON.parse(c5c).iamTemplates)) assert.equal(textSha(fs.readFileSync(pin.path)), pin.textSha256);
 });
 
 test('Source controller is read-only by default, one-shot update/dispatch, with finally revoke and expiry-safe Inspect', () => {
@@ -222,6 +236,7 @@ test('Source controller is read-only by default, one-shot update/dispatch, with 
   assert.match(controller, /if\(Test-Path -LiteralPath \$script:output\).*no reset or retry/);
   assert.match(controller, /Source is not using the auto-refreshing CLI login provider/);
   assert.match(controller, /verify-source-login/);
+  assert.match(controller, /\$m.schemaVersion -eq 5.*\$role.RoleId -cne \$m.iamUpdate.expectedRoleId.*\$policy.PolicyId -cne \$m.iamUpdate.expectedPolicyId/);
   assert.ok(!controller.includes('AddHours(1)'));
   assert.match(controller, /SaveJson 'source-login-pregrant.json' \$sourceProof/);
   assert.match(controller, /SaveJson 'locked-iam-pregrant.json' \$locked/);

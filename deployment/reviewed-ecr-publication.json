@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "operation": "PUBLISH_CHECKED_IMAGES_ONLY",
   "repository": "veinyyxy/SpeedFeast_Backend_main",
   "accountId": "402010193138",
@@ -8,22 +8,22 @@
   "publisherRoleArn": "arn:aws:iam::402010193138:role/TechlongSandboxGitHubImagePublisherRole",
   "sourceInstallerArn": "arn:aws:iam::402010193138:user/techlong-sandbox-dev",
   "iamStackName": "techlong-sandbox-github-image-publication",
-  "reviewedAt": "2026-10-15T04:32:27Z",
-  "expiresAt": "2026-10-15T10:30:00Z",
-  "sourceCommit": "8753546772476b018d33b96ab66db4837abde186",
-  "candidateRunId": "38680847373",
+  "reviewedAt": "2026-10-15T20:45:52.001Z",
+  "expiresAt": "2026-10-15T23:30:00Z",
+  "sourceCommit": "10fe3c41b97941f5c7755bdcd9f43aee2d5a0ea2",
+  "candidateRunId": "38803364109",
   "candidateRunAttempt": "1",
   "candidateWorkflow": ".github/workflows/backend-image-candidate.yml",
   "images": [
     {
       "kind": "app",
-      "artifactId": 11947876415,
-      "artifactName": "checked-app-8753546772476b018d33b96ab66db4837abde186-38680847373-1",
-      "artifactZipDigest": "sha256:4a487b44ee657b2add524892d0f8dc64947d1ab96ba634256f7c8ec645418c08",
-      "artifactExpiresAt": "2026-10-16T04:20:12Z",
-      "receiptSha256": "72d15dfe2a06ad11257fce66efbb2dc4c1d639796b5cce66db2ea14a9bb8c43b",
-      "imageConfigDigest": "sha256:334299151810ba19165ea694f0c8fe10f8f3162b72b4aac851e539fffa2364e1",
-      "tag": "app-sha8753546772476b018d33b96ab66db4837abde186-r38680847373-a1",
+      "artifactId": 12005571375,
+      "artifactName": "checked-app-10fe3c41b97941f5c7755bdcd9f43aee2d5a0ea2-38803364109-1",
+      "artifactZipDigest": "sha256:d6de76c8501e3eee67254cccc075f7bbed8f3eb515dc33e342721b4bba65f248",
+      "artifactExpiresAt": "2026-10-16T20:37:51Z",
+      "receiptSha256": "b56c6c93ab7344940622fd068f0d4a7e2017c198d2ab234c522286c883955a6c",
+      "imageConfigDigest": "sha256:74d083066dd15c62e006cf9ad7154f1a2727e693fae4a47bffc0af0b109c63dd",
+      "tag": "app-sha10fe3c41b97941f5c7755bdcd9f43aee2d5a0ea2-r38803364109-a1",
       "expectedOsSecurityScan": {
         "schemaVersion": 1,
         "outcome": "OS_HIGH_CRITICAL_ZERO",
@@ -31,7 +31,7 @@
         "scannerVersion": "0.75.0",
         "scannerArchiveSha256": "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f",
         "scope": "os",
-        "imageConfigDigest": "sha256:334299151810ba19165ea694f0c8fe10f8f3162b72b4aac851e539fffa2364e1",
+        "imageConfigDigest": "sha256:74d083066dd15c62e006cf9ad7154f1a2727e693fae4a47bffc0af0b109c63dd",
         "os": {
           "Family": "debian",
           "Name": "13.7"
@@ -41,25 +41,25 @@
           "HIGH": 0,
           "CRITICAL": 0
         },
-        "databaseUpdatedAt": "2026-10-15T01:13:01.189995254Z",
+        "databaseUpdatedAt": "2026-10-15T19:09:25.631494278Z",
         "ignoredFindingsAllowed": false,
         "ignoreUnfixedAllowed": false,
         "ecrScanPerformed": false,
         "cloudMutationPerformed": false,
-        "reportSha256": "92d2ba0e4498788cf5d4c5c64565813aa57736d936692be8ec12c6be41cb774a",
-        "databaseMetadataSha256": "2194f7eed89daed721c59f4f371985e846b36b88189aeeddd1151e3c87d47a20",
-        "databaseSha256": "1f86b775c8bad1b9fa31f91e6523a8b33ba85f9c8529970aceae32663d21bd10"
+        "reportSha256": "82fc263f9f5a7bff2ab2eaef705b2f70e102c1a3fe12dacfaad8ad16bcc95f3b",
+        "databaseMetadataSha256": "60bfecb3ae43d65ee71b7d94a7c160b2c42f8af8dfe887fc863d327d19c4d691",
+        "databaseSha256": "32c6ed2327c56930f4814c2f243bcdbf54fe4b6b42d85533e53d0a02ebe36e4d"
       }
     },
     {
       "kind": "lifecycle",
-      "artifactId": 11947134411,
-      "artifactName": "checked-lifecycle-8753546772476b018d33b96ab66db4837abde186-38680847373-1",
-      "artifactZipDigest": "sha256:987efb24a3f649a96b83a4cf798a5730ad97d82c1f5fe0f22c88a180bec12664",
-      "artifactExpiresAt": "2026-10-16T04:20:15Z",
-      "receiptSha256": "d1a8938da7b0fa88347e231b8cb048c17816f37d7c597992a37e9fcb18c41dca",
-      "imageConfigDigest": "sha256:24ddb8f9dd57c71dc7639336f6dc2e3fa04becce1e8cf2f98abaa7a74bf539f1",
-      "tag": "lifecycle-sha8753546772476b018d33b96ab66db4837abde186-r38680847373-a1",
+      "artifactId": 12004808747,
+      "artifactName": "checked-lifecycle-10fe3c41b97941f5c7755bdcd9f43aee2d5a0ea2-38803364109-1",
+      "artifactZipDigest": "sha256:793e4906618cffe5d1827c2bc0772f665e33cf15fbaba2a3257927f008b6ab24",
+      "artifactExpiresAt": "2026-10-16T20:37:43Z",
+      "receiptSha256": "a7a9c5e21ce218d8100a79dafbd931f845ac5b259ed9937a40c335c18b0680cb",
+      "imageConfigDigest": "sha256:56acf24122f879e27825a17d177e1a82011e8635aff62efdf351c590d806dcf2",
+      "tag": "lifecycle-sha10fe3c41b97941f5c7755bdcd9f43aee2d5a0ea2-r38803364109-a1",
       "expectedOsSecurityScan": {
         "schemaVersion": 1,
         "outcome": "OS_HIGH_CRITICAL_ZERO",
@@ -67,7 +67,7 @@
         "scannerVersion": "0.75.0",
         "scannerArchiveSha256": "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f",
         "scope": "os",
-        "imageConfigDigest": "sha256:24ddb8f9dd57c71dc7639336f6dc2e3fa04becce1e8cf2f98abaa7a74bf539f1",
+        "imageConfigDigest": "sha256:56acf24122f879e27825a17d177e1a82011e8635aff62efdf351c590d806dcf2",
         "os": {
           "Family": "debian",
           "Name": "13.7"
@@ -77,28 +77,28 @@
           "HIGH": 0,
           "CRITICAL": 0
         },
-        "databaseUpdatedAt": "2026-10-15T01:13:01.189995254Z",
+        "databaseUpdatedAt": "2026-10-15T19:09:25.631494278Z",
         "ignoredFindingsAllowed": false,
         "ignoreUnfixedAllowed": false,
         "ecrScanPerformed": false,
         "cloudMutationPerformed": false,
-        "reportSha256": "771f3667495336ed749d2495f6eb13907c90e5653a2716e40faca34c5c580cfa",
-        "databaseMetadataSha256": "38c4af4bbae3f43f6183ac25ad0d703b8f7f43988cf785913f61c94b7e46a0a4",
-        "databaseSha256": "1f86b775c8bad1b9fa31f91e6523a8b33ba85f9c8529970aceae32663d21bd10"
+        "reportSha256": "b09c6e7ccf0c7a285fa00e050ca7431c73c3d380ffadb86344d5904c61181299",
+        "databaseMetadataSha256": "6ffb493d6bd1a9c2a97d457aad1c2919e090e8be23c1d12689959ab2fe6c2570",
+        "databaseSha256": "32c6ed2327c56930f4814c2f243bcdbf54fe4b6b42d85533e53d0a02ebe36e4d"
       }
     }
   ],
   "executorHashFormat": "sha256-utf8-lf",
   "executorTextSha256": {
-    "scripts/publication/run-reviewed-ecr-republish.ps1": "a7353f8265cea87f7c61028d9e93ed18b7d365cf6a1c935a8df779f7f4dbeb6b",
+    "scripts/publication/run-reviewed-ecr-republish.ps1": "0c1fc29da8a53a92dba2a89192b8293c741ae00663ba5376e3d284f88f74ff36",
     "scripts/publication/extract-checked-artifact.py": "9fb2ccdd9a573cdd09e253c747894f540bb80cdd821c7a85e0c2df8ced8f0d50",
     ".github/workflows/backend-reviewed-ecr-publish.yml": "43b832e20fd87e8d6aa9607670f9d53bbeb6d2b94e6c5c99b8742bef6f530dcd",
-    "scripts/publication/reviewed-ecr-publication.js": "841f283f3645e4759ab96faaa2094bfd26cc634b90ee36a18765b61b87738b70"
+    "scripts/publication/reviewed-ecr-publication.js": "b991c6a8bf015caa194b565dc467f646ca7c61a8d84f6a2cd80593277474558a"
   },
   "iamTemplates": {
     "grant": {
-      "path": "deployment/ecr-publisher.regrant-20261015-c5c.template.json",
-      "textSha256": "9b4b5ae9bdd95cedef88a6f53f4088161265d1f1891faec62d1b30c2e297b8ea"
+      "path": "deployment/ecr-publisher.regrant-20261015-c5i.template.json",
+      "textSha256": "b1695f0aadf8f3e75bede9e528925aeaf6cdb42b456eb1a0c7ea84c0ef9cf0c8"
     },
     "revoke": {
       "path": "deployment/ecr-publisher.revoke.template.json",
@@ -106,13 +106,14 @@
     }
   },
   "installationScope": [
-    "Source updates only the two existing IAM resources in the exact Locked/v6 stack using the pinned new regrant template; no stack/role/boundary creation or replacement",
-    "Reuse the existing GitHub OIDC provider without changes; require sole inline policy, no attached role policies, Deny-all boundary/trust, default v6 and exact version inventory v5/v6 before update",
+    "Source updates only the two existing IAM resources in the exact Locked/v8 stack using the pinned new regrant template; no stack/role/boundary creation or replacement",
+    "Reuse the existing GitHub OIDC provider without changes; require sole inline policy, no attached role policies, Deny-all boundary/trust, default v8 and exact version inventory v7/v8 before update",
     "Dispatch the manual workflow once on main with this fresh SHA; load the exact reviewed ZIP/receipt/scan/image bytes before OIDC; never rebuild",
-    "Push at most two new fixed immutable tags for source 8753546 into the existing repository, independently read registry/config digests and BASIC scans; HIGH/CRITICAL blocks ECS",
+    "Push at most two new fixed immutable tags for source 10fe3c4 into the existing repository, independently read registry/config digests and BASIC scans; HIGH/CRITICAL blocks ECS",
     "On success or failure immediately Source Revoke and independently verify Locked; preserve all prior images, IAM resources and policy/template/execution records; no automatic write retry",
     "Accept CloudFormation managed-policy version cleanup on update/revoke, including possible deletion of nondefault versions; preserve pregrant version documents before any write, but these backups do not restore deleted cloud version IDs",
-    "Use exact Source CLI login and live identity with current credentials >=120 seconds before Grant/Revoke, with automatic refresh; outer refresh-session expiry is not independently proved and failed revoke needs immediate attention"
+    "Use exact Source CLI login and live identity with current credentials >=120 seconds before Grant/Revoke, with automatic refresh; outer refresh-session expiry is not independently proved and failed revoke needs immediate attention",
+    "C5i also verifies exact original role/policy IDs before Grant and after Grant/Revoke; this identity check is not a cross-service CAS"
   ],
   "trustScope": "GitHub OIDC aud sts.amazonaws.com; only this repository main ref (not a per-workflow AWS claim)",
   "monthlyBudgetTargetUsd": 50,
@@ -123,22 +124,24 @@
   "ecsDeploymentAuthorized": false,
   "baselinePublicationAuthorized": false,
   "resourceDeletionAuthorized": false,
-  "installBy": "2026-10-15T09:30:00Z",
+  "installBy": "2026-10-15T22:30:00Z",
   "requirePrePublicationOsScan": true,
   "iamUpdate": {
     "mode": "UPDATE_LOCKED_STACK",
     "stackArn": "arn:aws:cloudformation:ca-central-1:402010193138:stack/techlong-sandbox-github-image-publication/62c806e0-c27e-11f1-88a8-0e6ce3fed11f",
     "expectedStackStatus": "UPDATE_COMPLETE",
     "expectedBoundaryArn": "arn:aws:iam::402010193138:policy/TechlongSandboxGitHubImagePublisherBoundary",
-    "expectedBoundaryDefaultVersionId": "v6",
+    "expectedBoundaryDefaultVersionId": "v8",
     "creationAuthorized": false,
     "replacementAuthorized": false,
     "expectedExistingBoundaryVersionIds": [
-      "v5",
-      "v6"
+      "v7",
+      "v8"
     ],
     "cloudFormationManagedPolicyVersionCleanupMayOccur": true,
-    "managedPolicyVersionCleanupAccepted": true
+    "managedPolicyVersionCleanupAccepted": true,
+    "expectedRoleId": "AROAV3GNMXTZGGMKJ24YR",
+    "expectedPolicyId": "ANPAV3GNMXTZPARAIKHN5"
   },
   "priorConsumedApprovalSha": "ce32e46450cd18f382d67de843eeaf208be9421beed80dc7cb94ed6d335abc10",
   "previousApprovedUnexecutedManifestSha": "c9fa6086f28c8e599f40baf1d1f20ef937d2fcb9d2346bdd5376cc1d2a1c4790",
@@ -151,14 +154,17 @@
   },
   "previousConsumedRepublishApprovalSha": "15d30e5ec70feb4712c572a404f437405b5d5b9704acd59937423ac4bbd62f80",
   "previousApprovedUnexecutedF3ManifestSha": "8081815c08436a219d1701867bcaf9f16d19bfb0437c66270bee52822163a8c2",
-  "executionPreconditionChange": "C5c schema v4 binds actual observed Locked/v6 and exact v5/v6 version inventory; v3 retains its original v4 + v3/v4 prestate. New exact checked C5b images and fresh permission window; all other actions/resources/Source refresh/revoke boundaries unchanged.",
+  "executionPreconditionChange": "C5i schema v5 binds observed Locked/v8, exact v7/v8 inventory and original role/policy IDs. v3 and v4 preserve their original prestates. New exact checked UUIDv8-fix images and permission window; no ECS deployment, no application retry, no additional IAM actions/resources.",
   "previousConsumedF3PublicationManifestSha": "1ab97e7b380947662e54920a3150e4c314fd8d8f8a29c320a74f7abe46b51c6a",
   "candidateEvidence": {
     "source": "GitHub completed exact job logs plus authenticated artifact metadata",
-    "ciRunId": 38680847326,
-    "candidateRunId": 38680847373,
+    "ciRunId": 38803364335,
+    "candidateRunId": 38803364109,
+    "appJobId": 116657830679,
+    "lifecycleJobId": 116657831073,
     "artifactContentsDownloadedLocally": false,
     "promotionPrepareMustIndependentlyVerifyArtifactBytes": true,
     "registryManifestDigestVerified": false
-  }
+  },
+  "previousConsumedC5cPublicationManifestSha": "b7d4bb49a15c5b69aee22c456fea1d4e0bcd640a2e5dd32db32bf456bdfee792"
 }

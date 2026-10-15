@@ -72,6 +72,7 @@ function ReadIam($Template,[string]$Label){
   $role=(AwsJson @('iam','get-role','--role-name',$roleName)).Role
   if($role.Arn -cne ('arn:aws:iam::402010193138:role/'+$roleName) -or $role.PermissionsBoundary.PermissionsBoundaryArn -cne $boundaryArn -or $role.MaxSessionDuration -ne 3600){throw 'Role identity/boundary mismatch.'}
   $policy=(AwsJson @('iam','get-policy','--policy-arn',$boundaryArn)).Policy
+  if($m.schemaVersion -eq 5 -and ($role.RoleId -cne $m.iamUpdate.expectedRoleId -or $policy.PolicyId -cne $m.iamUpdate.expectedPolicyId)){throw 'Reviewed physical role/policy identity changed; no write retry.'}
   $versions=@((AwsJson @('iam','list-policy-versions','--policy-arn',$boundaryArn)).Versions)
   $document=(AwsJson @('iam','get-policy-version','--policy-arn',$boundaryArn,'--version-id',$policy.DefaultVersionId)).PolicyVersion.Document
   $inline=(AwsJson @('iam','get-role-policy','--role-name',$roleName,'--policy-name','ExactSandboxEcrPublication')).PolicyDocument
