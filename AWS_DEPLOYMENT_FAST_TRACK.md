@@ -4,6 +4,8 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+最新C5g代码草案（2026-10-15 Winnipeg）：平台完成既有CFN managed policy追加六statement/八读取action的一次版本安装入口（Draft/Review/Run/独立Inspect）；保留完整v7，不改日志execution或共享service boundary。按官方说明补service ARN、将DescribeIndexPolicies与DescribeResourcePolicies两项明确区域Resource*；完整只读入口不再循环日志流模拟且保持能力未证明。25项tests/types/lint过、历史文档实际编译6086字符；没有 fresh执行清单。新的1STS+8IAM元数据Review被安全审批拦截未启动，须用户允许读取现有授权布局/消费者后才能生成SHA；本轮AWS/SQL/私密值/写/槽/job/部署均0。当前只是权限前置执行器，完整交付root仍待收尾。代码/证据按常驻授权提交，应用源码/镜像/用户.vscode保持。[准确范围、风险及继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5g-cfn-read-policy.md)。下方保留历史。
+
 最新C5f日志核对已完成（2026-10-15 Winnipeg）：用户明确允许后10:38 CDT仅四次IAM读取+四次custom simulation；即使不带boundary、Resource为*的最小Allow也返回implicitDeny，八action结果无matched/missing context，无法归因现有路径或boundary，不能证明真实访问通过。0写/Secret值/SQL/槽/部署；不据此增权、不改共享boundary，不再扩展模拟支线。下一仍最小CFN读权限差异与真实first-claim/epoch→workload/DNS→provision/initialized-ready原子回写入口；实际权限/部署各fresh另批。网络持续计费，11:44标签不自动停费。本仓仅交接，应用源码/已发布镜像/用户.vscode保持。[有界检查结果及继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5f-log-inspection.md)。下方保留历史。
 
 最新C5f只读预检（2026-10-15 Winnipeg）：平台已编译准确新owner的九条first-claim SQL（拟六行追加）及真实七资源workload/DNS/初始DDB条件事务，16项tests/types/lint通过。AWS接受模板、准确资源名称/优先级无冲突，两digest存在；Neon九条非执行EXPLAIN通过，未INSERT/创建job或启动TTL。实际预检发现CFN八个读取action缺口及execution日志两条未归因模拟拒绝；现有inline和共享boundary文本已覆盖日志路径，不能臆断需要增权。追加四元数据+四只读模拟因工具安全审批未执行，需用户允许；无新IAM/SQL/云写、私密/Secret值读或槽消费，无部署/ready。完整live执行根仍待收尾，不预先认领、不重放C5e/seed/ECR或打开F3c9。原计算网络持续计费、11:44 CDT标签不自动停费；50 USD为目标非cap。本仓仅交接，应用源码8753546/已发布镜像和用户.vscode保持。[真实证据、阻断与继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5f-live-delivery-preflight.md)。下方保留历史。
