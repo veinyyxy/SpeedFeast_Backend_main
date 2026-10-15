@@ -4,6 +4,8 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+C5c待审材料云验证补充：准确发布控制提交9a58af5afd47aae26dde071c99da8f94c7d62601的CI38682480159，check116249894856/docker116249894539所有steps均success。双方C5b应用/ready18个LF pins不变，候选镜像源码仍8753546；未dispatch手动发布、未改AWS/SQL/Secret或消费槽。本提交仅文档交接，待批SHA仍b7d4bb49...，完整执行根/真实ready未完成。
+
 当前 C5c（2026-10-14 Winnipeg）停在新镜像发布审批：C5b镜像源码仍8753546/成功候选38680847373，不重建。新schema4绑定实际Locked/v6及v5/v6库存、准确新grant文件和两份候选的artifact/receipt/config/OS SHA；保留v3原v4前态、所有旧grant/revoke及新归档1ab97e7b原SHA。清单SHA `b7d4bb49a15c5b69aee22c456fea1d4e0bcd640a2e5dd32db32bf456bdfee792`，installBy UTC2026-10-15 09:30、expires10:30；14项发布/候选tests、types/syntax与实际ReviewOnly通过。权限/发布写仍0。新执行根必须等真实ECR registry digest再绑定，不能拿config digest代替。平台另有16资源无RDS的Express计算层候选，但不在此次IAM/ECR范围内；不删旧失败Cell、不读Secret/私密bundle、不连接数据库/初始化、不ECS/Cell或baseline发布。获批后单次更新现有两项IAM、两镜像promotion、成功或失败立即Source Revoke和独立Inspect，权限版本清理/自动刷新失效/部分遗留/非零费用及不自动重试风险另确认。用户.vscode保持。[准确清单与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5c-publication-review.md)。下方C5b保留为历史。
 
 当前 C5b（2026-10-14 Winnipeg）已完成编码和云验证。准确服务端源码 `8753546772476b018d33b96ab66db4837abde186` 的 CI38680847326（check116244816674/docker116244816360）与双候选38680847373（app116244816773/lifecycle116244816521）全部 steps success，含真实容器、network-none readiness/dual/V4/V5/V6、归档工具链及依赖/OS HIGH/CRITICAL门禁。checked app11947876415/lifecycle11947134411仅保留到UTC10月16日04:20:12/15；ZIP digest不是ECR manifest。双方各9源文件LF hash/云artifact元数据在平台capsule保存。本提交仅文档交接，不改上述执行源码。
