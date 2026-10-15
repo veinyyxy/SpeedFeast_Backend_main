@@ -4,6 +4,8 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+最新C5g在线清单（2026-10-15 Winnipeg）：用户允许后11:04:44 CDT真实1STS+8IAM读取通过，准确CFN role/policy IDs、trust、原v7完整文档/仅v7库存及两类唯一消费者无漂移；7源码/依赖pins和3历史hash匹配，错误SHA本地拒绝。fresh SHA dee0a0003308e809cb1d767d07756243507a99cb683b5181452e54168e77d9da到12:04:44 CDT，仅待一次现有policy CreatePolicyVersion设default并保留v7、随后独立Inspect的另行批准。八读取action持久安装，两Logs区域Resource*、非CAS/drift/传播/失败遗留及永久槽不自动回滚重试等风险见清单。当前0写/模拟/私密值/SQL/槽/job/部署，完整交付root与真实日志/ready未完成；不延长11:44 Cell标签，原费用持续。本仓仅交接，应用源码/镜像/用户.vscode保持。[新清单、完整范围及风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5g-cfn-read-policy-review.md)。下方保留历史。
+
 最新C5g代码草案（2026-10-15 Winnipeg）：平台完成既有CFN managed policy追加六statement/八读取action的一次版本安装入口（Draft/Review/Run/独立Inspect）；保留完整v7，不改日志execution或共享service boundary。按官方说明补service ARN、将DescribeIndexPolicies与DescribeResourcePolicies两项明确区域Resource*；完整只读入口不再循环日志流模拟且保持能力未证明。25项tests/types/lint过、历史文档实际编译6086字符；没有 fresh执行清单。新的1STS+8IAM元数据Review被安全审批拦截未启动，须用户允许读取现有授权布局/消费者后才能生成SHA；本轮AWS/SQL/私密值/写/槽/job/部署均0。当前只是权限前置执行器，完整交付root仍待收尾。代码/证据按常驻授权提交，应用源码/镜像/用户.vscode保持。[准确范围、风险及继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5g-cfn-read-policy.md)。下方保留历史。
 
 最新C5f日志核对已完成（2026-10-15 Winnipeg）：用户明确允许后10:38 CDT仅四次IAM读取+四次custom simulation；即使不带boundary、Resource为*的最小Allow也返回implicitDeny，八action结果无matched/missing context，无法归因现有路径或boundary，不能证明真实访问通过。0写/Secret值/SQL/槽/部署；不据此增权、不改共享boundary，不再扩展模拟支线。下一仍最小CFN读权限差异与真实first-claim/epoch→workload/DNS→provision/initialized-ready原子回写入口；实际权限/部署各fresh另批。网络持续计费，11:44标签不自动停费。本仓仅交接，应用源码/已发布镜像/用户.vscode保持。[有界检查结果及继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-c5f-log-inspection.md)。下方保留历史。
