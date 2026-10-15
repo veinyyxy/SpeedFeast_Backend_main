@@ -1,5 +1,6 @@
 const express = require('express');
 const { createSaasAuthMiddleware } = require('../services/saas/saas_auth');
+const { createTenantControlReadiness } = require('../services/saas/tenant-control-readiness-v1.cjs');
 const {
   getControlSummary,
   installLicense,
@@ -12,6 +13,19 @@ const { QuotaExceededError, quotaErrorResponse } = require('../services/saas/quo
 
 const router = express.Router();
 router.use(createSaasAuthMiddleware());
+
+// Private mTLS listener + scoped JWT; never a provisioning/epoch receipt.
+for (const [path, method] of [['/bootstrap', 'bootstrap'], ['/readiness', 'initialized']]) {
+  router.get(path, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const control = createTenantControlReadiness({ readiness: req.app.locals.tenantReadiness });
+      return res.status(200).json(await control[method](req.saasActor));
+    } catch {
+      return res.status(503).json({ success: false, code: 'TENANT_CONTROL_READINESS_UNAVAILABLE' });
+    }
+  });
+}
 
 function sendError(res, error) {
   if (error instanceof QuotaExceededError) {

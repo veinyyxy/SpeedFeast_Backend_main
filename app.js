@@ -25,6 +25,7 @@ const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');*/
 
 var app = express();
+app.locals.tenantReadiness = readiness;
 const isProduction = isProductionEnvironment(process.env);
 
 if (isProduction) {
