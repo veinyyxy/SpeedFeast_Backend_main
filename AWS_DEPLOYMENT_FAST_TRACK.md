@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **最新K3v独立回读通过**（2026-10-16 09:09:50.998 CDT）：平台新窄只读入口8 SDK/1 CLI/1 Neon只读事务确认准确新UUID `ab4aa8c0-c966-11f1-b068-0ecbbd896a2b`、七资源/task definition:3/实际镜像与healthy target、restoration receipt及九行完整摘要。0写/私密值/新增应用请求，原初始化/instance/job及人工ready归因保留；原K3r失败/三个已消费槽不改不重放，旧错误原因仍未知。本次补齐当前承载/平台独立证据，不代表无人值守全链路/正向业务或全停费验收。固定今天10:37:01.033 CDT到期不续期；下一只读退出/依赖/费用盘点，默认保留租户数据，不自动删除/再建或扩展支线。本仓应用/镜像/用户.vscode不动，仅交接。下方为历史。[六份新证据、15tests与继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-k3v-hosting-rebind-verified.md)。
+
 > **最新K3r已执行，独立Inspect停止**（2026-10-16）：平台一次新七资源承载，准确UUID `ab4aa8c0-c966-11f1-b068-0ecbbd896a2b`/task definition:3及实际digest0dc34eda…健康，三个无认证公开GET为200/200/401；一行deployment outputs/updated_at事务ACK和Run只读回读通过，原instance/job/初始化及人工ready receipt保留，不再次provision。独立只读Inspect未分类失败，三永久槽已消费、未重试或补写，不能声称完整独立验收。固定Winnipeg今天10:37:01.033 CDT到期不续期；下一仅准备新UUID的窄只读诊断/验收及退出盘点，不重建或扩展F3c9/Grant。应用源码/镜像/用户.vscode不动，仅交接。下方待审段落均为历史，不得重放命令。[真实结果、23份证据hash与继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-k3r-hosting-resume-executed.md)。
 
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
