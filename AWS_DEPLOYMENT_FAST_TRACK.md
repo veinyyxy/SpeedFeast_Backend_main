@@ -4,6 +4,8 @@
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
 
+最新K3a停止：用户确认时原公开清单和workload期限均已过；Winnipeg 2026-10-16 07:55:49仅1STS+3CFN只读确认准确新workload UUID/七资源记录DELETE_COMPLETE、父Cell记录CREATE_COMPLETE。未公网GET/私密/Secret/SQL/云或DB写，新槽未消费，不刷新旧范围、不续期/重建/再初始化；当前Neon同步和物理全清理/停费未证明。需用户选另审workload-only恢复再验收，或K3b只读残留/退出盘点，实际变更另批。本仓源码/镜像/用户.vscode保持，仅交接。[停止实证与下一选择](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-k3a-expired.md)。下方为历史。
+
 当前K3a最小公网验收待审：平台仅新增三个无认证443 GET的独立入口（/health 200、/ready 200、/api/merchant/stores缺签名401），不登录/派生密码或买家lease、不业务写、不AWS/Secret/SQL客户端、不删资源；ready与store-context仍可触发应用只读Aurora/日志费用。6tests/零警告lint/语法和22份历史证据+10pins本地复核通过，本轮网络/私密/写/槽0，未声称当前公网已通过或本地源码就是新读取的已部署镜像。SHA `41ab184c73a04dc90ee70da21edf04653b65d27d99472cd58606607f027dcde6`，Winnipeg 2026-10-16 06:51:04.661前执行；原07:04:28.726到期不延长。K2c已ready保持，正向登录/订单与无人值守仍未验收；父Cell/库/Secret/DNS/平台退出依赖已列，实际新清理/私密/业务另批。本仓应用源码/镜像/用户.vscode不动，只交接。[最小清单、完整风险及准确退出顺序](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-k3-closeout.md)。下方为历史。
 
 最新K2c已完成：用户确认f98bcd6c…后Winnipeg 2026-10-16 01:30:52.825唯一Neon三行事务提交，01:31:26.312新进程独立认证验收通过；instance active、deployment ready、新实际digest/stack/receipt、旧job succeeded且lease清空，attempt1/max1及原计划/错误证据保持，明确人工恢复非worker续租。共两次原私密包/四GET，0云/IAM/Secret值/Aurora/POST；三个永久槽和批准全部消费，不再Run/Inspect或provision。本仓应用源码/镜像/用户.vscode保持，只交接。下一仅盘点首轮端用户访问/业务冒烟、到期清理及费用退出的未验收项并准备最小方案；不把人工收口当无人值守全链路验收，新的调用/清理另批，不扩展封存支线。原07:04:28.726 CDT固定到期、Janitor与50USD非cap保持。[真实结果、22份原件hash及继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-k2c-ready-reconciliation-executed.md)。下方为历史。
