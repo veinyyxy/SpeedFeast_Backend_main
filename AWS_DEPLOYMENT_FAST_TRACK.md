@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **最新W4a平台受控入口代码完成、未启用**（2026-10-16）：平台管理员实例页接最新匹配成功job的准确承载回执、固定到期和待审请求；复用既有任务表，审核挂起后由准确CAS原地领取同job，来源保留、attempt/max=1、不自动重试。33 tests/typecheck/lint/build及真实Neon只读投影/11条EXPLAIN通过，旧行/任务与76个W3代码摘要不变。本轮0云/DB写、私密/应用调用；未发布网站、开入口或全局队列。下一仅接queued-job单次CLI根，入口激活/真实任务/云执行另审，不能直接用W3旧Run领取待审行。本仓仅文档，源码/镜像/.vscode保持。[实现范围与下一步](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-w4a-platform-entry.md)。下方为历史。
+
 > **最新W3真实单任务闭环已实跑且独立Inspect通过**（2026-10-16 11:51:24 CDT）：按用户确认SHA `bf4bd8b4…`，1次SourceCreateStack建七资源，新UUID `74a79560-c981-11f1-bfcc-06ffde30f30d`/task definition:4，新job succeeded/lease清除，两JWT/mTLS GET核实原store/初始化/配置；原子收口后新进程只读再验通过。1次私密包/2GET、2个Neon写事务，无provision/自动重试/权限-DNS-DDB-Secret改动，旧job/ready与库保留、全局worker仍disabled。固定13:42:30 CDT到期不续期，五槽已消费不可重放；下一接平台受控触发，不称新客户全链路或全停费。本仓仅交接，源码/镜像/.vscode不动。[真实执行与13份原件摘要](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-w3-executed.md)。下方为历史。
 
 > **最新W3真实单次worker根已接通，待集中批准实跑**（2026-10-16）：平台已接真实AWS CreateStack七资源、新reconcile/DB-clock lease、W1两认证GET与W2原子收口/独立只读；不再provision，不改库/IAM/DNS/DDB/Secret或全局worker。26 tests/typecheck/lint和两轮真实只读Review通过；旧ab4栈/七资源删除、ECS inactive0，父Cell/库保留，0新job/云/业务写、私密包/应用请求。当前SHA `bf4bd8b4…` 准入至今天11:57:30.084 CDT，新child固定到期13:42:30；整包读取含未使用Stripe秘钥/非原子/收费遗留/CFN自身rollback等风险另须明确接受，过期只读刷新不重放。本仓仅交接，源码/镜像/.vscode不改。[当前集中清单与实现](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-w3-worker-root.md)。下方为历史。
