@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **最新K3r已执行，独立Inspect停止**（2026-10-16）：平台一次新七资源承载，准确UUID `ab4aa8c0-c966-11f1-b068-0ecbbd896a2b`/task definition:3及实际digest0dc34eda…健康，三个无认证公开GET为200/200/401；一行deployment outputs/updated_at事务ACK和Run只读回读通过，原instance/job/初始化及人工ready receipt保留，不再次provision。独立只读Inspect未分类失败，三永久槽已消费、未重试或补写，不能声称完整独立验收。固定Winnipeg今天10:37:01.033 CDT到期不续期；下一仅准备新UUID的窄只读诊断/验收及退出盘点，不重建或扩展F3c9/Grant。应用源码/镜像/用户.vscode不动，仅交接。下方待审段落均为历史，不得重放命令。[真实结果、23份证据hash与继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-k3r-hosting-resume-executed.md)。
+
 2026-10-05 用户要求以单租户真实部署闭环为优先，取消原最低费用优先策略；新预算目标为 **50 USD/月**。完整方案由 TechlongSoftware 的 `docs/aws-auto-deployment-fast-track.md` 维护，服务端与平台仍保持独立仓库，直接提交/推送 main。
 
 ## 当前主线：D001 单租户首轮交付；F3c9封存
