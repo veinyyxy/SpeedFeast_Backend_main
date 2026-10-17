@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **Source已刷新，同held job新Review通过，尚无执行授权**（Winnipeg 2026-10-16 23:36 CDT）：新SHA `aad13549…` 对应review-r3，准入至23:50:34 CDT，新承载若创建固定至10月17日01:35:34 CDT；旧b286已过期，失败run/Inspect保留、不重放。独立回读证明原job pending/attempt0、原快照/管理员/代码/端点/操作范围不变，槽仍不存在。4个Neon只读事务、38SDK/13CLI读，无写、私密读取或领取；只请求新SHA的准确执行批准，不重登请求/开本地入口。本仓仅文档、用户.vscode保留。[最新清单与风险入口](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-w4c-request-recorded.md)。下方为历史。
+
 > **W4c明确批准后的RunOnce在Source凭据门禁停止、未进入执行**（Winnipeg 2026-10-16 23:32 CDT）：用户逐字批准b286清单及风险，窗口内唯一运行停于run_readonly_preflight/SOURCE_REFRESH_REQUIRED，rootEntered=false，CreateStack0、无槽/私密读取；独立Inspect仍准确job pending、completion/provider NOT_PROVED。4个Neon只读事务/一次SDK身份读取尝试，SQL和云写0。等Source刷新后只读核对；清单过期须原held job新Review及新SHA确认，不重跑失败命令或再登记请求。本仓仅文档、用户.vscode保留。[当前状态及继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-w4c-request-recorded.md)。下方为历史。
 
 > **W4c真实平台待审请求已登记，下一仅批准准确同job的AWS执行**（Winnipeg 2026-10-16 23:20 CDT）：本机管理员POST201创建 `job_fe5ced28b698d0bf128e7b42`，pending/attempt0/审核挂起，本地入口已停，旧九行与两成功任务不变。W4读时间改为两事务前的本机起点，避免约0.4秒DB/host偏差误拒，30秒/数据库lease-CAS不放宽；42相邻测试/type/lint通过。真实Review读38SDK/13CLI证明准确W3前驱退役及namespace空，生成新SHA `b2860860…`，23:34:55 CDT前准入、新承载10月17日01:19:55 CDT固定到期；未执行/读私密包/消费槽，云写0。过期只读重审同job，不重登请求、重开密码或F3c9支线。本仓仅交接、用户.vscode保留。[准确清单与完整风险入口](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-aurora-dual-mode-w4c-request-recorded.md)。下方为历史。
