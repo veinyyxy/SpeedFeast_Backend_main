@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-18：W5o已接线原job的ECS修复版Review/RunOnce/Inspect，未调度。** 固定C=d8cb996/R=7f0fbf2及76闭包/工作流/权限不改，Review-v4和后续v3新永久槽，W5l失败/旧槽保留；152历史pins/27原件/修复与失败证据继续核验，9新+相邻回归共65本机通过。下一最终平台main无AWS CI后只读Prepare新Review SHA，再单独批准固定DB读/私有manifest写和一次dispatch，不领取/部署。本仓仅衔接，应用/镜像/用户.vscode保持。[完整范围和继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5o-review-continuation.md)。下文保留历史。
+
 > **2026-10-18：W5n ECS缺失修复固定版已发布，独立Inspect通过。** 用户批准f51a4de2后完成一次双workflow发布、现有角色trust-only Create/严格核验/Execute及本地FF；栈UPDATE_COMPLETE，C=d8cb996、R=7f0fbf2、S=68a476b，权限和76闭包保持。27份原件及新旧永久槽保留，无Secret值读取/dispatch/领取或部署。下一只接线原held job的新C/R并准备新云Review，实际Review/RunOnce另批，不重做发布。本仓仅交接，应用/镜像/用户.vscode保持。[完成事实和唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5n-published.md) / [证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/cloud-worker-w5n-ecs-publication.executed.json)。下文保留历史。
 
 > **2026-10-18：W5n修复版受审发布入口完成，尚未发布。** 只准双workflow固定版本替换和现有角色trust准确R的Create/严格核验/Execute，独立发布槽保留全部旧槽/失败原件；142历史Git pins/26旧发布原件/W5m修复证明继续核验。9新+61相邻回归通过，候选76闭包70ee60eb不再改变。下一最终平台main CI后只读Prepare新清单再请准确SHA；不扩权/调度Review或部署，本仓仅交接，应用/镜像/用户.vscode保持。[完整风险和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5n-ecs-publication.md)。下文保留历史。
