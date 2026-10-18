@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-18：W5l已实现同job新C/R的本机三模式衔接，未dispatch。** 固定W5k云版本不再发布；Review-v3、后续RunOnce/Inspect-v2独立永久槽，旧失败/槽/历史证据保持，134历史pins及26发布原件门禁保留。下一最终平台main无AWS CI通过后只读Prepare原准确job的新Review清单，固定DB读取/私有manifest写须fresh SHA另批，不领取/部署；云Review后冻结caller跨后续窗口。本仓仅交接，应用/镜像/用户.vscode不改。[完整风险及继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5l-review-continuation.md)。下文保留历史。
+
 > **2026-10-18：W5k DNS修复固定版本已发布，独立Inspect通过。** 按新62bbe2c1批准完成一次双workflow非force发布、现有角色trust-only Create/严格核验/Execute和本地FF，栈UPDATE_COMPLETE，其余权限/固定材料及Neon目录不变。固定运行C=e55367c、R=46312ff、发布caller S=d25c97f，26原件/永久槽保留；无Secret值读取、dispatch、job领取或部署。下一仅接线原held job新云Review版本并准备fresh清单，旧W5i不可重用；实际Review/RunOnce另审，不重做发布/扩支线。本仓仅交接，源码/镜像/用户.vscode不动。[结果及唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5k-published.md) / [证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/cloud-worker-w5k-dns-publication.executed.json)。下文保留历史。
 
 > **2026-10-18：W5k DNS修复受审发布入口已实现，实际未发布。** 新schema/fresh SHA及独立永久槽，只准一非force双workflow发布/一trust-only Create/严格ACK和完整模板核验/一Execute，成功失败均再独立Inspect；不补齐/回滚/重试/dispatch。原129pins/76闭包保持，下一最终平台main CI成功后只读Prepare新执行清单，再请准确新SHA确认。实际工作流/IAM/Secret/业务不改，本仓仅交接，应用/镜像/.vscode不动。[完整风险和命令](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5k-dns-publication.md) / [准备状态](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/cloud-worker-w5k-dns-publication.prepared.json)。下文保留历史。
