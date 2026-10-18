@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-18：W5q已接线修正后policy的同任务Review续接，未调度。** 新本机metadata严格绑定W5p 31原件/164历史pins，旧verifier/失败槽保持；Review-v5及RunOnce/Inspect-v4独立槽，云C/R/76闭包/两工作流/权限不变。下一最终平台main无AWS CI通过后只读Prepare新Review SHA，实际固定DB读取/私有manifest写和dispatch仍另批，不领取或部署。本仓仅交接，应用/镜像/用户.vscode保持。[完整风险及唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5q-corrected-review.md)。下文保留历史。
+
 > **2026-10-18：W5p单项读取权限已修正，独立Inspect通过。** 按b212b017批准一次Create/严格Policies-only核验/Execute，foundation UPDATE_COMPLETE；只把DescribeTaskDefinition Resource改为*、保留ca-central-1，持续扩读不自动撤权。trust/boundary/五资源身份/云C/R保持，31原件及永久槽保留；Secret值读取/Review/领取/部署0，尚不代表真实worker访问或自动部署验收完成。下一只在平台接线新policy布局/独立Review-v5槽并另备fresh Review清单，不重做发布。本仓仅交接，应用/镜像/用户.vscode保持。[完成事实及唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5p-corrected.md) / [执行证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/cloud-worker-w5p-task-definition-read.executed.json)。下文保留历史。
 
 > **2026-10-18：W5p正在准备单项DescribeTaskDefinition读取授权修正，未改AWS。** W5o Review-v4已失败，明确阻断为现有ARN级Allow不兼容；任务/业务未变，无manifest，旧槽/证据保留。候选只将此inline Resource改为*、保留ca-central-1及其它权限/trust/boundary；会持续扩大区域读取范围，fresh另批，不换云C/R/工作流。7新+相邻回归共72本机通过，下一最终平台CI后只读Prepare新清单，不执行或重跑。本仓仅文档，应用/镜像/用户.vscode保持。[完整风险和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5p-task-definition-read.md)。下文保留历史。
