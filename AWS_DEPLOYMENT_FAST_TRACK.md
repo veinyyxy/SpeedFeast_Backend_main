@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-18：W5n修复版受审发布入口完成，尚未发布。** 只准双workflow固定版本替换和现有角色trust准确R的Create/严格核验/Execute，独立发布槽保留全部旧槽/失败原件；142历史Git pins/26旧发布原件/W5m修复证明继续核验。9新+61相邻回归通过，候选76闭包70ee60eb不再改变。下一最终平台main CI后只读Prepare新清单再请准确SHA；不扩权/调度Review或部署，本仓仅交接，应用/镜像/用户.vscode保持。[完整风险和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5n-ecs-publication.md)。下文保留历史。
+
 > **2026-10-18：W5m仅修复准确ECS服务缺失响应并测试，未发布/重跑。** 用户已允许结束W5l失败main冻结；只兼容准确MISSING与同服务ListTasks HTTP400/ServiceNotFoundException组合，不扩权或吞其它错误。8新+53相邻回归通过，76闭包只provider改变并更新本地ROOT；实际C/R、权限、旧槽、业务不改。旧Review-v3失败无manifest，后续发布/新Review仍另行审批，本轮不准备RunOnce。本仓仅交接，应用/镜像/.vscode不动。[修复及边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5m-ecs-absence-fix.md)。下文保留历史。
 
 > **2026-10-18：W5l已实现同job新C/R的本机三模式衔接，未dispatch。** 固定W5k云版本不再发布；Review-v3、后续RunOnce/Inspect-v2独立永久槽，旧失败/槽/历史证据保持，134历史pins及26发布原件门禁保留。下一最终平台main无AWS CI通过后只读Prepare原准确job的新Review清单，固定DB读取/私有manifest写须fresh SHA另批，不领取/部署；云Review后冻结caller跨后续窗口。本仓仅交接，应用/镜像/用户.vscode不改。[完整风险及继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5l-review-continuation.md)。下文保留历史。
