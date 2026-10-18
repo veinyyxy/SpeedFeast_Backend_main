@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-18：W5n ECS缺失修复固定版已发布，独立Inspect通过。** 用户批准f51a4de2后完成一次双workflow发布、现有角色trust-only Create/严格核验/Execute及本地FF；栈UPDATE_COMPLETE，C=d8cb996、R=7f0fbf2、S=68a476b，权限和76闭包保持。27份原件及新旧永久槽保留，无Secret值读取/dispatch/领取或部署。下一只接线原held job的新C/R并准备新云Review，实际Review/RunOnce另批，不重做发布。本仓仅交接，应用/镜像/用户.vscode保持。[完成事实和唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5n-published.md) / [证据](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/cloud-worker-w5n-ecs-publication.executed.json)。下文保留历史。
+
 > **2026-10-18：W5n修复版受审发布入口完成，尚未发布。** 只准双workflow固定版本替换和现有角色trust准确R的Create/严格核验/Execute，独立发布槽保留全部旧槽/失败原件；142历史Git pins/26旧发布原件/W5m修复证明继续核验。9新+61相邻回归通过，候选76闭包70ee60eb不再改变。下一最终平台main CI后只读Prepare新清单再请准确SHA；不扩权/调度Review或部署，本仓仅交接，应用/镜像/用户.vscode保持。[完整风险和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5n-ecs-publication.md)。下文保留历史。
 
 > **2026-10-18：W5m仅修复准确ECS服务缺失响应并测试，未发布/重跑。** 用户已允许结束W5l失败main冻结；只兼容准确MISSING与同服务ListTasks HTTP400/ServiceNotFoundException组合，不扩权或吞其它错误。8新+53相邻回归通过，76闭包只provider改变并更新本地ROOT；实际C/R、权限、旧槽、业务不改。旧Review-v3失败无manifest，后续发布/新Review仍另行审批，本轮不准备RunOnce。本仓仅交接，应用/镜像/.vscode不动。[修复及边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5m-ecs-absence-fix.md)。下文保留历史。
