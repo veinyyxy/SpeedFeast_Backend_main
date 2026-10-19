@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-19：W6d无AWS身份发布草稿已准备，CI门禁未通过，不可执行。** 原CI39278613827仍queued且未分配runner、无步骤或注释；身份候选只在ops草稿目录，未注册/调度workflow。本轮不重跑测试/新增CI，不读key/改AWS/Neon/应用/用户.vscode。下一只回读原run或核对用户页面提示；通过后才准备可执行fresh发布SHA。[风险与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-review.md)。下文保留历史。
+
 > **2026-10-19：W6c V6云/身份/可信导入候选已编码，未启用或部署。** 复用现有V5部署核心，独立App/OIDC入口、一次不可覆盖结果、精确run/材料重建及owner-only待审导入；旧76闭包/工作流/trust与本仓应用保持，用户.vscode不动。下一先受审发布/调度无AWS身份验证，实际SQL/窄凭据/云trust及新任务部署仍另批；本阶段未读key、调度或改AWS/Neon。[范围、风险与剩余接线](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6c-cloud-candidate.md)。下文保留历史。
 
 唯一继续点：平台准确源码ca2b38d的无AWS CI39278613827仍排队；本机105项/类型/lint/构建通过，但真实PG导入尚无云端结果。下次只回读此run，不重做实现或追加CI轮次；通过后准备一次身份workflow发布/调度的fresh清单。[最小继续记录](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/platform-cloud-v6.prepared.json)。
