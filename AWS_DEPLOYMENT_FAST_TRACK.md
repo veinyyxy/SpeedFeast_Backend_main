@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-19：W6b 控制器定案及单仓 App 待审材料已准备。** 复用本地平台与 Neon 独立审批账本；旧 caller/runtime 固定个人 actor，不能只换 token，后续 V6 候选精确绑定实测身份。已编码公开注册/元数据合同与材料校验，未创建 App/安装权限/读 key/安装 SQL/dispatch 或部署；原两部署 workflow、IAM、云闭包及本仓应用保持。下一仅请具体批准 GitHub App 注册及单仓安装，密钥/SQL/发布/真实部署另审；不新增常驻控制服务或重开支线。本仓只记录交接，用户.vscode不改。[具体方案、完整风险及继续动作](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-controller-plan.md)。下文保留历史。
+
 > **2026-10-19：W6a平台只读进度接线已实现。** 三阶段归档与真实Neon完成回执匹配后才显示成功，展示run/摘要及承载标签倒计时；不将归档当实时健康或新任务授权。没有业务写、AWS/Secret调用、部署dispatch或入口启用，本仓应用与用户.vscode不改。W6b先集中定案固定任务参数化、平台服务端运行位置、GitHub App身份和审批ACK持久化，新增权限/安装/部署仍另批，不复用本机凭据或旧槽。[W6实现与继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6.md)。下文保留历史。
 
 > **2026-10-18：W5r真实受控AWS部署闭环已独立验收通过。** Review 39200031548、RunOnce 39200300265、独立Inspect 39200910036均成功；一次七资源CreateStack、两认证GET、原job完成、旧READY和前驱任务保留。执行源码固定平台2957f714，IAM/云C/R/镜像/本仓应用不改；三个本地槽和五云槽永久占用，不重放。该结论限已有初始化sandbox任务，不等于整套平台AWS上线。资源保留并可能持续收费，50 USD不是硬cap；下一请求/部署/续期/清理另定范围，不自动执行。本仓只记录交接，用户.vscode保持。[完成事实、证据及继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5r-completed.md)。下文保留历史。
