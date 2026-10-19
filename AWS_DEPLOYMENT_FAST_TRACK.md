@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-19：W6b 平台控制器候选已编码，尚未启用，W6 未全部完成。** 平台新增管理员接口/页面、App 客户端与独立账本 SQL（不自动安装、NOLOGIN）；UNPUBLISHED 硬绑定先于 DB/密钥读取，单次 intent/ACK/UNKNOWN 及真实 PG18 并发 CI 保持无 AWS。未读真实 PEM/安装 Neon/mint token/dispatch 或改 IAM；旧云闭包/工作流不变。下一集中 App 受审只读接入及 V6 云候选/可信 capsule/证据导入，然后另审安装/发布/新任务验收。本仓应用和用户.vscode保持。[候选实现、风险及继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-controller-implementation.md)。下文保留历史。
+
 > **2026-10-19：用户报告 W6b App 5381160 / installation 173033406 已创建，仍待安装核验。** 公开 API 仅核到候选 bot 344813947，不能替代实测 actor 或权限/单仓验证；私有 App404不作为不存在结论。误生成的未用私钥作异常记录，未读取/使用/轮换或新增密钥，先确认本机保管及非敏感设置；不重建 App、不改 AWS/SQL/Secret 或调度。本仓只更新交接，应用与用户.vscode保持。[当前事实及继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-controller-plan.md)。下文保留历史。
 
 > **2026-10-19：W6b 控制器定案及单仓 App 待审材料已准备。** 复用本地平台与 Neon 独立审批账本；旧 caller/runtime 固定个人 actor，不能只换 token，后续 V6 候选精确绑定实测身份。已编码公开注册/元数据合同与材料校验，未创建 App/安装权限/读 key/安装 SQL/dispatch 或部署；原两部署 workflow、IAM、云闭包及本仓应用保持。下一仅请具体批准 GitHub App 注册及单仓安装，密钥/SQL/发布/真实部署另审；不新增常驻控制服务或重开支线。本仓只记录交接，用户.vscode不改。[具体方案、完整风险及继续动作](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-controller-plan.md)。下文保留历史。
