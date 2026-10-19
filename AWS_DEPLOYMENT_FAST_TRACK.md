@@ -1,6 +1,6 @@
 # AWS 自动部署最快交付：服务端继续位置
 
-> **2026-10-19：W6d无AWS身份发布草稿已准备，CI门禁未通过，不可执行。** 原CI39278613827仍queued且未分配runner、无步骤或注释；身份候选只在ops草稿目录，未注册/调度workflow。本轮不重跑测试/新增CI，不读key/改AWS/Neon/应用/用户.vscode。下一只回读原run或核对用户页面提示；通过后才准备可执行fresh发布SHA。[风险与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-review.md)。下文保留历史。
+> **2026-10-19：W6d身份草稿不可执行；最终job日志已确认12组PG检查通过，但CI元数据仍queued，整轮success未确认。** 用户UI无额外提示、待批环境0，attempt接口与日志不一致，原因不明。候选未放入.github；本轮未重跑/新增CI、读key/调度或改AWS/Neon/应用/用户.vscode。下一只读原CI终态，不重复日志或测试；成功后再定稿fresh发布SHA，当前无需用户点击或升级。[证据与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-review.md)。下文保留历史。
 
 > **2026-10-19：W6c V6云/身份/可信导入候选已编码，未启用或部署。** 复用现有V5部署核心，独立App/OIDC入口、一次不可覆盖结果、精确run/材料重建及owner-only待审导入；旧76闭包/工作流/trust与本仓应用保持，用户.vscode不动。下一先受审发布/调度无AWS身份验证，实际SQL/窄凭据/云trust及新任务部署仍另批；本阶段未读key、调度或改AWS/Neon。[范围、风险与剩余接线](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6c-cloud-candidate.md)。下文保留历史。
 
