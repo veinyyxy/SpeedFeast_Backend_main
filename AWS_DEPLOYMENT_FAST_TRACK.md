@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-19当前：W6d身份工作流已按cf521abb清单单次发布并独立核验，尚未调度。** workflow389772013、准确内容和本地main快进匹配，原永久槽保留；未读App key/mint token、改AWS/SQL或本仓应用/用户.vscode。下一只实现/准备单次无AWS真实App身份验收，真实私钥/令牌/调度仍另批，不重跑发布。[完成证据和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-executed.md)。下文保留历史。
+
 > **2026-10-19当前：平台准确CI39278613827已全成功（16步骤、12组真实临时PG检查）；W6d仅发布身份工作流入口已完成。** 新8项定向检查/零警告lint通过，未发布/读App key/dispatch/改AWS或SQL，应用和用户.vscode保持。下一仅在平台最终main准备48小时fresh SHA，另批一次单文件身份workflow发布；之后App实际调度仍独立授权。[执行范围、完整风险与继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-review.md)。下文保留历史，旧queued结论已取代。
 
 > **2026-10-19：W6d身份草稿不可执行；最终job日志已确认12组PG检查通过，但CI元数据仍queued，整轮success未确认。** 用户UI无额外提示、待批环境0，attempt接口与日志不一致，原因不明。候选未放入.github；本轮未重跑/新增CI、读key/调度或改AWS/Neon/应用/用户.vscode。下一只读原CI终态，不重复日志或测试；成功后再定稿fresh发布SHA，当前无需用户点击或升级。[证据与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-review.md)。下文保留历史。
