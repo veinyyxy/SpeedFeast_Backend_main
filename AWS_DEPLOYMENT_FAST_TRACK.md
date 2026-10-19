@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-18：W5r真实受控AWS部署闭环已独立验收通过。** Review 39200031548、RunOnce 39200300265、独立Inspect 39200910036均成功；一次七资源CreateStack、两认证GET、原job完成、旧READY和前驱任务保留。执行源码固定平台2957f714，IAM/云C/R/镜像/本仓应用不改；三个本地槽和五云槽永久占用，不重放。该结论限已有初始化sandbox任务，不等于整套平台AWS上线。资源保留并可能持续收费，50 USD不是硬cap；下一请求/部署/续期/清理另定范围，不自动执行。本仓只记录交接，用户.vscode保持。[完成事实、证据及继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5r-completed.md)。下文保留历史。
+
 > **2026-10-18：W5r本机审批交接已实现，未开始新云轮次。** W5q真实Review成功，RunOnce开始晚于原窗口；任务/业务/五云槽未变，旧本地槽/原件保留。一次只读Handoff即时生成下一精确SHA及范围；不足8分钟余量不提交RunOnce。新独立Review-v6/RunOnce及Inspect-v5仍fresh另批，不改IAM/云C/R/原窗口/部署工作流，不重试旧run或创建新请求。本仓只交接，应用/镜像/用户.vscode保持。[完整风险和唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5r-approval-handoff.md)。下文保留历史。
 
 > **2026-10-18：W5q已接线修正后policy的同任务Review续接，未调度。** 新本机metadata严格绑定W5p 31原件/164历史pins，旧verifier/失败槽保持；Review-v5及RunOnce/Inspect-v4独立槽，云C/R/76闭包/两工作流/权限不变。下一最终平台main无AWS CI通过后只读Prepare新Review SHA，实际固定DB读取/私有manifest写和dispatch仍另批，不领取或部署。本仓仅交接，应用/镜像/用户.vscode保持。[完整风险及唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-cloud-worker-w5q-corrected-review.md)。下文保留历史。
