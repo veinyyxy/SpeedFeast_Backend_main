@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-19当前：W6e真实App身份验收通过，准确run39312477081成功；原token撤销HTTP204已观察/本地回读。** actor/sender/nonce/caller/冻结代码和公开proof摘要独立匹配；新槽保留不重放，未改AWS/Neon/本仓应用或用户.vscode。平台仍UNPUBLISHED，下一收口窄SQL/可信publisher生产接线及App云发布最小激活清单，实际权限/安装/部署仍另批，不再做身份探针。[完成证据与唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6e-app-identity-verified.md)。下文保留历史。
+
 > **2026-10-19当前：W6e专用无AWS App身份调度/独立只读验收代码已实现，尚未执行。** 真实workflow389772013、fresh main/nonce/15项pin与新槽绑定；ACK先落盘再立即撤权，后续人工environment及准确公开proof验收分离。下一在平台最终同步main准备48小时fresh SHA，真实读钥/token/单次dispatch另批；本轮未做这些操作或AWS/SQL/本仓应用写，用户.vscode保持。[完整风险及继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6e-app-identity-dispatch.md)。下文保留历史。
 
 > **2026-10-19当前：W6d身份工作流已按cf521abb清单单次发布并独立核验，尚未调度。** workflow389772013、准确内容和本地main快进匹配，原永久槽保留；未读App key/mint token、改AWS/SQL或本仓应用/用户.vscode。下一只实现/准备单次无AWS真实App身份验收，真实私钥/令牌/调度仍另批，不重跑发布。[完成证据和继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6d-identity-publication-executed.md)。下文保留历史。
