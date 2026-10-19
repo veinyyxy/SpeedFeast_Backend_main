@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-19：W6c V6云/身份/可信导入候选已编码，未启用或部署。** 复用现有V5部署核心，独立App/OIDC入口、一次不可覆盖结果、精确run/材料重建及owner-only待审导入；旧76闭包/工作流/trust与本仓应用保持，用户.vscode不动。下一先受审发布/调度无AWS身份验证，实际SQL/窄凭据/云trust及新任务部署仍另批；本阶段未读key、调度或改AWS/Neon。[范围、风险与剩余接线](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6c-cloud-candidate.md)。下文保留历史。
+
 > **2026-10-19：W6b真实App只读认证通过，本次token撤销204已观察，独立本地回执核对通过。** 按22dc06b2清单一次PEM读取、单仓最小read token、六请求；永久槽已占用，不重跑或再mint。未调度/改AWS/Neon/业务、运行时仍UNPUBLISHED，W6未完成。本仓只记交接，应用与用户.vscode保持；下一集中V6云候选/无AWS真实actor/可信材料证据导入，实际调度/安装/发布/部署另审。[事实与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-app-auth-completed.md)。下文保留历史。
 
 > **2026-10-19：W6b App只读认证入口与48小时待审清单已准备，未执行。** 固定原App/安装/仓库和受保护PEM；九源码及ACL元数据绑定、永久本地槽先于读钥、最小read token/一次finally撤销。不读真实key内容、不mint/dispatch/安装SQL或改AWS，运行时保持关闭；失败不自动重试/轮换。本仓仅交接文档，应用/用户.vscode保持。[具体范围与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-app-auth-review.md)。下文保留历史。
