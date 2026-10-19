@@ -2,6 +2,8 @@
 
 > **2026-10-19：W6b App只读认证入口与48小时待审清单已准备，未执行。** 固定原App/安装/仓库和受保护PEM；九源码及ACL元数据绑定、永久本地槽先于读钥、最小read token/一次finally撤销。不读真实key内容、不mint/dispatch/安装SQL或改AWS，运行时保持关闭；失败不自动重试/轮换。本仓仅交接文档，应用/用户.vscode保持。[具体范围与完整风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-app-auth-review.md)。下文保留历史。
 
+该入口平台准确源码30bdcfd的CI39273460659全成功已独立回读，本机83项/类型/lint/构建通过。唯一待批SHA `22dc06b289f5964464ec27f537540d68a006f20fd68d391239956af3bbf48782`，截止2026-10-21 09:55:37温尼伯时间。尚未真实认证/读钥/调度或改AWS/Neon；[公开验证记录](https://github.com/veinyyxy/TechlongSoftware/blob/main/ops/aws-sandbox/reviews/platform-controller-auth-v6.verified.json)。
+
 > **2026-10-19：W6b 平台控制器候选已编码，尚未启用，W6 未全部完成。** 平台新增管理员接口/页面、App 客户端与独立账本 SQL（不自动安装、NOLOGIN）；UNPUBLISHED 硬绑定先于 DB/密钥读取，单次 intent/ACK/UNKNOWN 及真实 PG18 并发 CI 保持无 AWS。未读真实 PEM/安装 Neon/mint token/dispatch 或改 IAM；旧云闭包/工作流不变。下一集中 App 受审只读接入及 V6 云候选/可信 capsule/证据导入，然后另审安装/发布/新任务验收。本仓应用和用户.vscode保持。[候选实现、风险及继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-controller-implementation.md)。下文保留历史。
 
 > **2026-10-19：用户报告 W6b App 5381160 / installation 173033406 已创建，仍待安装核验。** 公开 API 仅核到候选 bot 344813947，不能替代实测 actor 或权限/单仓验证；私有 App404不作为不存在结论。误生成的未用私钥作异常记录，未读取/使用/轮换或新增密钥，先确认本机保管及非敏感设置；不重建 App、不改 AWS/SQL/Secret 或调度。本仓只更新交接，应用与用户.vscode保持。[当前事实及继续边界](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6b-controller-plan.md)。下文保留历史。
