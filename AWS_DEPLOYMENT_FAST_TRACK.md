@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20：W6l平台新heldjob固定请求窗口/独立回读入口已编码，未开启或登记。** 原登记SQL/云闭包保持，固定管理员和nonce/job避免刷新换请求；只拟两次原认证文件读取，不读App key/AWS Secret，controller/worker/apply关闭。67项本机/类型/lint通过，下一准确CI后只读Prepare48小时新SHA；实际窗口、用户单次登记及独立只读回读另审，再复用既有publisher/controller Review路径。本仓应用/镜像/用户.vscode不动，不扩支线。[范围、风险及继续命令](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6l-held-request-review.md)。下文保留历史。
+
 > **2026-10-20：W6k平台真实本机启动/管理员登录查看已验收，服务已关停。** 按2a50da9d…一次供给/启动，用户报告页面正常；原PID退出、3100空闲均独立核对，7原件/23源码pin及准确CI全部17步骤通过，永久槽不重放。无AWS写、新任务或调度；正常登录会话写不宣称SQL为0。本仓应用/镜像与用户.vscode保持，下一集中新heldjob及独立受审窗口的平台Review→RunOnce→Inspect验收。[完成事实、证据与唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6k-local-runtime-verified.md)。下文保留历史。
 
 > **2026-10-20：W6k平台最小受审启动器已编码，尚未启动或读真实私密值。** 独立无env配置目录、白名单内存供给、固定版本/文件元数据、30分钟许可/前台关闭和只读Inspect；原launcher/云闭包不变，10新+4原launcher+34回归与定向lint通过。下一准确平台CI验证一次性runner本机进程（仅合成值），再只读Prepare48小时新SHA；Start/新任务/调度仍各另审。本仓仅交接，应用/镜像与用户.vscode不动。[范围、风险与继续命令](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6k-local-runtime-review.md)。下文保留历史。
