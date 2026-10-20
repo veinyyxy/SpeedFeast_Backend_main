@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20：W6i平台App工作流及现有worker trust已发布并独立核验成功，尚未dispatch。** 真实caller390829326/reusable390829324、固定R4588febb…及准确Change Set终态UPDATE_COMPLETE匹配；只改两trust字段，原策略/boundary及其它绑定布局保持。一次push/Create/Execute/ff，永久槽已消费，不重放；无私密值/Neon/部署/本仓应用或用户.vscode变更。平台/publisher仍UNPUBLISHED，下一集中真实workflow/R的发布绑定和新任务端到端验收，实际激活/读取/调度另审。[完成记录和唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6i-app-published.md)。下文保留历史。
+
 > **2026-10-20：W6i平台App双工作流发布/worker trust-only受审入口已实现，尚未执行。** 12新+18回归共30项及零警告lint通过，云闭包不变；下一准确CI后只读准备48小时新SHA，实际push/Create/严格核验后Execute另审。仅改变App actor和固定reusable信任，旧个人worker将失去角色访问权；不读私密值/连Neon/dispatch/部署或改本仓应用与用户.vscode，平台/publisher仍UNPUBLISHED。[范围、风险和继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6i-app-publication-review.md)。下文保留历史。
 
 > **2026-10-20 10:43温尼伯：W6h平台窄凭据安装及独立核验完成。** 按a9b5e2ce…清单一受保护Secret/固定版本、既有角色密码/LOGIN一事务COMMIT、两次TLS只读认证通过；目录仅LOGIN变化、控制表仍空，永久安装和一次读取槽已消费，不重放。准确CI39447172538全成功；未改本仓应用/用户.vscode、worker trust或部署，平台/publisher仍UNPUBLISHED。下一在最新平台main准备App工作流发布/trust-only清单，实际发布/权限/私密读取/调度另审，不再身份实验。[完成记录、风险与唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6h-credentials-installed.md)。下文保留历史。
