@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20：W6j平台真实workflow/R绑定与限时本机门禁代码完成，未启用。** 12新+22回归/实际入口渲染共34项通过；拟单公开binding文件受审发布，云闭包不改。运行还需另审30分钟本机许可和私密供给，准确origin/source/专用TLS目标及POST前复核，原launcher不变。本轮无生产SQL/私密值/任务创建/服务启动/dispatch或本仓应用改动，用户.vscode保持；下一准确CI后只读准备新48小时SHA，发布另批。[范围、完整风险和继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6j-runtime-binding-review.md)。下文保留历史。
+
 > **2026-10-20：W6i平台App工作流及现有worker trust已发布并独立核验成功，尚未dispatch。** 真实caller390829326/reusable390829324、固定R4588febb…及准确Change Set终态UPDATE_COMPLETE匹配；只改两trust字段，原策略/boundary及其它绑定布局保持。一次push/Create/Execute/ff，永久槽已消费，不重放；无私密值/Neon/部署/本仓应用或用户.vscode变更。平台/publisher仍UNPUBLISHED，下一集中真实workflow/R的发布绑定和新任务端到端验收，实际激活/读取/调度另审。[完成记录和唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6i-app-published.md)。下文保留历史。
 
 > **2026-10-20：W6i平台App双工作流发布/worker trust-only受审入口已实现，尚未执行。** 12新+18回归共30项及零警告lint通过，云闭包不变；下一准确CI后只读准备48小时新SHA，实际push/Create/严格核验后Execute另审。仅改变App actor和固定reusable信任，旧个人worker将失去角色访问权；不读私密值/连Neon/dispatch/部署或改本仓应用与用户.vscode，平台/publisher仍UNPUBLISHED。[范围、风险和继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6i-app-publication-review.md)。下文保留历史。
