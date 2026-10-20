@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20当前：W6f最小激活先落既有NOLOGIN控制账本，安装/独立回读入口已实现，生产未安装。** Neon18.6只读确认角色/schema缺席；10新+6回归通过，下一准确临时PG CI验证后准备48小时fresh安装SHA，仅拟1角色/1 schema/3表/9函数及7窄EXECUTE。无密码/LOGIN/Secret/App key/dispatch/AWS/业务或本仓应用改动，用户.vscode保持。后续publisher/窄凭据/App发布集中收口，不再身份探针。[完整风险与继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6f-control-install.md)。下文保留历史。
+
 > **2026-10-19当前：W6e真实App身份验收通过，准确run39312477081成功；原token撤销HTTP204已观察/本地回读。** actor/sender/nonce/caller/冻结代码和公开proof摘要独立匹配；新槽保留不重放，未改AWS/Neon/本仓应用或用户.vscode。平台仍UNPUBLISHED，下一收口窄SQL/可信publisher生产接线及App云发布最小激活清单，实际权限/安装/部署仍另批，不再做身份探针。[完成证据与唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6e-app-identity-verified.md)。下文保留历史。
 
 > **2026-10-19当前：W6e专用无AWS App身份调度/独立只读验收代码已实现，尚未执行。** 真实workflow389772013、fresh main/nonce/15项pin与新槽绑定；ACK先落盘再立即撤权，后续人工environment及准确公开proof验收分离。下一在平台最终同步main准备48小时fresh SHA，真实读钥/token/单次dispatch另批；本轮未做这些操作或AWS/SQL/本仓应用写，用户.vscode保持。[完整风险及继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6e-app-identity-dispatch.md)。下文保留历史。
