@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20：W6k平台最小受审启动器已编码，尚未启动或读真实私密值。** 独立无env配置目录、白名单内存供给、固定版本/文件元数据、30分钟许可/前台关闭和只读Inspect；原launcher/云闭包不变，10新+4原launcher+34回归与定向lint通过。下一准确平台CI验证一次性runner本机进程（仅合成值），再只读Prepare48小时新SHA；Start/新任务/调度仍各另审。本仓仅交接，应用/镜像与用户.vscode不动。[范围、风险与继续命令](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6k-local-runtime-review.md)。下文保留历史。
+
 > **2026-10-20：W6j平台公开绑定已单次发布并独立核验，运行时尚未启动。** 按752a9ee9…清单一次非force push/本地ff，仅binding文件PUBLISHED，真实workflow/R及release准确；34项本机/typecheck和准确提交两项CI均通过，永久槽消费不可重放。无AWS写/生产SQL/私密读取/新任务/启动/部署，本仓应用、镜像与用户.vscode不变。下一集中受审本机最小启动/私密供给和一个新任务的Review→RunOnce→Inspect验收，不扩支线。[完成事实、证据与唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6j-binding-published.md)。下文保留历史。
 
 > **2026-10-20：W6j平台真实workflow/R绑定与限时本机门禁代码完成，未启用。** 12新+22回归/实际入口渲染共34项通过；拟单公开binding文件受审发布，云闭包不改。运行还需另审30分钟本机许可和私密供给，准确origin/source/专用TLS目标及POST前复核，原launcher不变。本轮无生产SQL/私密值/任务创建/服务启动/dispatch或本仓应用改动，用户.vscode保持；下一准确CI后只读准备新48小时SHA，发布另批。[范围、完整风险和继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6j-runtime-binding-review.md)。下文保留历史。
