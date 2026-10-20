@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20 10:43温尼伯：W6h平台窄凭据安装及独立核验完成。** 按a9b5e2ce…清单一受保护Secret/固定版本、既有角色密码/LOGIN一事务COMMIT、两次TLS只读认证通过；目录仅LOGIN变化、控制表仍空，永久安装和一次读取槽已消费，不重放。准确CI39447172538全成功；未改本仓应用/用户.vscode、worker trust或部署，平台/publisher仍UNPUBLISHED。下一在最新平台main准备App工作流发布/trust-only清单，实际发布/权限/私密读取/调度另审，不再身份实验。[完成记录、风险与唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6h-credentials-installed.md)。下文保留历史。
+
 > **2026-10-20：平台W6h精确27触发器兼容、单窄凭据安装入口及App发布材料代码完成，尚未执行。** 38本机/零警告lint通过，只读确认Secret缺席与角色NOLOGIN；下一准确CI后准备48小时凭据新SHA。仅拟1个空Secret/Source-only策略/固定版本和一事务LOGIN，App key不读/不复制，工作流/trust只备材料另审。生产AWS/SQL写0，本仓应用与用户.vscode不动，平台仍UNPUBLISHED。[具体范围、风险和继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6h-activation-review.md)。下文保留历史。
 
 > **2026-10-20：W6g平台独立publisher实际I/O及NOLOGIN只读审计完成，准确CI39432718217全部success，未激活。** 28本机检查/零警告lint和真实PG适配器/权限负例/类型/构建通过，不重跑；Neon27个旧PUBLIC invoker触发器已核对类型/owner/摘要，兼容仅提案，不全局撤权或自动LOGIN。平台/publisher仍UNPUBLISHED，生产SQL/AWS/Secret/App key/dispatch0；本仓应用与用户.vscode保持。下一集中精确兼容、窄凭据/App云发布材料，不扩身份实验。[实现、风险和唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6g-publisher-io.md)。下文保留历史。
