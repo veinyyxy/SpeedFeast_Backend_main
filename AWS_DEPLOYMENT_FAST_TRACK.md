@@ -1,5 +1,7 @@
 # AWS 自动部署最快交付：服务端继续位置
 
+> **2026-10-20：W6g平台独立publisher实际I/O及NOLOGIN只读权限审计完成，未激活。** 28本机检查/零警告lint通过，新准确临时PG CI待验；Neon27个旧PUBLIC invoker触发器已核对类型/owner/摘要，兼容仅提案，不全局撤权或自动LOGIN。平台/publisher仍UNPUBLISHED，生产SQL/AWS/Secret/App key/dispatch0；本仓应用与用户.vscode保持。下一集中精确兼容、窄凭据/App云发布材料，不扩身份实验。[实现、风险和唯一继续点](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6g-publisher-io.md)。下文保留历史。
+
 > **2026-10-20 08:10温尼伯：平台W6f NOLOGIN账本已原子安装并独立核验。** 按acf19e10…清单一原SQL事务COMMIT，1角色/1 schema/3空表/9函数体/7窄EXECUTE匹配；永久槽已消费、10原件摘要保存，不重放。未密码/LOGIN/Secret/App key/dispatch/AWS或业务状态写，本仓应用和用户.vscode保持，平台仍UNPUBLISHED。下一集中生产publisher I/O、窄凭据与App云发布接线，实际变更另审，不再身份探针。[完成证据与唯一继续位置](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6f-control-installed.md)。下文保留历史。
 
 > **2026-10-20更新：应用户要求，平台W6f本次NOLOGIN安装清单从48小时延长至7天（168小时），未生产执行/占槽。** 12安装+6回归及零警告lint通过；旧203cda41…保留但不执行，新源码准确CI后只读准备新SHA/完整日期和时区，再单独确认。执行前fresh源码/CI/目录检查及单次永久槽保持；不延期权限启用/实际部署，不改本仓应用或用户.vscode。[完整范围与风险](https://github.com/veinyyxy/TechlongSoftware/blob/main/docs/aws-auto-deployment-platform-w6f-control-install.md)。下文保留历史。
