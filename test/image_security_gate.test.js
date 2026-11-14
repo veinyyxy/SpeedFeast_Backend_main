@@ -21,6 +21,14 @@ test('unfixed HIGH and CRITICAL findings remain deployment blockers',()=>{
   const result=verifyReport(s);assert.equal(result.outcome,'HIGH_CRITICAL_FINDINGS');
   assert.deepEqual(result.findingSeverityCounts,{HIGH:1,CRITICAL:1});assert.equal(result.ignoreUnfixedAllowed,false);
 });
+test('an available zlib fix does not excuse either HIGH finding in an old image',()=>{
+  const s=sample();
+  s.report.Results[0].Vulnerabilities=['CVE-2026-76844','CVE-2026-85091'].map(VulnerabilityID=>({
+    VulnerabilityID,PkgName:'zlib1g',Severity:'HIGH',InstalledVersion:'1:1.3.dfsg+really1.3.1-1+b1',
+    FixedVersion:'1:1.3.dfsg+really1.3.1-1+deb13u1'}));
+  const result=verifyReport(s);assert.equal(result.outcome,'HIGH_CRITICAL_FINDINGS');
+  assert.deepEqual(result.findingSeverityCounts,{HIGH:2,CRITICAL:0});
+});
 test('scanner uses pinned binary and cannot consume repository exceptions or contact ECR',()=>{
   const source=fs.readFileSync('scripts/ci/check-image-security.sh','utf8');
   assert.ok(source.includes('v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz'));
