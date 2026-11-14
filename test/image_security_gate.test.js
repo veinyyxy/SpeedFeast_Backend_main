@@ -35,8 +35,14 @@ test('scanner uses pinned binary and cannot consume repository exceptions or con
   assert.ok(source.includes('sha256sum --check --strict'));assert.ok(source.includes('--image-src docker'));
   assert.ok(source.includes('--ignorefile "$scanner/empty.ignore"'));
   for(const text of ['--ignore-unfixed','--skip-db-update','aws ','docker push'])assert.ok(!source.includes(text));
-  const workflow=fs.readFileSync('.github/workflows/backend-image-candidate.yml','utf8');
-  assert.ok(workflow.indexOf('check-image-security.sh "')<workflow.indexOf('Export the exact checked image'));
+  for(const file of ['backend-image-candidate.yml','backend-lifecycle-image-candidate.yml']){
+    const workflow=fs.readFileSync('.github/workflows/'+file,'utf8');
+    assert.match(workflow,/run: npm audit --omit=dev --audit-level=high/);
+    assert.ok(workflow.indexOf('check-image-security.sh "')>=0);
+    assert.ok(workflow.indexOf('check-image-security.sh "')<workflow.indexOf('Record the exact checked and scanned image'));
+    assert.ok(workflow.indexOf('Record the exact checked and scanned image')<workflow.indexOf('Export the exact checked image'));
+    assert.doesNotMatch(workflow,/continue-on-error:/);
+  }
 });
 test('lifecycle final layer is nonroot and contains patched Python plus minimal dynamic dependencies',()=>{
   const docker=fs.readFileSync('Dockerfile.lifecycle','utf8');

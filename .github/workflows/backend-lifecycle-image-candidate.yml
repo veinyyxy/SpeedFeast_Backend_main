@@ -1,0 +1,152 @@
+name: Lifecycle Image Candidate - Build and Self Check Only
+
+on:
+  workflow_dispatch:
+
+# No OIDC, package/registry write, secrets or AWS credentials. Publication and
+# ECS remain separate manually reviewed steps under a later exact approval.
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-lifecycle-image-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and self-check ${{ matrix.kind }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: lifecycle
+            dockerfile: Dockerfile.lifecycle
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate self-check entrypoints
+        run: |
+          bash -n scripts/ci/check-image-candidate.sh
+          bash -n scripts/ci/check-image-security.sh
+          python3 -m py_compile scripts/ci/create-image-toolchain-fixture.py
+          python3 -m py_compile scripts/ci/build-lifecycle-runtime.py
+          node --check scripts/ci/check-lifecycle-image-toolchain.js
+          node --check scripts/ci/check-aurora-connection-compatibility.js
+          node --check scripts/ci/check-aurora-continuation-v4.js
+          node --check scripts/ci/record-image-candidate.js
+          node --check scripts/ci/verify-image-security.js
+
+      - name: Gate high and critical production dependency advisories
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build local linux/amd64 candidate
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+          CANDIDATE_DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          docker build --platform linux/amd64 --file "$CANDIDATE_DOCKERFILE" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" .
+
+      - name: Run isolated container self-check
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: |
+          output="$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+          mkdir "$output"
+          bash scripts/ci/check-image-candidate.sh "$CANDIDATE_KIND" "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" "$output"
+
+      # Both final images must load/sign with the new SDK and built-in ATS
+      # roots, without network/credentials or an Express live-proof claim.
+      - name: Self-check Aurora dual-mode connection support without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
+          scripts/ci/check-aurora-connection-compatibility.js
+
+      - name: Self-check reserved-role continuation V4 without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
+          scripts/ci/check-aurora-continuation-v4.js
+
+      - name: Self-check exact Express uuid extension owner V5 without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
+          services/saas/aurora-express-restore-v5-check.cjs
+
+      - name: Self-check Express minimum application policy candidate V6 without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA"
+          services/saas/aurora-express-application-v6-check.cjs
+
+      - name: Self-check tenant bootstrap and initialized readiness wiring without network
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: >-
+          docker run --rm --network none --entrypoint /usr/local/bin/node
+          "speedfeast-${{ matrix.kind }}-candidate:$GITHUB_SHA"
+          services/saas/tenant-readiness-v1-check.cjs
+          "${{ matrix.kind }}"
+
+      - name: Gate operating-system HIGH and CRITICAL before retaining candidates
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: bash scripts/ci/check-image-security.sh "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" "$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+
+      - name: Record the exact checked and scanned image
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: node scripts/ci/record-image-candidate.js "$CANDIDATE_KIND" "$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+
+      - name: Preserve OS scan diagnosis on success or failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: os-scan-${{ matrix.kind }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/os-scan.json
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/os-scan-summary.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Export the exact checked image
+        env:
+          CANDIDATE_KIND: ${{ matrix.kind }}
+        run: |
+          output="$RUNNER_TEMP/candidate-$CANDIDATE_KIND"
+          docker save "speedfeast-$CANDIDATE_KIND-candidate:$GITHUB_SHA" | gzip -1 > "$output/image.tar.gz"
+          cd "$output"
+          sha256sum image.tar.gz candidate-receipt.json self-check.json > SHA256SUMS
+          # Bound one artifact and retain it for only one day. No build cache
+          # accumulation and no private baseline/fixture/database files.
+          test "$(stat -c %s image.tar.gz)" -le 471859200
+          cat candidate-receipt.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain promotion candidate and small receipts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: checked-${{ matrix.kind }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/image.tar.gz
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/candidate-receipt.json
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/self-check.json
+            ${{ runner.temp }}/candidate-${{ matrix.kind }}/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
